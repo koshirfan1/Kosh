@@ -1,0 +1,9 @@
+{
+  "name": "collections",
+  "version": "1.0.0",
+  "description": "Functional array helpers: sort, filter, map_each, reduce, find, unique, chunk, zip, sort_by",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "collections.kh",
+  "files": ["collections.kh"]
+}

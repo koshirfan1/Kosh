@@ -1,0 +1,50 @@
+
+import "webi"
+import "vision"
+
+let app = webi_app()
+
+fn handle_index(req):
+    let html = read_file(_webi_resolve_path("index.html"))
+    return res_html(html)
+
+fn handle_detect(req):
+    let body = body_json(req)
+    if body == nil:
+        return res_bad_request("expected a JSON body")
+
+    let image_b64 = body["image"]
+    if image_b64 == nil:
+        return res_bad_request("missing \"image\" field")
+
+    let temp_path = "/tmp/khan_face_demo_" + str(random()) + ".png"
+    let decoded = base64_decode_to_file(image_b64, temp_path)
+    if decoded == false:
+        return res_server_error("could not write decoded image")
+
+    let img = vision_load(temp_path)
+    if img == nil:
+        remove_file(temp_path)
+        return res_bad_request("could not read that as an image (need a PNG or JPEG)")
+
+    # The real thing: genuine Viola-Jones cascade detection (see
+    # packages/vision/detect.kh) - not a mock, not a hardcoded box.
+    let faces = detect_faces(temp_path)
+
+    let result = {
+        "width":  img["width"],
+        "height": img["height"],
+        "faces":  faces,
+        "count":  len(faces)
+    }
+
+    vision_free(img)
+    remove_file(temp_path)
+    return res_json(result)
+
+app = get_route(app, "/", handle_index)
+app = post_route(app, "/detect", handle_detect)
+
+print "Face detection demo running at http://localhost:8080"
+print "(Ctrl+C to stop)"
+webi_run(app, 8080)

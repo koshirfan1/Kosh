@@ -1,0 +1,11 @@
+{
+  "name": "argparse",
+  "version": "1.0.0",
+  "description": "Professional command-line argument parser for Kosh apps with support for defaults and help messages.",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "argparse.kh",
+  "files": [
+    "argparse.kh"
+  ]
+}

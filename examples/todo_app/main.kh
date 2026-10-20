@@ -1,0 +1,58 @@
+# Todo App - Main Entry Point
+import "todo_core.kh"
+import "todo_storage.kh"
+import "todo_ui.kh"
+
+# Storage file path
+let data_file = "todos.dat"
+
+# Load existing todos
+let todos = []
+let loaded = load_todos(data_file)
+todos = loaded
+
+print_header()
+print "Loaded " + str(len(todos)) + " tasks"
+
+# Main menu loop
+let running = true
+while running:
+    print_menu()
+    let choice = input("Enter choice (1-5): ")
+    
+    if choice == "1":
+        # Add a new task
+        let title = input("Enter task title: ")
+        if len(title) > 0:
+            todos = create_todo(todos, title)
+            print "Task added!"
+        else:
+            print "Task cannot be empty!"
+    
+    if choice == "2":
+        # List all tasks
+        list_todos(todos)
+    
+    if choice == "3":
+        # Mark task as done
+        list_todos(todos)
+        let id_str = input("Enter task number to mark done: ")
+        let id = num(id_str)
+        todos = mark_done(todos, id)
+        print "Task marked as done!"
+    
+    if choice == "4":
+        # Delete a task
+        list_todos(todos)
+        let id_str = input("Enter task number to delete: ")
+        let id = num(id_str)
+        todos = delete_todo(todos, id)
+        print "Task deleted!"
+    
+    if choice == "5":
+        # Save and exit
+        save_todos(todos, data_file)
+        print "Goodbye!"
+        running = false
+
+print "Thanks for using Todo App!"

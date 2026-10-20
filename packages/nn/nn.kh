@@ -1,0 +1,209 @@
+# Khan nn package -- a minimal neural-network module built entirely on
+# top of packages/tensor/tensor.kh's Tensor class (no new VM primitives
+# beyond the activation natives tensor.kh already wraps). Matches the
+# "Neural Network Module" / "Loss Functions" items in
+# docs/future plans/phase2-ai-foundation-plan.md, scoped down to what's
+# actually implemented and tested here -- see docs/tensor.md for the
+# full picture and v1 limits (this package inherits all of them: no
+# broadcasting beyond a single scalar, 2-D-only matmul, etc).
+#
+# Usage: import "nn"
+#
+#   let model = Sequential([Dense(2, 4), ReLU(), Dense(4, 1)])
+#   let opt = SGD(model.parameters(), 0.01)
+#   let pred = model.forward(x)
+#   let loss = mse_loss(pred, target)
+#   opt.zero_grad()
+#   loss.backward(nil)
+#   opt.step()
+
+import "tensor"
+
+# -- layers ---------------------------------------------------------------
+
+class Dense:
+    # Weights are shape (in_features, out_features); bias is shape
+    # (1, out_features) -- NOT (out_features,) -- because add() only
+    # broadcasts a single-element operand (see docs/tensor.md's
+    # "Broadcasting" section), so the bias has to already match the
+    # matmul output's shape exactly, not just its element count.
+    fn __init__(self, in_features, out_features):
+        let wdata = []
+        let i = 0
+        while i < in_features:
+            let row = []
+            let j = 0
+            while j < out_features:
+                row = push(row, random() * 0.2 - 0.1)
+                j = j + 1
+            wdata = push(wdata, row)
+            i = i + 1
+        self.w = Tensor(wdata, true)
+
+        let bdata = []
+        let k = 0
+        while k < out_features:
+            bdata = push(bdata, 0)
+            k = k + 1
+        self.bias = Tensor([bdata], true)
+
+    fn forward(self, x):
+        return x.matmul(self.w).add(self.bias)
+
+    fn parameters(self):
+        return [self.w, self.bias]
+
+
+class ReLU:
+    fn __init__(self):
+        self._unused = nil
+    fn forward(self, x):
+        return x.relu()
+    fn parameters(self):
+        return []
+
+class Sigmoid:
+    fn __init__(self):
+        self._unused = nil
+    fn forward(self, x):
+        return x.sigmoid()
+    fn parameters(self):
+        return []
+
+class Tanh:
+    fn __init__(self):
+        self._unused = nil
+    fn forward(self, x):
+        return x.tanh()
+    fn parameters(self):
+        return []
+
+
+class Sequential:
+    fn __init__(self, layers):
+        self.layers = layers
+
+    fn forward(self, x):
+        let out = x
+        let i = 0
+        while i < len(self.layers):
+            out = self.layers[i].forward(out)
+            i = i + 1
+        return out
+
+    fn parameters(self):
+        let params = []
+        let i = 0
+        while i < len(self.layers):
+            let layer_params = self.layers[i].parameters()
+            let j = 0
+            while j < len(layer_params):
+                params = push(params, layer_params[j])
+                j = j + 1
+            i = i + 1
+        return params
+
+
+# -- loss functions ---------------------------------------------------------
+
+fn mse_loss(pred, target):
+    let diff = pred.sub(target)
+    return diff.mul(diff).mean()
+
+# target is a plain Khan array of N class indices (0..C-1), NOT a one-hot
+# tensor -- e.g. for a 3-class problem, target = [0, 2, 1, 0]. Fuses
+# softmax + cross-entropy into a single graph node with a closed-form
+# gradient, the same reason real frameworks fuse these two -- see
+# docs/nn.md and tensor.kh's "softmax_cross_entropy" backward case.
+fn cross_entropy_loss(logits, target):
+    let probs = _tensor_softmax(logits.buf)
+    let loss_val = _tensor_cross_entropy_loss(probs, target)
+    let out = Tensor(loss_val, logits.requires_grad)
+    out.op = "softmax_cross_entropy"
+    out.a = logits
+    out._probs = Tensor(probs, false)
+    out._target = target
+    return out
+
+# Fraction of logits whose highest-probability class matches target
+# (same class-index-array convention as cross_entropy_loss). Not part of
+# the autograd graph -- this is for reporting, not training.
+fn accuracy(logits, target):
+    let preds = _tensor_argmax(logits.buf)
+    let correct = 0
+    let i = 0
+    while i < len(preds):
+        if preds[i] == target[i]:
+            correct = correct + 1
+        i = i + 1
+    return correct / len(preds)
+
+
+# -- optimizer ---------------------------------------------------------------
+
+class SGD:
+    fn __init__(self, params, lr):
+        self.params = params
+        self.lr = lr
+
+    # Updates each parameter's underlying buffer directly (param.buf),
+    # NOT through a Tensor op -- an optimizer step must not itself be
+    # recorded in the autograd graph, the same reason _accumulate() in
+    # tensor.kh builds .grad with plain _tensor_add rather than .add().
+    fn step(self):
+        let i = 0
+        while i < len(self.params):
+            let p = self.params[i]
+            if p.grad != nil:
+                p.buf = _tensor_sub(p.buf, _tensor_mul(p.grad.buf, self.lr))
+            i = i + 1
+
+    fn zero_grad(self):
+        let i = 0
+        while i < len(self.params):
+            self.params[i].grad = nil
+            i = i + 1
+
+
+class Adam:
+    fn __init__(self, params, lr):
+        self.params = params
+        self.lr = lr
+        self.beta1 = 0.9
+        self.beta2 = 0.999
+        self.eps = 0.00000001
+        self.t = 0
+        # per-parameter moving averages of the gradient (m) and the
+        # squared gradient (v), same shape as each parameter
+        self.m = []
+        self.v = []
+        let i = 0
+        while i < len(params):
+            self.m = push(self.m, _tensor_zeros_like(params[i].buf))
+            self.v = push(self.v, _tensor_zeros_like(params[i].buf))
+            i = i + 1
+
+    fn step(self):
+        self.t = self.t + 1
+        let bias_correction1 = 1.0 - pow(self.beta1, self.t)
+        let bias_correction2 = 1.0 - pow(self.beta2, self.t)
+        let i = 0
+        while i < len(self.params):
+            let p = self.params[i]
+            if p.grad != nil:
+                let g = p.grad.buf
+                self.m[i] = _tensor_add(_tensor_mul(self.m[i], self.beta1), _tensor_mul(g, 1.0 - self.beta1))
+                let g2 = _tensor_mul(g, g)
+                self.v[i] = _tensor_add(_tensor_mul(self.v[i], self.beta2), _tensor_mul(g2, 1.0 - self.beta2))
+                let mhat = _tensor_mul(self.m[i], 1.0 / bias_correction1)
+                let vhat = _tensor_mul(self.v[i], 1.0 / bias_correction2)
+                let denom = _tensor_add(_tensor_sqrt(vhat), self.eps)
+                let update = _tensor_div(_tensor_mul(mhat, self.lr), denom)
+                p.buf = _tensor_sub(p.buf, update)
+            i = i + 1
+
+    fn zero_grad(self):
+        let i = 0
+        while i < len(self.params):
+            self.params[i].grad = nil
+            i = i + 1

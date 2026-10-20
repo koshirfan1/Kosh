@@ -1,0 +1,20 @@
+import "webi"
+
+let app = webi_app()
+
+fn fn_index(req):
+    return res_html(<h1>Hello from Khan webi! Hi</h1>")
+
+fn fn_hello(req):
+    let name = query_get(req, "name", "World")
+    return res_text("Hello, " + name + "!")
+
+fn fn_echo(req):
+    return res_json(req["body_json"])
+
+app = route(app, "GET",  "/",      fn_index)
+app = route(app, "GET",  "/hello", fn_hello)
+app = route(app, "POST", "/echo",  fn_echo)
+
+print "Starting server on port 8099..."
+webi_run(app, 8099)

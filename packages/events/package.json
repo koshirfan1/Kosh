@@ -1,0 +1,14 @@
+{
+  "name": "events",
+  "version": "1.0.1",
+  "description": "Event emitter system: on, emit, once, off, history — built for Kosh Engine game events",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "events.kh",
+  "files": [
+    "events.kh"
+  ],
+  "changelog": {
+    "1.0.1": "Fixed syntax the parser doesn't actually support (single-line inline block bodies after ':') that prevented this package from compiling at all."
+  }
+}

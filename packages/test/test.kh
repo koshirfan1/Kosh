@@ -1,0 +1,122 @@
+# Khan test package v1.0.0
+# Author: Irfan Khan
+# Lightweight unit testing framework — for testing Khan code and engine systems
+#
+# Usage:
+#   import "test"
+#   let t = test_suite("My Suite")
+#   t = test_eq(t, "adds correctly", 1 + 1, 2)
+#   t = test_true(t, "is positive", 5 > 0)
+#   test_run(t)
+
+# ─────────────────────────────────────────────────────────────
+# SUITE
+# ─────────────────────────────────────────────────────────────
+
+fn test_suite(name):
+    return {
+        "name":    name,
+        "cases":   [],
+        "passed":  0,
+        "failed":  0,
+        "skipped": 0
+    }
+
+# ─────────────────────────────────────────────────────────────
+# ASSERTIONS
+# ─────────────────────────────────────────────────────────────
+
+fn _test_record(t, label, ok, detail):
+    let c = {"label": label, "ok": ok, "detail": detail}
+    t["cases"] = push(t["cases"], c)
+    if ok:
+        t["passed"] = t["passed"] + 1
+    else:
+        t["failed"] = t["failed"] + 1
+    return t
+
+fn test_true(t, label, value):
+    return _test_record(t, label, value == true, "expected true, got " + str(value))
+
+fn test_false(t, label, value):
+    return _test_record(t, label, value == false, "expected false, got " + str(value))
+
+fn test_eq(t, label, actual, expected):
+    let ok = actual == expected
+    return _test_record(t, label, ok, "expected " + str(expected) + ", got " + str(actual))
+
+fn test_neq(t, label, actual, unexpected):
+    let ok = actual != unexpected
+    return _test_record(t, label, ok, "expected NOT " + str(unexpected) + ", got " + str(actual))
+
+fn test_nil(t, label, value):
+    return _test_record(t, label, value == nil, "expected nil, got " + str(value))
+
+fn test_not_nil(t, label, value):
+    return _test_record(t, label, value != nil, "expected non-nil value")
+
+fn test_gt(t, label, actual, than):
+    let ok = actual > than
+    return _test_record(t, label, ok, str(actual) + " is not > " + str(than))
+
+fn test_lt(t, label, actual, than):
+    let ok = actual < than
+    return _test_record(t, label, ok, str(actual) + " is not < " + str(than))
+
+fn test_gte(t, label, actual, than):
+    let ok = actual >= than
+    return _test_record(t, label, ok, str(actual) + " is not >= " + str(than))
+
+fn test_lte(t, label, actual, than):
+    let ok = actual <= than
+    return _test_record(t, label, ok, str(actual) + " is not <= " + str(than))
+
+fn test_contains_str(t, label, haystack, needle):
+    let ok = contains(haystack, needle)
+    return _test_record(t, label, ok, "\"" + haystack + "\" does not contain \"" + needle + "\"")
+
+fn test_len(t, label, arr, expected_len):
+    let ok = len(arr) == expected_len
+    return _test_record(t, label, ok, "expected len " + str(expected_len) + ", got " + str(len(arr)))
+
+fn test_type(t, label, value, expected_type):
+    let ok = type(value) == expected_type
+    return _test_record(t, label, ok, "expected type " + expected_type + ", got " + type(value))
+
+fn test_skip(t, label):
+    let c = {"label": label, "ok": nil, "detail": "skipped"}
+    t["cases"] = push(t["cases"], c)
+    t["skipped"] = t["skipped"] + 1
+    return t
+
+# ─────────────────────────────────────────────────────────────
+# REPORT
+# ─────────────────────────────────────────────────────────────
+
+fn test_run(t):
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print "  TEST SUITE: " + t["name"]
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    for c in t["cases"]:
+        if c["ok"] == nil:
+            print "  ⏭  SKIP  " + c["label"]
+        elif c["ok"]:
+            print "  ✓  PASS  " + c["label"]
+        else:
+            print "  ✗  FAIL  " + c["label"]
+            print "           → " + c["detail"]
+    print "────────────────────────────────────────"
+    let total = t["passed"] + t["failed"] + t["skipped"]
+    print "  " + str(t["passed"]) + "/" + str(total) + " passed   |   " + str(t["failed"]) + " failed   |   " + str(t["skipped"]) + " skipped"
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    return t["failed"] == 0
+
+fn test_summary(t):
+    return {
+        "name":    t["name"],
+        "passed":  t["passed"],
+        "failed":  t["failed"],
+        "skipped": t["skipped"],
+        "total":   t["passed"] + t["failed"] + t["skipped"],
+        "ok":      t["failed"] == 0
+    }

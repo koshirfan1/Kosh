@@ -1,0 +1,26 @@
+# Example usage of the vision package (v2.0.1).
+#
+# Put a real image named "photo.png" next to THIS file (examples/photo.png)
+# — paths here resolve relative to this script's own directory, not
+# whatever folder you happen to run `kosh` from.
+import "vision"
+
+let INPUT_PATH = "photo.png"
+
+let info = image_info(INPUT_PATH)
+if info == nil:
+    print "Could not open " + INPUT_PATH + " (expected at: examples/" + INPUT_PATH + ")"
+    exit(1)
+
+print "Loaded: " + str(info["width"]) + "x" + str(info["height"]) + " (" + str(info["channels"]) + " channels)"
+
+convert_to_grayscale(INPUT_PATH, "photo_gray.png")
+thumbnail(INPUT_PATH, "photo_thumb.png", 200)
+
+let stats = histogram_stats(INPUT_PATH)
+print "Brightness — min: " + str(stats["min"]) + " max: " + str(stats["max"]) + " avg: " + str(round(stats["average"]))
+
+if is_grayscale(INPUT_PATH, 8):
+    print "This image is already grayscale."
+else:
+    print "This image has color."

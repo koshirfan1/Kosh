@@ -1,0 +1,22 @@
+# display.kh — formats a package map into a readable terminal "card".
+
+fn print_package_card(pkg, from_cache):
+    print "----------------------------------------"
+    print pkg["name"] + " v" + pkg["version"]
+    print "----------------------------------------"
+    print pkg["summary"]
+    print ""
+    print "Author:    " + pkg["author"]
+    print "Home page: " + pkg["home_page"]
+    print ""
+    if from_cache:
+        print "(from local cache)"
+    else:
+        print "(fetched live from pypi.org)"
+    print "----------------------------------------"
+
+fn print_not_found(name, status):
+    print "----------------------------------------"
+    print "Could not find package '" + name + "'"
+    print "HTTP status: " + str(status)
+    print "----------------------------------------"

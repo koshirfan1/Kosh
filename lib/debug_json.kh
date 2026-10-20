@@ -1,0 +1,12 @@
+# Debug: test if json import works
+import "json.kh"
+
+print "Testing json_encode..."
+print json_encode(42)
+print json_encode("hello")
+print json_encode(true)
+
+print "Testing json_decode..."
+let r = json_decode("42")
+print "Decoded: " + str(r)
+print type(r)

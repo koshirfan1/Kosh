@@ -1,0 +1,51 @@
+# vision/draw.kh — drawing primitives for annotating results. Needs core.kh.
+#
+# These mutate an already-loaded image (the same `image` maps vision_load
+# returns) in place — they're thin, documented pass-throughs of the
+# native vision_draw_* functions, listed here so they show up alongside
+# the rest of the package's API:
+#
+#   vision_draw_rect(image, x,y,w,h, r,g,b [,thickness])   -> bool
+#   vision_fill_rect(image, x,y,w,h, r,g,b)                -> bool
+#   vision_draw_line(image, x0,y0,x1,y1, r,g,b [,thickness])-> bool
+#   vision_draw_circle(image, cx,cy,radius, r,g,b)         -> bool
+#   vision_fill_circle(image, cx,cy,radius, r,g,b)         -> bool
+#   vision_draw_text(image, x,y,text, r,g,b [,scale])      -> bool
+#
+# The one thing this file adds is a full load/annotate/save pipeline for
+# the common case: draw a list of boxes (e.g. from find_blobs or
+# detect_faces) onto a copy of the source image and write it out.
+
+# ---------------------------------------------------------------------------
+# draw_boxes(input_path, output_path, boxes, r, g, b, thickness) -> bool
+# `boxes` is an array of maps with at least "x","y","w","h" — exactly
+# what find_blobs / find_color_regions / detect_faces return, so you can
+# pass their output straight in.
+# ---------------------------------------------------------------------------
+fn draw_boxes(input_path, output_path, boxes, r, g, b, thickness):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+
+    let i = 0
+    while i < len(boxes):
+        let box = boxes[i]
+        vision_draw_rect(img, box["x"], box["y"], box["w"], box["h"], r, g, b, thickness)
+        i = i + 1
+
+    let ok = vision_save(img, _vision_resolve(output_path))
+    vision_free(img)
+    return ok
+
+# ---------------------------------------------------------------------------
+# label_box(image, box, text, r, g, b) -> bool
+# Draws a box's rectangle plus a small text label above its top-left
+# corner. Operates in place on an already-loaded image (not a path) so
+# it composes with draw_boxes-style pipelines you're building yourself.
+# ---------------------------------------------------------------------------
+fn label_box(image, box, text, r, g, b):
+    vision_draw_rect(image, box["x"], box["y"], box["w"], box["h"], r, g, b, 2)
+    let text_y = box["y"] - 10
+    if text_y < 0:
+        text_y = box["y"] + 2
+    return vision_draw_text(image, box["x"], text_y, text, r, g, b, 1)

@@ -1,0 +1,60 @@
+# vision/morphology.kh — erosion/dilation. Needs core.kh.
+# Typically run on a binary image (see threshold.kh) to clean up noise
+# before contours.kh's blob detection.
+
+# ---------------------------------------------------------------------------
+# erode_file(input_path, output_path, kernel_size) -> bool
+# Shrinks bright regions — good for removing small white speckle noise.
+# ---------------------------------------------------------------------------
+fn erode_file(input_path, output_path, kernel_size):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_erode(img, kernel_size)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok
+
+# ---------------------------------------------------------------------------
+# dilate_file(input_path, output_path, kernel_size) -> bool
+# Grows bright regions — good for closing small gaps/holes.
+# ---------------------------------------------------------------------------
+fn dilate_file(input_path, output_path, kernel_size):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_dilate(img, kernel_size)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok
+
+# ---------------------------------------------------------------------------
+# morph_open_file(input_path, output_path, kernel_size) -> bool
+# Erode then dilate — removes small bright speckle noise while mostly
+# preserving the size/shape of larger regions.
+# ---------------------------------------------------------------------------
+fn morph_open_file(input_path, output_path, kernel_size):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_morph_open(img, kernel_size)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok
+
+# ---------------------------------------------------------------------------
+# morph_close_file(input_path, output_path, kernel_size) -> bool
+# Dilate then erode — fills small dark holes/gaps inside bright regions.
+# ---------------------------------------------------------------------------
+fn morph_close_file(input_path, output_path, kernel_size):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_morph_close(img, kernel_size)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok

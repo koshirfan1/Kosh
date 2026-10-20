@@ -1,0 +1,105 @@
+# Khan colors package v1.0.0
+# Usage: import "colors"
+
+let CLR_RESET   = "\x1b[0m"
+let CLR_BOLD    = "\x1b[1m"
+let CLR_DIM     = "\x1b[2m"
+let CLR_UNDER   = "\x1b[4m"
+
+let CLR_BLACK   = "\x1b[30m"
+let CLR_RED     = "\x1b[31m"
+let CLR_GREEN   = "\x1b[32m"
+let CLR_YELLOW  = "\x1b[33m"
+let CLR_BLUE    = "\x1b[34m"
+let CLR_MAGENTA = "\x1b[35m"
+let CLR_CYAN    = "\x1b[36m"
+let CLR_WHITE   = "\x1b[37m"
+
+let CLR_BRED    = "\x1b[91m"
+let CLR_BGREEN  = "\x1b[92m"
+let CLR_BYELLOW = "\x1b[93m"
+let CLR_BBLUE   = "\x1b[94m"
+let CLR_BCYAN   = "\x1b[96m"
+let CLR_BWHITE  = "\x1b[97m"
+
+let BG_RED    = "\x1b[41m"
+let BG_GREEN  = "\x1b[42m"
+let BG_YELLOW = "\x1b[43m"
+let BG_BLUE   = "\x1b[44m"
+let BG_CYAN   = "\x1b[46m"
+let BG_WHITE  = "\x1b[47m"
+
+fn color(text, clr):
+    return clr + str(text) + CLR_RESET
+
+fn red(text):
+    return color(text, CLR_RED)
+
+fn green(text):
+    return color(text, CLR_GREEN)
+
+fn yellow(text):
+    return color(text, CLR_YELLOW)
+
+fn blue(text):
+    return color(text, CLR_BLUE)
+
+fn magenta(text):
+    return color(text, CLR_MAGENTA)
+
+fn cyan(text):
+    return color(text, CLR_CYAN)
+
+fn white(text):
+    return color(text, CLR_WHITE)
+
+fn bold(text):
+    return color(text, CLR_BOLD)
+
+fn dim(text):
+    return color(text, CLR_DIM)
+
+fn underline(text):
+    return color(text, CLR_UNDER)
+
+fn bred(text):
+    return color(text, CLR_BRED)
+
+fn bgreen(text):
+    return color(text, CLR_BGREEN)
+
+fn byellow(text):
+    return color(text, CLR_BYELLOW)
+
+fn bcyan(text):
+    return color(text, CLR_BCYAN)
+
+fn print_red(text):
+    print red(text)
+
+fn print_green(text):
+    print green(text)
+
+fn print_yellow(text):
+    print yellow(text)
+
+fn print_blue(text):
+    print blue(text)
+
+fn print_cyan(text):
+    print cyan(text)
+
+fn print_bold(text):
+    print bold(text)
+
+fn print_success(text):
+    print bgreen("OK " + str(text))
+
+fn print_error(text):
+    print bred("ERR " + str(text))
+
+fn print_warn(text):
+    print byellow("WARN " + str(text))
+
+fn print_info(text):
+    print cyan("INFO " + str(text))

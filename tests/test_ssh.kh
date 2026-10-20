@@ -1,0 +1,12 @@
+# Test for ssh_client package
+import "../packages/ssh_client/ssh_client.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("SSH Suite")
+
+let client = ssh_client("server.com", "root", "secret")
+let out = ssh_exec(client, "ls -la")
+
+t = test_eq(t, "output check", out, "SSH Output Placeholder")
+
+test_run(t)

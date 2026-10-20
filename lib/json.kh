@@ -1,0 +1,245 @@
+# JSON Library for Khan
+# json_encode(value) and json_decode(string)
+#
+# NOTE: Khan functions capture the environment at definition time, so
+# recursive function calls don't work. json_encode iterates manually
+# over array/map elements without calling itself recursively.
+
+fn _esc(s):
+    let r = "\""
+    let i = 0
+    while i < len(s):
+        let c = substring(s, i, 1)
+        if c == "\"":
+            r = r + "\\\""
+        if c == "\\":
+            r = r + "\\\\"
+        if c == "\n":
+            r = r + "\\n"
+        if c == "\t":
+            r = r + "\\t"
+        if c == "\r":
+            r = r + "\\r"
+        if c != "\"" and c != "\\" and c != "\n" and c != "\t" and c != "\r":
+            r = r + c
+        i = i + 1
+    r = r + "\""
+    return r
+
+fn json_encode(v):
+    let t = type(v)
+    if t == "number":
+        return str(v)
+    if t == "string":
+        return _esc(v)
+    if t == "bool":
+        if v:
+            return "true"
+        return "false"
+    if t == "nil":
+        return "null"
+    if t == "array":
+        let r = "["
+        let i = 0
+        while i < len(v):
+            if i > 0:
+                r = r + ", "
+            let e = v[i]
+            let et = type(e)
+            if et == "number":
+                r = r + str(e)
+            if et == "string":
+                r = r + _esc(e)
+            if et == "bool":
+                if e:
+                    r = r + "true"
+                if not e:
+                    r = r + "false"
+            if et == "nil":
+                r = r + "null"
+            if et == "array":
+                r = r + json_encode(e)
+            if et == "map":
+                r = r + json_encode(e)
+            i = i + 1
+        r = r + "]"
+        return r
+    if t == "map":
+        let r = "{"
+        let ks = keys(v)
+        let i = 0
+        while i < len(ks):
+            if i > 0:
+                r = r + ", "
+            r = r + _esc(ks[i]) + ": "
+            let e = v[ks[i]]
+            let et = type(e)
+            if et == "number":
+                r = r + str(e)
+            if et == "string":
+                r = r + _esc(e)
+            if et == "bool":
+                if e:
+                    r = r + "true"
+                if not e:
+                    r = r + "false"
+            if et == "nil":
+                r = r + "null"
+            if et == "array":
+                r = r + json_encode(e)
+            if et == "map":
+                r = r + json_encode(e)
+            i = i + 1
+        r = r + "}"
+        return r
+    return "null"
+
+# ---------------------------------------------------------------------------
+# JSON Decode
+# ---------------------------------------------------------------------------
+
+fn _skip(s, pos):
+    let p = pos
+    let d = false
+    while not d:
+        if p >= len(s):
+            d = true
+        if not d:
+            let c = substring(s, p, 1)
+            if c == " ":
+                p = p + 1
+            if c == "\n":
+                p = p + 1
+            if c == "\t":
+                p = p + 1
+            if c == "\r":
+                p = p + 1
+            if c != " " and c != "\n" and c != "\t" and c != "\r":
+                d = true
+    return p
+
+fn _pstr(s, pos):
+    let p = _skip(s, pos)
+    p = p + 1
+    let r = ""
+    while p < len(s):
+        let c = substring(s, p, 1)
+        p = p + 1
+        if c == "\"":
+            return {"v": r, "p": p}
+        if c == "\\" and p < len(s):
+            let n = substring(s, p, 1)
+            p = p + 1
+            if n == "\"":
+                r = r + "\""
+            if n == "\\":
+                r = r + "\\"
+            if n == "n":
+                r = r + "\n"
+            if n == "t":
+                r = r + "\t"
+            if n == "r":
+                r = r + "\r"
+            if n != "\"" and n != "\\" and n != "n" and n != "t" and n != "r":
+                r = r + n
+        if c != "\"" and c != "\\":
+            r = r + c
+    return {"v": r, "p": p}
+
+fn _pn(s, pos):
+    let p = _skip(s, pos)
+    let st = p
+    if p < len(s):
+        if substring(s, p, 1) == "-":
+            p = p + 1
+    while p < len(s):
+        let c = substring(s, p, 1)
+        let isd = (c == "0" or c == "1" or c == "2" or c == "3" or c == "4" or c == "5" or c == "6" or c == "7" or c == "8" or c == "9")
+        if isd:
+            p = p + 1
+        if not isd:
+            if c != ".":
+                return {"v": nil, "p": p}
+            p = p + 1
+    let ns = substring(s, st, p - st)
+    if len(ns) == 0:
+        return {"v": nil, "p": p}
+    if ns == "-":
+        return {"v": nil, "p": p}
+    return {"v": num(ns), "p": p}
+
+fn _parse(s, pos):
+    let p = _skip(s, pos)
+    if p >= len(s):
+        return {"v": nil, "p": p}
+    let c = substring(s, p, 1)
+
+    if c == "\"":
+        return _pstr(s, p)
+
+    if c == "t":
+        if p + 4 <= len(s) and substring(s, p, 4) == "true":
+            return {"v": true, "p": p + 4}
+        return {"v": nil, "p": p}
+
+    if c == "f":
+        if p + 5 <= len(s) and substring(s, p, 5) == "false":
+            return {"v": false, "p": p + 5}
+        return {"v": nil, "p": p}
+
+    if c == "n":
+        if p + 4 <= len(s) and substring(s, p, 4) == "null":
+            return {"v": nil, "p": p + 4}
+        return {"v": nil, "p": p}
+
+    if c == "0" or c == "1" or c == "2" or c == "3" or c == "4" or c == "5" or c == "6" or c == "7" or c == "8" or c == "9" or c == "-":
+        return _pn(s, p)
+
+    if c == "[":
+        p = p + 1
+        let r = []
+        while p < len(s):
+            let q = _skip(s, p)
+            if q >= len(s):
+                return {"v": r, "p": p}
+            if substring(s, q, 1) == "]":
+                return {"v": r, "p": q + 1}
+            if substring(s, q, 1) == ",":
+                p = q + 1
+            if substring(s, q, 1) != "]" and substring(s, q, 1) != ",":
+                let res = _parse(s, p)
+                p = res["p"]
+                if type(res["v"]) != "nil":
+                    r = push(r, res["v"])
+        return {"v": r, "p": p}
+
+    if c == "{":
+        p = p + 1
+        let r = {}
+        while p < len(s):
+            let q = _skip(s, p)
+            if q >= len(s):
+                return {"v": r, "p": p}
+            if substring(s, q, 1) == "}":
+                return {"v": r, "p": q + 1}
+            if substring(s, q, 1) == ",":
+                p = q + 1
+            if substring(s, q, 1) != "}" and substring(s, q, 1) != ",":
+                let kr = _parse(s, p)
+                let key = kr["v"]
+                p = kr["p"]
+                if type(key) != "nil":
+                    p = _skip(s, p)
+                    if p < len(s) and substring(s, p, 1) == ":":
+                        p = p + 1
+                    let vr = _parse(s, p)
+                    p = vr["p"]
+                    if type(vr["v"]) != "nil":
+                        r[key] = vr["v"]
+        return {"v": r, "p": p}
+
+    return {"v": nil, "p": p}
+
+fn json_decode(s):
+    let r = _parse(s, 0)
+    return r["v"]

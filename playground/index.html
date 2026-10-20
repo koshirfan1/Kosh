@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Khan Playground — try a from-scratch language in your browser</title>
+<meta name="description" content="Khan: a programming language with its own bytecode compiler and VM, written from scratch in C. Run it live, right here.">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="favicon-16.png" type="image/png" sizes="16x16">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #161412;
+    --panel: #1e1b17;
+    --panel-raised: #252119;
+    --border: #372f27;
+    --border-bright: #4a3f32;
+    --ember: #e0983a;
+    --ember-dim: #a86f2c;
+    --ember-glow: rgba(224, 152, 58, 0.18);
+    --slate: #8b96a0;
+    --text: #ede7de;
+    --text-dim: #a89e8f;
+    --sage: #8fae7a;
+    --rust: #c96a54;
+    --radius: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-image:
+      radial-gradient(ellipse 800px 400px at 15% -10%, var(--ember-glow), transparent),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+  }
+
+  a { color: var(--ember); }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ---------- header ---------- */
+
+  header.top {
+    padding: 48px 0 28px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .eyebrow .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sage);
+    box-shadow: 0 0 8px var(--sage);
+  }
+
+  h1 {
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    line-height: 1.05;
+  }
+
+  h1 .khan {
+    color: var(--ember);
+  }
+
+  .lede {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 640px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  /* ---------- examples strip ---------- */
+
+  .examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .examples span.label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    align-self: center;
+    margin-right: 4px;
+  }
+
+  button.chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  button.chip:hover { border-color: var(--border-bright); color: var(--text); }
+  button.chip.active { color: var(--ember); border-color: var(--ember-dim); }
+
+  /* ---------- main grid ---------- */
+
+  main.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin: 28px 0;
+    min-height: 440px;
+  }
+
+  @media (max-width: 860px) {
+    main.grid { grid-template-columns: 1fr; }
+  }
+
+  .pane {
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .filename { color: var(--slate); }
+
+  textarea#editor {
+    flex: 1;
+    width: 100%;
+    background: transparent;
+    color: var(--text);
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.65;
+    padding: 18px 20px;
+    tab-size: 4;
+    min-height: 380px;
+  }
+
+  textarea#editor:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--ember-dim);
+  }
+
+  #output {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    line-height: 1.7;
+    padding: 18px 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    min-height: 380px;
+    color: var(--text);
+  }
+
+  #output .stderr-line { color: var(--rust); }
+  #output .placeholder { color: var(--text-dim); font-style: italic; }
+
+  .cursor-blink {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: var(--ember);
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: blink 1s step-end infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-blink { animation: none; opacity: 0.6; }
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* status bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    border-top: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    background: var(--panel-raised);
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--slate);
+    flex-shrink: 0;
+  }
+  .status-dot.ok { background: var(--sage); box-shadow: 0 0 6px var(--sage); }
+  .status-dot.err { background: var(--rust); box-shadow: 0 0 6px var(--rust); }
+  .status-dot.busy { background: var(--ember); animation: pulse 0.9s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .status-dot.busy { animation: none; } }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  /* ---------- controls row ---------- */
+
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+  }
+
+  button#run {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: #17140f;
+    background: var(--ember);
+    border: none;
+    border-radius: var(--radius);
+    padding: 13px 28px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.15s ease, transform 0.08s ease;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+  }
+  button#run:hover:not(:disabled) { background: #eaa550; }
+  button#run:active:not(:disabled) { transform: translateY(1px); }
+  button#run:disabled { background: var(--ember-dim); opacity: 0.55; cursor: wait; }
+  button#run:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+
+  button#run .key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: rgba(0,0,0,0.2);
+    padding: 3px 7px;
+    border-radius: 2px;
+    font-weight: 500;
+  }
+
+  .engine-note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    max-width: 480px;
+    text-align: right;
+    line-height: 1.5;
+  }
+  .engine-note strong { color: var(--slate); font-weight: 600; }
+
+  @media (max-width: 700px) {
+    .engine-note { text-align: left; }
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 24px 0 48px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow"><span class="dot"></span> compiler → bytecode → vm, compiled to wasm — this is the real engine, not a simulation</p>
+    <h1><span class="khan">Khan</span>, in your browser</h1>
+    <p class="lede">A language built from nothing but a C compiler: its own lexer, parser, bytecode compiler, and stack-based VM. <strong>No server runs this code</strong> — the same engine that compiles to a native binary was compiled to WebAssembly and is running the lexer/parser/compiler/VM pipeline locally, in this tab.</p>
+  </header>
+
+  <div class="examples" role="group" aria-label="Load an example">
+    <span class="label">Try:</span>
+    <button class="chip active" data-example="hello">hello world</button>
+    <button class="chip" data-example="closures">closures</button>
+    <button class="chip" data-example="fib">fibonacci</button>
+    <button class="chip" data-example="vision">pixel math</button>
+  </div>
+
+  <main class="grid">
+    <div class="pane">
+      <div class="pane-head">
+        <span>Source</span>
+        <span class="filename">playground.kh</span>
+      </div>
+      <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <span>Output</span>
+        <span class="filename" id="engine-state">loading engine…</span>
+      </div>
+      <div id="output"><span class="placeholder">Run something to see it here.</span></div>
+      <div class="status-bar">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">engine loading</span>
+      </div>
+    </div>
+  </main>
+
+  <div class="controls">
+    <button id="run" disabled>
+      ▶ Run
+      <span class="key">⌘⏎</span>
+    </button>
+    <p class="engine-note"><strong>What's not in this build:</strong> networking (webi, requests) and OCR (needs libtesseract) don't work in a browser sandbox — this runs the core language, stdlib, JSON, dates, the mock sqlite, and vision's pixel math.</p>
+  </div>
+
+  <footer>
+    <span>Khan — built from scratch in C11 by Irfan Khan</span>
+    <span><a href="https://github.com/khandev1211-cpu/Khan">source on GitHub</a></span>
+  </footer>
+</div>
+
+<script>
+const EXAMPLES = {
+  hello: `print("Hello from Khan!")
+
+let x = 5
+let y = 10
+print("x + y = " + str(x + y))
+
+let arr = [1, 2, 3, 4, 5]
+let total = 0
+for n in arr:
+    total = total + n
+print("sum of [1,2,3,4,5] = " + str(total))
+`,
+  closures: `fn make_greeter(name):
+    fn greet():
+        return "Hello, " + name + "!"
+    return greet
+
+let greeter = make_greeter("Khan")
+print(greeter())
+
+# Khan's closures are value-capture only right now -
+# they can READ an enclosing variable, but there's no
+# shared mutable upvalue, so a counter that mutates its
+# captured state doesn't work the way it does in JS/Python.
+# Known limitation, not yet fixed.
+`,
+  fib: `fn fib(n):
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+let i = 0
+while i <= 10:
+    print("fib(" + str(i) + ") = " + str(fib(i)))
+    i = i + 1
+`,
+  vision: `# vision's pixel math runs fine here - loading actual
+# image FILES doesn't (no real filesystem in a bare
+# browser playground), but blank-canvas pixel ops do.
+
+let img = vision_new(64, 64, 3)
+print("created a 64x64 blank RGB image")
+
+let gray = vision_grayscale(img)
+print("grayscale conversion: ok")
+
+let rotated = vision_rotate(gray, 90)
+print("rotated 90 degrees: ok")
+
+print("(real face detection needs an actual photo - ")
+print(" try that in the real khan binary, not here)")
+`,
+};
+
+const editor = document.getElementById('editor');
+const output = document.getElementById('output');
+const runBtn = document.getElementById('run');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const engineState = document.getElementById('engine-state');
+
+editor.value = EXAMPLES.hello;
+
+document.querySelectorAll('.chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    editor.value = EXAMPLES[btn.dataset.example];
+  });
+});
+
+let Module = null;
+
+function appendOutput(text, isErr) {
+  if (output.querySelector('.placeholder')) output.innerHTML = '';
+  const span = document.createElement('span');
+  if (isErr) span.className = 'stderr-line';
+  span.textContent = text + '\n';
+  output.appendChild(span);
+  output.scrollTop = output.scrollHeight;
+}
+
+function setStatus(kind, text) {
+  statusDot.className = 'status-dot' + (kind ? ' ' + kind : '');
+  statusText.textContent = text;
+}
+
+createKhanModule({
+  print: (t) => appendOutput(t, false),
+  printErr: (t) => appendOutput(t, true),
+}).then((mod) => {
+  Module = mod;
+  runBtn.disabled = false;
+  engineState.textContent = 'wasm engine ready';
+  setStatus('', 'ready — press run');
+}).catch((err) => {
+  engineState.textContent = 'engine failed to load';
+  setStatus('err', 'load failed: ' + err.message);
+});
+
+function runCode() {
+  if (!Module) return;
+  output.innerHTML = '';
+  runBtn.disabled = true;
+  setStatus('busy', 'running…');
+
+  // let the UI paint the "running" state before the (synchronous) call
+  requestAnimationFrame(() => {
+    let exitCode;
+    try {
+      const run = Module.cwrap('run_khan_source', 'number', ['string']);
+      exitCode = run(editor.value);
+    } catch (e) {
+      appendOutput(String(e), true);
+      exitCode = -1;
+    }
+    runBtn.disabled = false;
+    if (exitCode === 0) {
+      setStatus('ok', 'exit 0');
+    } else {
+      setStatus('err', 'exit ' + exitCode);
+    }
+  });
+}
+
+runBtn.addEventListener('click', runCode);
+editor.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runCode();
+  }
+});
+</script>
+<script src="khan.js"></script>
+</body>
+</html>

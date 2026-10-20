@@ -1,0 +1,32 @@
+# tests/regression_mod_div_zero.kh
+#
+# Not part of tests/run_all.kh's suite framework because both of these
+# are EXPECTED to halt the script with a runtime error — there's no
+# try/catch in Khan to assert on that in-language. Run this manually
+# (or from CI as two separate invocations) and check for the expected
+# error message + non-zero exit code:
+#
+#   .\khan tests/regression_mod_div_zero.kh div
+#     -> should print "Runtime error: Division by zero" and exit non-zero
+#   .\khan tests/regression_mod_div_zero.kh mod
+#     -> should print "Runtime error: Modulo by zero" and exit non-zero
+#
+# What this actually protects against: constant folding (compiler.c)
+# deliberately does NOT fold a division/modulo whose divisor folds to
+# zero — it's supposed to fall through to normal codegen so the
+# runtime's zero-check still fires. If someone "improves" the folder
+# later without preserving that exclusion, this is what would silently
+# start returning NaN/Inf instead of erroring (that used to be true for
+# modulo unconditionally, independent of folding — see the
+# REGRESSION note in tests/suites/operators.kh).
+
+let mode = "div"
+if len(argv) > 0:
+    mode = argv[0]
+
+if mode == "div":
+    print 10 / (1 - 1)
+elif mode == "mod":
+    print 10 % (1 - 1)
+else:
+    print "usage: khan tests/regression_mod_div_zero.kh [div|mod]"

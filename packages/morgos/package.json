@@ -1,0 +1,9 @@
+{
+  "name": "morgos",
+  "version": "1.0.0",
+  "description": "Morgan-style HTTP request logger for webi: colored status, elapsed time, response size — as a swappable after-hook",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "morgos.kh",
+  "files": ["morgos.kh"]
+}

@@ -1,0 +1,12 @@
+# benchmarks/call_overhead.kh — isolates function-call overhead from
+# raw loop overhead. See docs/call-overhead-audit.md — companion
+# scripts (not run by run.py, since they're a matched trio meant to be
+# compared against each other, not against another language) are
+# call_overhead_khan_fn.kh and call_overhead_no_call.kh.
+let arr = [1, 2, 3, 4, 5]
+let total = 0
+let i = 0
+while i < 3000000:
+    total = total + len(arr)
+    i = i + 1
+print total

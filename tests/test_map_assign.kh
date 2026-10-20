@@ -1,0 +1,9 @@
+let m = {}
+fn update(x):
+    x["a"] = 1
+update(m)
+print "m[\"a\"] is: " + str(m["a"])
+if has(m, "a"):
+    print "has(m, \"a\") is true"
+else:
+    print "has(m, \"a\") is false"

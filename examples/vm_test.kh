@@ -1,0 +1,128 @@
+# vm_test.kh — tests every major VM feature
+
+# ── 1. Variables & arithmetic ──
+let x = 10 + 5 * 2
+print x              # 20
+
+let y = x / 4
+print y              # 5
+
+let r = 17 % 5
+print r              # 2
+
+# ── 2. Strings ──
+let name = "Khan"
+let msg  = "Hello, " + name + "!"
+print msg            # Hello, Khan!
+print len(msg)       # 13
+print upper("hello") # HELLO
+print lower("WORLD") # world
+
+# ── 3. Booleans & comparisons ──
+print 10 == 10       # true
+print 10 != 20       # true
+print 5 > 3          # true
+print not false      # true
+
+# ── 4. if / elif / else ──
+let score = 85
+if score >= 90:
+    print "A"
+elif score >= 80:
+    print "B"
+elif score >= 70:
+    print "C"
+else:
+    print "F"
+# prints: B
+
+# ── 5. while loop ──
+let i = 0
+while i < 5:
+    print i
+    i = i + 1
+# 0 1 2 3 4
+
+# ── 6. for loop ──
+let fruits = ["apple", "banana", "cherry"]
+for fruit in fruits:
+    print fruit
+
+# ── 7. break & continue ──
+let evens = []
+for n in [1, 2, 3, 4, 5, 6, 7, 8]:
+    if n > 6:
+        break
+    if n % 2 != 0:
+        continue
+    evens = push(evens, n)
+print evens          # [2, 4, 6]
+
+# ── 8. Functions ──
+fn add(a, b):
+    return a + b
+
+print add(3, 7)      # 10
+
+fn greet(who):
+    print "Hello, " + who + "!"
+
+greet("Irfan")       # Hello, Irfan!
+
+# ── 9. Recursion ──
+fn factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+print factorial(5)   # 120
+print factorial(10)  # 3628800
+
+fn fib(n):
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+print fib(10)        # 55
+
+# ── 10. Arrays ──
+let arr = [10, 20, 30, 40, 50]
+print arr[0]         # 10
+print arr[4]         # 50
+arr[2] = 99
+print arr            # [10, 20, 99, 40, 50]
+arr = push(arr, 60)
+print len(arr)       # 6
+
+# ── 11. Maps ──
+let person = {"name": "Irfan", "age": 25, "city": "Faisalabad"}
+print person["name"] # Irfan
+person["age"] = 26
+print person["age"]  # 26
+print has(person, "name")  # true
+print has(person, "email") # false
+print keys(person)   # [name, age, city]
+
+# ── 12. Stdlib ──
+print abs(-42)       # 42
+print sqrt(144)      # 12
+print pow(2, 8)      # 256
+print min(3, 7)      # 3
+print max(3, 7)      # 7
+print floor(3.9)     # 3
+print ceil(3.1)      # 4
+print round(3.5)     # 4
+
+# ── 13. String functions ──
+print contains("hello world", "world")   # true
+print substring("hello world", 6, 5)     # world
+print trim("   spaces   ")               # spaces
+let parts = split("a,b,c,d", ",")
+print parts          # [a, b, c, d]
+print len(parts)     # 4
+
+# ── 14. Range ──
+print range(5)       # [0, 1, 2, 3, 4]
+print range(2, 6)    # [2, 3, 4, 5]
+
+print "All VM tests passed!"

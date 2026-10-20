@@ -1,0 +1,52 @@
+# vision/contours.kh — connected-component blob detection. Needs core.kh.
+#
+# This is genuine shape/region detection: it finds distinct connected
+# regions of bright pixels in an image (typically one you've already run
+# through threshold.kh) and reports their bounding boxes, area, and
+# center. It doesn't know what a "face" or "car" is — it just finds
+# "there's a distinct blob here" — which is exactly what it's honest to
+# claim without a trained model.
+
+# ---------------------------------------------------------------------------
+# find_blobs(path, min_area) -> array of {"x","y","w","h","area","cx","cy"}
+# Treats pixels brighter than 127 (after internal grayscale conversion)
+# as foreground. Run threshold_file/threshold_otsu_file first if your
+# source image isn't already binary.
+# ---------------------------------------------------------------------------
+fn find_blobs(path, min_area):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return []
+    let blobs = vision_find_blobs(img, min_area)
+    vision_free(img)
+    return blobs
+
+# ---------------------------------------------------------------------------
+# find_blobs_after_threshold(path, min_area) -> array of blobs
+# Convenience: Otsu-thresholds the image first, then finds blobs — the
+# common case when starting from an ordinary (non-binary) photo.
+# ---------------------------------------------------------------------------
+fn find_blobs_after_threshold(path, min_area):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return []
+    let bin = vision_threshold_otsu(img)
+    let blobs = vision_find_blobs(bin, min_area)
+    vision_free(img)
+    vision_free(bin)
+    return blobs
+
+# ---------------------------------------------------------------------------
+# largest_blob(blobs) -> blob map or nil
+# Convenience for picking the single biggest region out of a blob list.
+# ---------------------------------------------------------------------------
+fn largest_blob(blobs):
+    if len(blobs) == 0:
+        return nil
+    let best = blobs[0]
+    let i = 1
+    while i < len(blobs):
+        if blobs[i]["area"] > best["area"]:
+            best = blobs[i]
+        i = i + 1
+    return best

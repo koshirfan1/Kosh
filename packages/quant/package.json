@@ -1,0 +1,14 @@
+{
+  "name": "quant",
+  "version": "1.0.0",
+  "description": "Accuracy-preserving quantization in pure Kosh — per-channel calibration, bias correction, outlier-aware sparse decomposition, and mixed-precision strategies for measuring and improving quantization accuracy",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "quant.kh",
+  "files": [
+    "quant.kh"
+  ],
+  "changelog": {
+    "1.0.0": "Initial release — quantize_per_channel, quantize_per_channel_calibrated, quant_error, quantize_per_channel_bias_corrected, quantize_outlier_aware, quantize_mixed_precision"
+  }
+}

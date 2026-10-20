@@ -1,0 +1,42 @@
+# Test for webi_auth package
+import "../packages/webi_auth/webi_auth.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Webi Auth Suite")
+
+# Helper to safely get short circuit from req
+fn get_sc(req):
+    if has(req, "_webi_short_circuit"):
+        return req["_webi_short_circuit"]
+    return nil
+
+# Mock request without auth
+let req_no_auth = {
+    "headers": {}
+}
+
+let res1 = mw_auth(req_no_auth)
+let sc1 = get_sc(res1)
+t = test_not_nil(t, "should short circuit on no auth", sc1)
+if sc1 != nil:
+    t = test_eq(t, "status should be 401", sc1["status"], 401)
+
+# Mock request with auth
+let req_with_auth = {
+    "headers": {"Authorization": "Bearer 123"}
+}
+
+let res2 = mw_auth(req_with_auth)
+t = test_nil(t, "should NOT short circuit on auth", get_sc(res2))
+
+# Test mw_require_key
+let res3 = mw_require_key(req_with_auth, "123")
+t = test_nil(t, "should accept valid key", get_sc(res3))
+
+let res4 = mw_require_key(req_with_auth, "wrong")
+let sc4 = get_sc(res4)
+t = test_not_nil(t, "should reject wrong key", sc4)
+if sc4 != nil:
+    t = test_eq(t, "status should be 403", sc4["status"], 403)
+
+test_run(t)

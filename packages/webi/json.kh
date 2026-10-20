@@ -1,0 +1,13 @@
+# Khan webi json submodule (v1.1.1)
+# Usage: from webi import json
+#
+# A thin re-export of Khan's native JSON builtins (json_encode /
+# json_decode) under friendlier names, so a webi handler can do
+# `json.encode(data)` / `json.decode(body)`-style calls without a
+# separate `json` package install.
+
+fn encode(data):
+    return json_encode(data)
+
+fn decode(text):
+    return json_decode(text)

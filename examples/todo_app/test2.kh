@@ -1,0 +1,36 @@
+# Test core functions
+import "todo_core.kh"
+
+let todos = []
+
+# Test create
+todos = create_todo(todos, "First task")
+print "After first create: " + str(len(todos))
+
+todos = create_todo(todos, "Second task")
+print "After second create: " + str(len(todos))
+
+# Test list
+print "Todos:"
+for t in todos:
+    print "  " + str(t["id"]) + ": " + t["title"] + " (done: " + str(t["done"]) + ")"
+
+# Test mark_done
+todos = mark_done(todos, 1)
+let t1 = get_todo(todos, 1)
+print "After mark done: todo 1 done = " + str(t1["done"])
+
+# Test delete
+todos = delete_todo(todos, 2)
+print "After delete: " + str(len(todos)) + " todos remain"
+
+# Test save/load
+import "todo_storage.kh"
+save_todos(todos, "test2.dat")
+let loaded = load_todos("test2.dat")
+print "Loaded: " + str(len(loaded))
+
+import "todo_ui.kh"
+list_todos(todos)
+
+print "All core tests passed!"

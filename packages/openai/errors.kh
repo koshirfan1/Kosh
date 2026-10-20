@@ -1,0 +1,70 @@
+# openai/errors.kh — turning a raw HTTP response into a useful error map.
+#
+# OpenAI's API returns errors as:
+#   { "error": { "message": "...", "type": "...", "param": ..., "code": ... } }
+# on a non-2xx status. Network failures never reach that shape at all
+# (res["success"] is false and res["body"] may be empty), so we handle
+# both cases here rather than assuming the body is always JSON.
+
+# ---------------------------------------------------------------------------
+# Internal: build a normalized error map from a `requests` response.
+# Always includes "status" and "message"; "type" and "code" are nil when
+# the API didn't give us a structured error body (e.g. a network failure
+# or a non-JSON error page from a proxy).
+# ---------------------------------------------------------------------------
+fn _openai_parse_error(res):
+    let err = {
+        "status":  res["status"],
+        "message": "Request failed",
+        "type":    nil,
+        "code":    nil,
+        "raw":     res["body"]
+    }
+
+    if res["status"] == 0:
+        err["message"] = "Network error — could not reach the API"
+        return err
+
+    let parsed = safe_json(res, nil)
+    if parsed != nil and has(parsed, "error"):
+        let e = parsed["error"]
+        if has(e, "message"):
+            err["message"] = e["message"]
+        if has(e, "type"):
+            err["type"] = e["type"]
+        if has(e, "code"):
+            err["code"] = e["code"]
+    elif len(res["body"]) > 0:
+        err["message"] = res["body"]
+
+    return err
+
+# ---------------------------------------------------------------------------
+# openai_is_error(value) -> bool
+# Every openai_* call that can fail returns either the successful result
+# or a map shaped like _openai_parse_error's output. Check which one you
+# got with this instead of guessing at keys.
+# ---------------------------------------------------------------------------
+fn openai_is_error(value):
+    if type(value) != "map":
+        return false
+    return has(value, "status") and has(value, "message") and has(value, "raw")
+
+# ---------------------------------------------------------------------------
+# openai_error_message(value) -> string
+# Safe to call on anything; returns "" if `value` isn't an error map.
+# ---------------------------------------------------------------------------
+fn openai_error_message(value):
+    if openai_is_error(value):
+        return value["message"]
+    return ""
+
+# ---------------------------------------------------------------------------
+# Internal: should this status be retried? (rate limit or server error)
+# ---------------------------------------------------------------------------
+fn _openai_is_retryable_status(status):
+    if status == 429:
+        return true
+    if status >= 500 and status < 600:
+        return true
+    return false

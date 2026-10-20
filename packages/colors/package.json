@@ -1,0 +1,9 @@
+{
+  "name": "colors",
+  "version": "1.0.0",
+  "description": "Terminal color output using ANSI codes: red, green, bold, boxes, etc.",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "colors.kh",
+  "files": ["colors.kh"]
+}

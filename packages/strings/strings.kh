@@ -1,0 +1,164 @@
+# Khan strings package v1.0.0
+# Usage: import "strings"
+#
+# NOTE: Khan's built-in substring(s, start, length) uses LENGTH as 3rd arg.
+# All helpers here account for this correctly.
+
+fn str_starts_with(s, prefix):
+    let plen = len(prefix)
+    if plen > len(s):
+        return false
+    return substring(s, 0, plen) == prefix
+
+fn str_ends_with(s, suffix):
+    let suflen = len(suffix)
+    let slen = len(s)
+    if suflen > slen:
+        return false
+    return substring(s, slen - suflen, suflen) == suffix
+
+fn str_char_at(s, i):
+    return substring(s, i, 1)
+
+fn str_trim_left(s):
+    let slen = len(s)
+    let i = 0
+    while i < slen:
+        let c = substring(s, i, 1)
+        if c != " " and c != "\t" and c != "\n" and c != "\r":
+            return substring(s, i, slen - i)
+        i = i + 1
+    return ""
+
+fn str_trim_right(s):
+    let slen = len(s)
+    let i = slen - 1
+    while i >= 0:
+        let c = substring(s, i, 1)
+        if c != " " and c != "\t" and c != "\n" and c != "\r":
+            return substring(s, 0, i + 1)
+        i = i - 1
+    return ""
+
+fn str_trim(s):
+    return str_trim_left(str_trim_right(s))
+
+fn str_repeat(s, n):
+    let result = ""
+    let i = 0
+    while i < n:
+        result = result + s
+        i = i + 1
+    return result
+
+fn str_pad_left(s, width, ch):
+    let padding = width - len(s)
+    if padding <= 0:
+        return s
+    return str_repeat(ch, padding) + s
+
+fn str_pad_right(s, width, ch):
+    let padding = width - len(s)
+    if padding <= 0:
+        return s
+    return s + str_repeat(ch, padding)
+
+fn str_replace(s, old, new_str):
+    let result = ""
+    let olen = len(old)
+    let slen = len(s)
+    if olen == 0:
+        return s
+    let i = 0
+    while i < slen:
+        if i + olen <= slen and substring(s, i, olen) == old:
+            result = result + new_str
+            i = i + olen
+        else:
+            result = result + substring(s, i, 1)
+            i = i + 1
+    return result
+
+fn str_contains(s, sub):
+    let slen = len(s)
+    let sublen = len(sub)
+    if sublen == 0:
+        return true
+    let i = 0
+    while i + sublen <= slen:
+        if substring(s, i, sublen) == sub:
+            return true
+        i = i + 1
+    return false
+
+fn str_index_of(s, sub):
+    let slen = len(s)
+    let sublen = len(sub)
+    if sublen == 0:
+        return 0
+    let i = 0
+    while i + sublen <= slen:
+        if substring(s, i, sublen) == sub:
+            return i
+        i = i + 1
+    return -1
+
+fn str_split(s, delim):
+    let parts = []
+    let dlen = len(delim)
+    let slen = len(s)
+    if dlen == 0:
+        return [s]
+    let start = 0
+    let i = 0
+    while i + dlen <= slen:
+        if substring(s, i, dlen) == delim:
+            parts = push(parts, substring(s, start, i - start))
+            i = i + dlen
+            start = i
+        else:
+            i = i + 1
+    parts = push(parts, substring(s, start, slen - start))
+    return parts
+
+fn str_join(arr, sep):
+    let result = ""
+    let i = 0
+    let n = len(arr)
+    while i < n:
+        if i > 0:
+            result = result + sep
+        result = result + str(arr[i])
+        i = i + 1
+    return result
+
+fn str_reverse(s):
+    let result = ""
+    let i = len(s) - 1
+    while i >= 0:
+        result = result + substring(s, i, 1)
+        i = i - 1
+    return result
+
+fn str_count(s, sub):
+    let count = 0
+    let slen = len(s)
+    let sublen = len(sub)
+    if sublen == 0:
+        return 0
+    let i = 0
+    while i + sublen <= slen:
+        if substring(s, i, sublen) == sub:
+            count = count + 1
+            i = i + sublen
+        else:
+            i = i + 1
+    return count
+
+fn str_is_empty(s):
+    return len(s) == 0
+
+fn str_capitalize(s):
+    if len(s) == 0:
+        return s
+    return upper(substring(s, 0, 1)) + lower(substring(s, 1, len(s) - 1))

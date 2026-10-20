@@ -1,0 +1,44 @@
+# webi/app.kh — application context.
+#
+#   app  — the application context (map):
+#             app["routes"]      list of {method, path, handler} maps
+#             app["host"]        bind address (default "0.0.0.0")
+#             app["port"]        port number
+#             app["debug"]       bool
+#             app["middlewares"] list of middleware fn references (run before the handler)
+#             app["after_hooks"] list of after-hook fn references  (run after the handler)  (v1.1.3)
+#             app["not_found"]   custom 404 handler fn (optional)
+#             app["error"]       custom 500 handler fn (optional)
+
+# ---------------------------------------------------------------------------
+# webi_app() -> app map
+# Create a new webi application instance
+# ---------------------------------------------------------------------------
+fn webi_app():
+    return {
+        "routes":      [],
+        "middlewares": [],
+        "after_hooks": [],
+        "host":        "0.0.0.0",
+        "port":        8080,
+        "debug":       false,
+        "not_found":   nil,
+        "error":       nil,
+        "name":        "webi"
+    }
+
+# ---------------------------------------------------------------------------
+# webi_debug(app, enabled) -> app
+# Enable or disable debug mode (verbose logging)
+# ---------------------------------------------------------------------------
+fn webi_debug(app, enabled):
+    app["debug"] = enabled
+    return app
+
+# ---------------------------------------------------------------------------
+# webi_name(app, name) -> app
+# Set the application name (shown in logs)
+# ---------------------------------------------------------------------------
+fn webi_name(app, name):
+    app["name"] = name
+    return app

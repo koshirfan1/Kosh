@@ -1,0 +1,13 @@
+# webi_from_import_negative_missing.kh
+# Run: kosh examples/webi_from_import_negative_missing.kh ; echo "exit: $?"
+#
+# This is a NEGATIVE test: it is expected to fail with a runtime error
+# and a non-zero exit code. It proves that a name which is neither a
+# symbol, the package's own name, nor a sibling submodule file still
+# gets the original clear error instead of silently doing nothing.
+#
+# Expected output:
+#   [line 0] Runtime error: cannot import name 'totally_not_a_thing' from 'webi' (...)
+# Expected exit code: 70 (non-zero)
+
+from webi import totally_not_a_thing

@@ -1,0 +1,32 @@
+# Khan ORM (Object-Relational Mapper)
+# Usage: import "orm"
+
+import "json_db"
+
+fn orm_model(table_name):
+    return {
+        "table": table_name,
+        "db": db_open(table_name + ".json")
+    }
+
+fn orm_create(model, data):
+    let db = model["db"]
+    let items = db_get(db, "items", [])
+    items = push(items, data)
+    db = db_set(db, "items", items)
+    db_save(db)
+    model["db"] = db
+    return model
+
+fn orm_find_all(model):
+    # Refresh from disk to ensure we have latest data
+    let db = db_open(model["table"] + ".json")
+    return db_get(db, "items", [])
+
+fn orm_find_one(model, field, value):
+    let items = orm_find_all(model)
+    for item in items:
+        if has(item, field):
+            if item[field] == value:
+                return item
+    return nil

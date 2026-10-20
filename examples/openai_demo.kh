@@ -1,0 +1,27 @@
+# Example usage of the new openai package (v2.0.0).
+#
+# Put OPENAI_API_KEY=sk-... in a .env file next to this script (see the
+# `dotenv` package), or just replace the api_key line below directly.
+import "openai"
+import "dotenv"
+
+let env = load_env(".env")
+let api_key = env_get(env, "OPENAI_API_KEY")
+if api_key == nil:
+    print "Set OPENAI_API_KEY in a .env file next to this script."
+    exit(1)
+
+let client = openai_client(api_key)
+
+# Single-shot ask
+let reply = openai_ask(client, "Say hello in exactly five words.")
+if reply == "":
+    let err = openai_last_error(client)
+    print "Error: " + err["message"]
+else:
+    print "Assistant: " + reply
+
+# Multi-turn conversation
+let convo = conversation_new_with_system(client, "You are a concise assistant.")
+print conversation_ask(convo, "What's the capital of France?")
+print conversation_ask(convo, "What's its population, roughly?")

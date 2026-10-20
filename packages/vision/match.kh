@@ -1,0 +1,28 @@
+# vision/match.kh — template matching. Needs core.kh.
+#
+# Classic, non-ML object localization: "where in this image does this
+# smaller reference image appear?" Uses normalized cross-correlation, so
+# it's tolerant of overall brightness differences between the template
+# and the target image, but it's exact-shape matching — it will not
+# generalize to a rotated, scaled, or meaningfully different-looking
+# version of the template the way a trained model would.
+
+# ---------------------------------------------------------------------------
+# locate_template(image_path, template_path) -> {"x","y","score"} or nil
+# `score` is a normalized correlation in [-1, 1]; above ~0.7 is normally
+# a confident match, but that depends a lot on your images — check a few
+# known examples before trusting a threshold.
+# ---------------------------------------------------------------------------
+fn locate_template(image_path, template_path):
+    let img = vision_load(_vision_resolve(image_path))
+    if img == nil:
+        return nil
+    let tpl = vision_load(_vision_resolve(template_path))
+    if tpl == nil:
+        vision_free(img)
+        return nil
+
+    let match = vision_match_template(img, tpl)
+    vision_free(img)
+    vision_free(tpl)
+    return match

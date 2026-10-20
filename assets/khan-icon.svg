@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#161B22"/>
+      <stop offset="100%" stop-color="#0D1117"/>
+    </linearGradient>
+    <linearGradient id="k" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5EEAD4"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square badge, matching the convention modern language/tool
+       logos use (Deno, Rust, Bun, etc.) rather than a bare glyph with no
+       container. -->
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="url(#bg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="none" stroke="#30363D" stroke-width="4"/>
+
+  <!-- Geometric "K" — built from straight-edged polygons (not a font
+       glyph) so it reads clearly at small sizes (16x16 favicon) and
+       matches the angular, compiled/bytecode character of the language
+       rather than a soft, rounded mark. The diagonal stroke is
+       deliberately built as two offset parallelograms meeting at the
+       vertical bar, suggesting a fork/branch — apt for a language whose
+       own execution model is a dispatch loop branching on opcodes. -->
+  <g fill="url(#k)">
+    <!-- vertical stroke -->
+    <rect x="168" y="128" width="56" height="256"/>
+    <!-- upper diagonal stroke -->
+    <polygon points="224,234 224,180 336,128 336,182"/>
+    <!-- lower diagonal stroke -->
+    <polygon points="224,278 224,332 336,384 336,330"/>
+  </g>
+
+  <!-- Small terminal-cursor accent beneath the K, nodding to the CLI/
+       REPL experience (`khan>` prompt) without adding real detail that
+       would disappear at favicon size. -->
+  <rect x="168" y="404" width="80" height="20" rx="4" fill="url(#k)" opacity="0.85"/>
+</svg>

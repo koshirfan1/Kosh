@@ -1,0 +1,307 @@
+{
+  "version": "1",
+  "packages": [
+    {
+      "name": "math",
+      "version": "2.0.1",
+      "developer": "Irfan Khan",
+      "description": "Advanced math functions: sqrt, pow, gcd, primes, factorial, mean",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/math/math.kh"
+    },
+    {
+      "name": "strings",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "String utilities: split, trim, replace, pad, repeat, contains, join",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/strings/strings.kh"
+    },
+    {
+      "name": "colors",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Terminal color output using ANSI codes: red, green, bold, boxes, etc.",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/colors/colors.kh"
+    },
+    {
+      "name": "requests",
+      "version": "1.1.0",
+      "developer": "Irfan Khan",
+      "description": "HTTP client: get, post, post_json, put, delete with auto JSON decode",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/requests/requests.kh"
+    },
+    {
+      "name": "postman",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "API testing toolkit: send requests, assert responses, run test suites",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/postman/postman.kh"
+    },
+    {
+      "name": "collections",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Functional array helpers: sort, filter, map_each, reduce, find, unique, chunk, zip, sort_by",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/collections/collections.kh"
+    },
+    {
+      "name": "fs",
+      "version": "1.0.1",
+      "developer": "Irfan Khan",
+      "description": "File system utilities: read, write, append, copy, path helpers, JSON config",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/fs/fs.kh"
+    },
+    {
+      "name": "datetime",
+      "version": "1.0.1",
+      "developer": "Irfan Khan",
+      "description": "Date and time utilities: timer, elapsed, human-readable duration, sleep helpers",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/datetime/datetime.kh"
+    },
+    {
+      "name": "test",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Unit testing framework: assertions, test suites, pass/fail reporting",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/test/test.kh"
+    },
+    {
+      "name": "events",
+      "version": "1.0.1",
+      "developer": "Irfan Khan",
+      "description": "Event emitter system: on, emit, once, off, history \u2014 built for Kosh Engine game events",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/events/events.kh"
+    },
+    {
+      "name": "logger",
+      "version": "1.0.1",
+      "developer": "Irfan Khan",
+      "description": "Structured logger: debug/info/warn/error levels, file output, silent mode",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/logger/logger.kh"
+    },
+    {
+      "name": "uuid",
+      "version": "1.0.1",
+      "developer": "Irfan Khan",
+      "description": "Unique ID generation: uuid_v4, short IDs, named entity IDs, sequential counters",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/uuid/uuid.kh"
+    },
+    {
+      "name": "webi",
+      "version": "1.1.3",
+      "developer": "Irfan Khan",
+      "description": "Lightweight web framework: routing, requests, responses, middleware, HTTP server",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/webi/webi.kh",
+      "files": [
+        "util.kh",
+        "app.kh",
+        "routing.kh",
+        "middleware.kh",
+        "request.kh",
+        "response.kh",
+        "server.kh",
+        "template.kh",
+        "meta.kh",
+        "security.kh",
+        "requests.kh",
+        "json.kh"
+      ]
+    },
+    {
+      "name": "morgos",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Morgan-style HTTP request logger for webi: colored status, elapsed time, response size \u2014 as a swappable after-hook",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/morgos/morgos.kh"
+    },
+    {
+      "name": "openai",
+      "version": "2.0.0",
+      "developer": "Irfan Khan",
+      "description": "Production-grade OpenAI API client: chat completions, multi-turn conversations, embeddings, moderation, and model listing, with structured error handling and automatic retry/backoff.",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/openai/openai.kh"
+    },
+    {
+      "name": "validation",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Data validation utilities: emails, lengths, numeric checks",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/validation/validation.kh"
+    },
+    {
+      "name": "argparse",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Command-line argument parser",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/argparse/argparse.kh"
+    },
+    {
+      "name": "dotenv",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Load environment variables from .env files",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/dotenv/dotenv.kh"
+    },
+    {
+      "name": "json_db",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Simple NoSQL database using JSON files",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/json_db/json_db.kh"
+    },
+    {
+      "name": "csv_io",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "CSV file reader and writer",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/csv_io/csv_io.kh"
+    },
+    {
+      "name": "kbrain",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Simple machine learning and AI utilities",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/kbrain/kbrain.kh"
+    },
+    {
+      "name": "webi_auth",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Authentication middleware for Webi",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/webi_auth/webi_auth.kh"
+    },
+    {
+      "name": "dns",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "DNS lookup utilities using DNS-over-HTTPS",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/dns/dns.kh"
+    },
+    {
+      "name": "smtp",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Email sending utilities",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/smtp/smtp.kh"
+    },
+    {
+      "name": "orm",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Simple Object-Relational Mapper for JSON databases",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/orm/orm.kh"
+    },
+    {
+      "name": "swagger",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Swagger UI and API documentation generator",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/swagger/swagger.kh"
+    },
+    {
+      "name": "nlp",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Natural Language Processing and Sentiment Analysis",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/nlp/nlp.kh"
+    },
+    {
+      "name": "tensor",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Multi-dimensional array math for AI",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/tensor/tensor.kh"
+    },
+    {
+      "name": "vision",
+      "version": "3.0.0",
+      "developer": "Irfan Khan",
+      "description": "Full classical computer-vision toolkit: image I/O, filters (blur/sharpen/emboss/edges), thresholding (fixed/Otsu/adaptive), morphology, connected-component blob detection, histograms, drawing, template matching, HSV color-range detection, and real Haar-cascade face detection (Viola-Jones). All native/fast, no ML framework required.",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/vision/vision.kh"
+    },
+    {
+      "name": "webi_socket",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "WebSocket support for Webi framework",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/webi_socket/webi_socket.kh"
+    },
+    {
+      "name": "mqtt",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "MQTT protocol for IoT messaging",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/mqtt/mqtt.kh"
+    },
+    {
+      "name": "ftp",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "FTP client for file transfers",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/ftp/ftp.kh"
+    },
+    {
+      "name": "ssh_client",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "SSH client for remote command execution",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/ssh_client/ssh_client.kh"
+    },
+    {
+      "name": "grpc",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "gRPC client for high-performance RPC",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/grpc/grpc.kh"
+    },
+    {
+      "name": "sqlite",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "SQL Database bridge for high-speed local data persistence",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/sqlite/sqlite.kh"
+    },
+    {
+      "name": "ocr",
+      "version": "1.1.0",
+      "developer": "Irfan Khan",
+      "description": "Real OCR via Tesseract: text, word-level boxes, orientation correction, searchable PDF, char whitelist, multi-language",
+      "author": "khandev1211-cpu",
+      "url": "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/ocr/ocr.kh"
+    }
+  ]
+}

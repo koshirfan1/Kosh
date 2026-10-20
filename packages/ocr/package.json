@@ -1,0 +1,9 @@
+{
+  "name": "ocr",
+  "version": "1.1.0",
+  "description": "Real text recognition via Tesseract (libtesseract) — genuine OCR, not a mock. Reads text out of images loaded through vision.kh (PNG/JPEG/BMP/GIF/...); also does word-level bounding boxes, auto orientation correction, searchable PDF export, character whitelisting, and multi-language recognition. Requires libtesseract to be installed at build time.",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "ocr.kh",
+  "files": ["ocr.kh"]
+}

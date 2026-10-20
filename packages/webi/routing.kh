@@ -1,0 +1,242 @@
+# webi/routing.kh — route registration + pattern matching.
+#
+# Path patterns:
+#   "/users"        exact match
+#   "/users/:id"    URL param  — req["params"]["id"] will be set
+#   "/files/*"      wildcard   — matches anything after /files/
+
+# ---------------------------------------------------------------------------
+# route(app, method, path, handler) -> app
+# Register a route handler.
+# handler is a Khan function: fn my_handler(req) -> res
+#
+# Example:
+#   fn handle_user(req):
+#       let id = req["params"]["id"]
+#       return res_json({"id": id, "name": "Irfan"})
+#
+#   app = route(app, "GET", "/users/:id", handle_user)
+# ---------------------------------------------------------------------------
+fn route(app, method, path, handler):
+    let r = {
+        "method":  method,
+        "path":    path,
+        "handler": handler
+    }
+    app["routes"] = push(app["routes"], r)
+    return app
+
+# Shortcut helpers
+fn get_route(app, path, handler):
+    return route(app, "GET", path, handler)
+
+fn post_route(app, path, handler):
+    return route(app, "POST", path, handler)
+
+fn put_route(app, path, handler):
+    return route(app, "PUT", path, handler)
+
+fn patch_route(app, path, handler):
+    return route(app, "PATCH", path, handler)
+
+fn delete_route(app, path, handler):
+    return route(app, "DELETE", path, handler)
+
+# ---------------------------------------------------------------------------
+# webi_not_found(app, handler) -> app
+# Set a custom 404 handler. handler(req) -> res
+# ---------------------------------------------------------------------------
+fn webi_not_found(app, handler):
+    app["not_found"] = handler
+    return app
+
+# ---------------------------------------------------------------------------
+# webi_error(app, handler) -> app
+# Set a custom 500 error handler. handler(req) -> res
+# ---------------------------------------------------------------------------
+fn webi_error(app, handler):
+    app["error"] = handler
+    return app
+
+# ---------------------------------------------------------------------------
+# Internal: handle one static-file request for serve_static() below.
+# Defined first since this interpreter's closures snapshot the enclosing
+# scope at declaration time (see AST_FN_DECL) — a function can only call
+# helpers that were already defined earlier in the file, same as
+# _match_route/_webi_find_route further down already have to be ordered
+# after their own helpers.
+#
+# Builds its response maps inline (matching response.kh's _res_base
+# shape) rather than calling res_not_found()/_res_base() — routing.kh
+# loads before response.kh in webi.kh's own import list, so those
+# wouldn't be defined yet at the point this function's closure is
+# captured. Staying self-contained here avoids a cross-file load-order
+# dependency that isn't obvious from reading either file on its own.
+#
+# Strips `prefix` off the front of the actual request path to get the
+# part the visitor controls, then hands that straight to the native
+# containment check — nothing here does its own string-based ".."
+# filtering, on purpose; that class of check is too easy to get subtly
+# wrong (encoded variants, trailing dots, mixed separators) compared to
+# resolving the real filesystem path and checking where it actually
+# landed.
+# ---------------------------------------------------------------------------
+fn _webi_static_not_found():
+    return {
+        "status":       404,
+        "body":         "Not found",
+        "content_type": "text/plain; charset=utf-8",
+        "headers":      {},
+        "cookies":      []
+    }
+
+fn _webi_serve_static_file(req, prefix, resolved_folder):
+    let full_path = req["path"]
+    let rest = ""
+    if len(full_path) > len(prefix) + 1:
+        rest = substring(full_path, len(prefix) + 1, len(full_path) - len(prefix) - 1)
+
+    if len(rest) == 0:
+        return _webi_static_not_found()
+
+    let safe_path = _webi_safe_static_path(resolved_folder, rest)
+    if safe_path == nil:
+        return _webi_static_not_found()
+
+    let content = read_file(safe_path)
+    let mime = _webi_mime_type(safe_path)
+    return {
+        "status":       200,
+        "body":         content,
+        "content_type": mime,
+        "headers":      {},
+        "cookies":      []
+    }
+
+# ---------------------------------------------------------------------------
+# serve_static(app, url_prefix, folder) -> app                  (v1.1.2)
+# Mount a folder so requests under `url_prefix` return the matching file
+# from `folder` — e.g. GET /static/style.css -> <folder>/style.css.
+#
+#   app = serve_static(app, "/static", "public")
+#
+# `folder` is resolved directory-aware the same way render_file()'s
+# template path is (relative to whichever .kh file calls serve_static(),
+# not the process's current directory), and resolved once up front at
+# mount time — it's a value you write yourself, not per-request input.
+#
+# The part of the URL *after* url_prefix is what's untrusted (a visitor
+# controls it directly), so every single request re-validates it through
+# the same containment check render_file() uses: the resolved file must
+# stay inside `folder` or the request gets a 404, whether the escape
+# attempt is a literal "..", a percent-encoded one ("%2e%2e%2f"), or
+# (on POSIX) a symlink that points outside. This is the same class of
+# bug as the classic "GET /static/../../server.kh" attack, and it's
+# checked per-request — there's no way to "pass" the check once and then
+# reuse a bad path, since the request path segment feeds straight into
+# it every time.
+#
+# Route matching reuses the existing wildcard support in _match_route
+# (see routing pattern docs at the top of this file) rather than needing
+# new matching logic — url_prefix + "/*" is registered as a normal route.
+#
+# Content-Type is set from the file's extension via a small built-in
+# MIME table (html/css/js/json/svg/png/jpg/... — see _webi_mime_type()
+# in the native layer). Unknown extensions get
+# "application/octet-stream".
+#
+# Known limitation: Khan strings are C-strings under the hood (see
+# read_file()), so a file containing an embedded NUL byte truncates at
+# that byte. Text assets (html/css/js/svg/json/txt) essentially never
+# contain one and are unaffected — most real-world binary formats
+# (png/jpg/etc.) usually do somewhere in the file, and can be served
+# truncated as a result. Fine for now for text-based static assets; true
+# binary-safe serving would need Khan's string type to carry an explicit
+# byte length instead of relying on NUL-termination, which is a bigger
+# change than this phase.
+# ---------------------------------------------------------------------------
+fn serve_static(app, url_prefix, folder):
+    let resolved_folder = _webi_resolve_path(folder)
+
+    # Normalize away a trailing slash on the prefix so "/static/" and
+    # "/static" behave the same and the wildcard pattern below doesn't
+    # end up with a doubled "//*".
+    let prefix = url_prefix
+    if len(prefix) > 0 and substring(prefix, len(prefix) - 1, 1) == "/":
+        prefix = substring(prefix, 0, len(prefix) - 1)
+
+    let pattern = prefix + "/*"
+
+    fn static_handler(req):
+        return _webi_serve_static_file(req, prefix, resolved_folder)
+
+    return route(app, "GET", pattern, static_handler)
+
+# ---------------------------------------------------------------------------
+# Internal: check if a path segment is a param (starts with :)
+# ---------------------------------------------------------------------------
+fn _is_param_seg(seg):
+    if len(seg) == 0:
+        return false
+    return substring(seg, 0, 1) == ":"
+
+# ---------------------------------------------------------------------------
+# Internal: split a path string by "/" into array of segments
+# Returns ["", "users", "123"] for "/users/123"
+# ---------------------------------------------------------------------------
+fn _split_path(path):
+    return split(path, "/")
+
+# ---------------------------------------------------------------------------
+# Internal: match a route pattern against an actual path.
+# Returns a map {"matched": bool, "params": {}}
+# ---------------------------------------------------------------------------
+fn _match_route(pattern, actual):
+    let p_segs = _split_path(pattern)
+    let a_segs = _split_path(actual)
+
+    let is_wildcard = false
+    if len(p_segs) > 0:
+        let last = p_segs[len(p_segs) - 1]
+        if last == "*":
+            is_wildcard = true
+
+    if not is_wildcard and len(p_segs) != len(a_segs):
+        return {"matched": false, "params": {}}
+
+    let params = {}
+    let i = 0
+    while i < len(p_segs):
+        let ps = p_segs[i]
+        if ps == "*":
+            return {"matched": true, "params": params}
+        if i >= len(a_segs):
+            return {"matched": false, "params": {}}
+        let as = a_segs[i]
+        if _is_param_seg(ps):
+            let param_name = substring(ps, 1, len(ps) - 1)
+            params[param_name] = as
+        elif ps != as:
+            return {"matched": false, "params": {}}
+        i = i + 1
+
+    return {"matched": true, "params": params}
+
+# ---------------------------------------------------------------------------
+# Internal: find matching route for method + path
+# Returns the route entry + populated params, or nil
+# ---------------------------------------------------------------------------
+fn _webi_find_route(app, method, path):
+    let routes = app["routes"]
+    let i = 0
+    while i < len(routes):
+        let r = routes[i]
+        if r["method"] == method or r["method"] == "*":
+            let m = _match_route(r["path"], path)
+            if m["matched"]:
+                return {
+                    "handler": r["handler"],
+                    "params":  m["params"]
+                }
+        i = i + 1
+    return nil

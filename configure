@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# Simple configure script for Khan
+echo "Checking for gcc..."
+if command -v gcc >/dev/null 2>&1; then
+    echo "gcc found."
+else
+    echo "Error: gcc not found."
+    exit 1
+fi
+
+echo "Checking for make..."
+if command -v make >/dev/null 2>&1; then
+    echo "make found."
+else
+    echo "Error: make not found."
+    exit 1
+fi
+
+echo "Configuration successful. You can now run 'make'."
+exit 0

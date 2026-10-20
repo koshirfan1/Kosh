@@ -1,0 +1,60 @@
+# openai/transport.kh — shared request/retry logic for every endpoint.
+# Needs util.kh (_openai_headers) and errors.kh (_openai_parse_error,
+# _openai_is_retryable_status) loaded first.
+
+# ---------------------------------------------------------------------------
+# Internal: POST a JSON body to `path`, with retry + exponential backoff
+# on 429/5xx. client["max_retries"] is treated as the *total* number of
+# attempts (matching the `get_retry`/`post_retry` convention in the
+# `requests` package), minimum 1.
+#
+# Returns the decoded JSON body on success, or an error map (see
+# errors.kh) on failure — check with openai_is_error().
+# ---------------------------------------------------------------------------
+fn _openai_post(client, path, body):
+    let url = client["base_url"] + path
+    let headers = _openai_headers(client)
+
+    let attempts = client["max_retries"]
+    if attempts < 1:
+        attempts = 1
+
+    let attempt = 0
+    let res = nil
+    while attempt < attempts:
+        res = post_json_h(url, body, headers)
+        if res["success"]:
+            return res["json"]
+        if not _openai_is_retryable_status(res["status"]):
+            return _openai_parse_error(res)
+        attempt = attempt + 1
+        if attempt < attempts:
+            sleep(300 * pow(2, attempt))
+
+    return _openai_parse_error(res)
+
+# ---------------------------------------------------------------------------
+# Internal: GET from `path` (used by openai_list_models). Same retry
+# behavior as _openai_post.
+# ---------------------------------------------------------------------------
+fn _openai_get(client, path):
+    let url = client["base_url"] + path
+    let headers = _openai_headers(client)
+
+    let attempts = client["max_retries"]
+    if attempts < 1:
+        attempts = 1
+
+    let attempt = 0
+    let res = nil
+    while attempt < attempts:
+        res = get_h(url, headers)
+        if res["success"]:
+            return res["json"]
+        if not _openai_is_retryable_status(res["status"]):
+            return _openai_parse_error(res)
+        attempt = attempt + 1
+        if attempt < attempts:
+            sleep(300 * pow(2, attempt))
+
+    return _openai_parse_error(res)

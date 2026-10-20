@@ -1,0 +1,137 @@
+# Khan datetime package v1.0.1
+# Author: Irfan Khan
+# Date and time utilities built on timestamp() (real wall-clock time,
+# clock_gettime(CLOCK_REALTIME)) - was built on clock() (CPU time since
+# process start), which is why dt_format() used to always print
+# "00:00:00" regardless of when it was called. Fixed - see chat.
+#
+# Usage:
+#   import "datetime"
+#   let now = dt_now()
+#   print dt_format(now)
+
+# ─────────────────────────────────────────────────────────────
+# CORE  (timestamp() returns real seconds-since-epoch, sub-second
+# precision, via clock_gettime - not clock(), which is CPU time)
+# ─────────────────────────────────────────────────────────────
+
+fn dt_now():
+    # Was `return clock()` - clock() is CPU time since process start, not
+    # wall-clock time, despite this file's own comment claiming otherwise.
+    # timestamp() is the real Unix-epoch-seconds native (time(NULL)) that
+    # already existed in datetime_lib.c - this was just calling the wrong
+    # one. Confirmed: dt_format(dt_now()) used to always print "00:00:00"
+    # regardless of when it was called; now it prints the real time.
+    return timestamp()
+
+fn dt_since(past):
+    return timestamp() - past
+
+fn dt_elapsed_ms(past):
+    return (timestamp() - past) * 1000.0
+
+# ─────────────────────────────────────────────────────────────
+# DECOMPOSE  (basic decomposition without OS date API)
+# ─────────────────────────────────────────────────────────────
+
+fn dt_to_parts(ts):
+    # ts = unix timestamp in seconds
+    let secs = ts - floor(ts / 60) * 60
+    let total_min = floor(ts / 60)
+    let mins = total_min - floor(total_min / 60) * 60
+    let total_hr = floor(total_min / 60)
+    let hours = total_hr - floor(total_hr / 24) * 24
+    let total_days = floor(total_hr / 24)
+    # Days since 1970-01-01 (Thursday)
+    let day_of_week = (total_days + 4) - floor((total_days + 4) / 7) * 7
+    return {
+        "timestamp":   ts,
+        "seconds":     secs,
+        "minutes":     mins,
+        "hours":       hours,
+        "total_days":  total_days,
+        "day_of_week": day_of_week
+    }
+
+fn dt_seconds(parts):
+    return parts["seconds"]
+fn dt_minutes(parts):
+    return parts["minutes"]
+fn dt_hours(parts):
+    return parts["hours"]
+
+fn dt_day_name(parts):
+    let days = ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"]
+    let idx = floor(parts["day_of_week"])
+    return days[idx]
+
+# ─────────────────────────────────────────────────────────────
+# FORMATTING
+# ─────────────────────────────────────────────────────────────
+
+fn _dt_pad(n):
+    if n < 10:
+        return "0" + str(floor(n))
+    return str(floor(n))
+
+fn dt_format(ts):
+    let p = dt_to_parts(ts)
+    return _dt_pad(p["hours"]) + ":" + _dt_pad(p["minutes"]) + ":" + _dt_pad(p["seconds"])
+
+fn dt_format_full(ts):
+    let p = dt_to_parts(ts)
+    return dt_day_name(p) + " " + _dt_pad(p["hours"]) + ":" + _dt_pad(p["minutes"]) + ":" + _dt_pad(p["seconds"]) + " UTC (day " + str(floor(p["total_days"])) + " since epoch)"
+
+# ─────────────────────────────────────────────────────────────
+# TIMER  (stopwatch helpers)
+# ─────────────────────────────────────────────────────────────
+
+fn dt_timer_start():
+    return {"start": timestamp(), "laps": []}
+
+fn dt_timer_lap(timer):
+    let now = timestamp()
+    let lap = now - timer["start"]
+    timer["laps"] = push(timer["laps"], lap)
+    return timer
+
+fn dt_timer_stop(timer):
+    let now = timestamp()
+    timer["elapsed"] = now - timer["start"]
+    return timer
+
+fn dt_timer_ms(timer):
+    return timer["elapsed"] * 1000.0
+
+fn dt_timer_report(timer):
+    let ms = dt_timer_ms(timer)
+    return "Elapsed: " + str(ms) + "ms | Laps: " + str(len(timer["laps"]))
+
+# ─────────────────────────────────────────────────────────────
+# DURATION  (human readable)
+# ─────────────────────────────────────────────────────────────
+
+fn dt_human(seconds):
+    if seconds < 1:
+        return str(floor(seconds * 1000)) + "ms"
+    if seconds < 60:
+        return str(floor(seconds)) + "s"
+    if seconds < 3600:
+        return str(floor(seconds / 60)) + "m " + str(floor(seconds - floor(seconds/60)*60)) + "s"
+    return str(floor(seconds / 3600)) + "h " + str(floor((seconds / 60) - floor(seconds/3600)*60)) + "m"
+
+# ─────────────────────────────────────────────────────────────
+# SLEEP HELPERS
+# ─────────────────────────────────────────────────────────────
+
+# Native sleep() takes milliseconds (confirmed from src/khan_stdlib.c -
+# its own parameter is named `ms`, divided by 1000 internally for its
+# busy-wait). dt_sleep_s(s) used to pass seconds straight to it (slept
+# 1000x too short - dt_sleep_s(1) slept 1ms, not 1s) and dt_sleep_ms(ms)
+# divided by 1000 first (also 1000x too short - dt_sleep_ms(250) slept
+# 0.25ms, not 250ms). Both fixed.
+fn dt_sleep_ms(ms):
+    sleep(ms)
+
+fn dt_sleep_s(s):
+    sleep(s * 1000.0)

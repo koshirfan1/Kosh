@@ -1,0 +1,60 @@
+# webi_security_server_demo.kh — manual verification for the native-level
+# protections that can't be exercised inside webi_security_test.kh (they
+# only exist in the real accept-loop in src/webi_lib.c, which needs an
+# actual socket connection — and a script that starts webi_run() blocks
+# forever, so it can't also report pass/fail afterward the way the other
+# test files do).
+#
+# Run this, then in another terminal run the curl commands below.
+#
+#   kosh examples/webi_security_server_demo.kh
+#
+# ---------------------------------------------------------------------------
+# 1) Crash containment — one bad request must not take the server down.
+#
+#     curl -i http://127.0.0.1:8199/broken     # expect: 500, one line in
+#                                               # the server's own log,
+#                                               # process keeps running
+#     curl -i http://127.0.0.1:8199/ok         # expect: 200 "still alive"
+#                                               # — proves the server
+#                                               # survived the request above
+#
+# 2) Request body size cap (10MB default) — oversized bodies get rejected
+#    before they're ever fully buffered into memory.
+#
+#     python3 -c "print('x'*11*1024*1024,end='')" > /tmp/big.txt
+#     curl -i --data-binary @/tmp/big.txt http://127.0.0.1:8199/ok
+#                                               # expect: 413, connection
+#                                               # closes immediately
+#
+# 3) Socket read timeout (30s default) — a client that connects and never
+#    finishes sending shouldn't be able to hold the (single-threaded, for
+#    now — see Phase 4) server hostage.
+#
+#     (printf 'GET /ok HTTP/1.1\r\nHost: x\r\n'; sleep 40) | nc 127.0.0.1 8199
+#                                               # expect: connection drops
+#                                               # around the 30s mark, and
+#                                               # a concurrent `curl .../ok`
+#                                               # from elsewhere still
+#                                               # returns 200 immediately
+#                                               # (not blocked behind it)
+# ---------------------------------------------------------------------------
+
+import "webi"
+
+let app = webi_app()
+app = webi_debug(app, true)
+
+fn h_ok(req):
+    return res_text("still alive")
+
+fn h_broken(req):
+    # Deliberately triggers a runtime error (undefined variable) to
+    # simulate a real bug in a handler.
+    return res_text(this_variable_does_not_exist)
+
+app = route(app, "GET", "/ok", h_ok)
+app = route(app, "GET", "/broken", h_broken)
+
+print "Server starting — see the curl commands in this file's header comment."
+webi_run(app, 8199)

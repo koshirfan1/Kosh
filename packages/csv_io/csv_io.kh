@@ -1,0 +1,86 @@
+# Khan CSV I/O Package
+# Usage: import "csv_io"
+
+# Internal helper: trim whitespace
+fn _trim(s):
+    if type(s) != "string":
+        return s
+    let start = 0
+    while start < len(s):
+        let c = substring(s, start, 1)
+        if c == " " or c == "\t" or c == "\r" or c == "\n":
+            start = start + 1
+        else:
+            break
+
+    let end = len(s)
+    while end > start:
+        let c = substring(s, end - 1, 1)
+        if c == " " or c == "\t" or c == "\r" or c == "\n":
+            end = end - 1
+        else:
+            break
+
+    return substring(s, start, end - start)
+
+# Public API
+fn csv_read(path):
+    let content = read_file(path)
+    if content == nil:
+        return []
+
+    let lines = split(content, "\n")
+    if len(lines) == 0:
+        return []
+
+    let headers = split(lines[0], ",")
+    let k = 0
+    while k < len(headers):
+        headers[k] = _trim(headers[k])
+        k = k + 1
+
+    let result = []
+    let i = 1
+    while i < len(lines):
+        let line = _trim(lines[i])
+        if len(line) > 0:
+            let values = split(line, ",")
+            let row = {}
+            let j = 0
+            while j < len(headers) and j < len(values):
+                row[headers[j]] = _trim(values[j])
+                j = j + 1
+            result = push(result, row)
+        i = i + 1
+    return result
+
+fn csv_write(path, rows):
+    if len(rows) == 0:
+        return write_file(path, "")
+
+    let headers = keys(rows[0])
+    let content = ""
+
+    # Headers
+    let i = 0
+    while i < len(headers):
+        if i > 0:
+            content = content + ","
+        content = content + headers[i]
+        i = i + 1
+    content = content + "\n"
+
+    # Rows
+    let i = 0
+    while i < len(rows):
+        let row = rows[i]
+        let j = 0
+        while j < len(headers):
+            if j > 0:
+                content = content + ","
+            content = content + str(row[headers[j]])
+            j = j + 1
+        content = content + "\n"
+        i = i + 1
+
+    return write_file(path, content)

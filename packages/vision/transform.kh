@@ -1,0 +1,92 @@
+# vision/transform.kh — geometric transforms. Needs core.kh.
+
+# ---------------------------------------------------------------------------
+# resize_file(input_path, output_path, width, height) -> bool
+# ---------------------------------------------------------------------------
+fn resize_file(input_path, output_path, width, height):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let resized = vision_resize(img, width, height)
+    let ok = vision_save(resized, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(resized)
+    return ok
+
+# ---------------------------------------------------------------------------
+# thumbnail(input_path, output_path, max_dimension) -> bool
+# Resizes so the longer side is at most max_dimension, keeping aspect ratio.
+# ---------------------------------------------------------------------------
+fn thumbnail(input_path, output_path, max_dimension):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+
+    let w = img["width"]
+    let h = img["height"]
+    let new_w = w
+    let new_h = h
+
+    if w > h:
+        if w > max_dimension:
+            new_w = max_dimension
+            new_h = round(h * (max_dimension / w))
+    else:
+        if h > max_dimension:
+            new_h = max_dimension
+            new_w = round(w * (max_dimension / h))
+
+    let resized = vision_resize(img, new_w, new_h)
+    let ok = vision_save(resized, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(resized)
+    return ok
+
+# ---------------------------------------------------------------------------
+# crop_file(input_path, output_path, x, y, w, h) -> bool
+# ---------------------------------------------------------------------------
+fn crop_file(input_path, output_path, x, y, w, h):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let cropped = vision_crop(img, x, y, w, h)
+    if cropped == nil:
+        vision_free(img)
+        return false
+    let ok = vision_save(cropped, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(cropped)
+    return ok
+
+# ---------------------------------------------------------------------------
+# rotate_file(input_path, output_path, degrees) -> bool
+# Rotates around the image's center; output canvas grows to fit the
+# whole rotated image (no cropping of corners).
+# ---------------------------------------------------------------------------
+fn rotate_file(input_path, output_path, degrees):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let rotated = vision_rotate(img, degrees)
+    let ok = vision_save(rotated, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(rotated)
+    return ok
+
+# ---------------------------------------------------------------------------
+# flip_file(input_path, output_path, direction) -> bool
+# direction is "h" (horizontal/mirror) or "v" (vertical).
+# ---------------------------------------------------------------------------
+fn flip_file(input_path, output_path, direction):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let flipped = nil
+    if direction == "h":
+        flipped = vision_flip_h(img)
+    else:
+        flipped = vision_flip_v(img)
+    let ok = vision_save(flipped, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(flipped)
+    return ok

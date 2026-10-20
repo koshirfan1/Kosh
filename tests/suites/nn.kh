@@ -1,0 +1,240 @@
+# tests/suites/nn.kh -- packages/nn/nn.kh (Dense, activations, Sequential,
+# mse_loss, SGD) plus the broadcasting fixes it drove in
+# src/tensor_lib.c -- see docs/tensor.md and docs/nn.md.
+import "test"
+import "tensor"
+import "nn"
+
+fn arrays_equal(a, b):
+    if type(a) != "array" or type(b) != "array":
+        return a == b
+    if len(a) != len(b):
+        return false
+    let i = 0
+    while i < len(a):
+        if not arrays_equal(a[i], b[i]):
+            return false
+        i = i + 1
+    return true
+
+fn test_arr_eq(t, label, actual, expected):
+    return test_true(t, label, arrays_equal(actual, expected))
+
+fn test_arr_close(t, label, actual, expected, tol):
+    if type(actual) != "array" or type(expected) != "array" or len(actual) != len(expected):
+        return test_true(t, label, false)
+    let i = 0
+    let ok = true
+    while i < len(actual):
+        if type(actual[i]) == "array":
+            if not arrays_equal(actual[i], expected[i]):
+                # fall through to elementwise closeness for nested arrays
+                let j = 0
+                while j < len(actual[i]):
+                    let d = actual[i][j] - expected[i][j]
+                    if d < 0:
+                        d = 0 - d
+                    if d > tol:
+                        ok = false
+                    j = j + 1
+        else:
+            let d = actual[i] - expected[i]
+            if d < 0:
+                d = 0 - d
+            if d > tol:
+                ok = false
+        i = i + 1
+    return test_true(t, label, ok)
+
+fn suite_tensor_broadcasting():
+    let t = test_suite("Tensor (broadcasting regressions)")
+
+    # -- REGRESSION: a binary op where BOTH operands end up with exactly
+    # one element used to collapse the result to a bare 0-D tensor, even
+    # when one operand was a genuinely-shaped size-1 tensor (e.g. shape
+    # (1,1)) rather than a bare number. This silently reshaped a
+    # Dense(1,1) layer's weight the first time an optimizer step did
+    # `w.buf = _tensor_sub(w.buf, ...)`. Must never regress. -----------
+    let w = Tensor([[5]], true)
+    let g = Tensor([[1]], false)
+    let updated = _tensor_sub(w.buf, _tensor_mul(g.buf, 0.1))
+    t = test_arr_eq(t, "REGRESSION: size-1 tensor keeps its shape through sub/mul", _tensor_to_nested(updated), [[4.9]])
+    t = test_arr_eq(t, "REGRESSION: size-1 tensor keeps its shape (shape check)", _tensor_shape(updated), [1, 1])
+
+    let one_minus = _tensor_sub(1, Tensor([[0.5]], false).buf)
+    t = test_arr_eq(t, "REGRESSION: number broadcast against a size-1 tensor keeps the tensor's shape",
+                     _tensor_to_nested(one_minus), [[0.5]])
+
+    # -- REGRESSION: a (1,n) row broadcast against an (m,n) batch (the
+    # shape a shared bias has relative to its batch output) used to be
+    # rejected outright as a shape mismatch -- Dense layers with
+    # out_features > 1 couldn't be trained on a batch at all. ----------
+    let bias = _tensor_from_nested([[10, 20, 30]])
+    let batch = _tensor_from_nested([[1, 2, 3], [4, 5, 6]])
+    t = test_arr_eq(t, "REGRESSION: (1,n) row broadcasts against (m,n)",
+                     _tensor_to_nested(_tensor_add(batch, bias)), [[11, 22, 33], [14, 25, 36]])
+    let col_bias = _tensor_from_nested([[100], [200]])
+    t = test_arr_eq(t, "REGRESSION: (m,1) column broadcasts against (m,n)",
+                     _tensor_to_nested(_tensor_add(batch, col_bias)), [[101, 102, 103], [204, 205, 206]])
+
+    # -- REGRESSION: once row broadcasting works, backward needs
+    # axis-aware reduction, not a flat sum-to-scalar, or a (1,n) bias's
+    # own gradient inherits the batch's (m,n) shape and corrupts the
+    # parameter on the very first optimizer step. Hand-computed: with
+    # loss = sum(x@w + b), dL/db must be the batch-axis SUM of the
+    # incoming gradient (ones), not ones summed all the way to a
+    # scalar. --------------------------------------------------------
+    let wt = Tensor([[1, 1, 1], [1, 1, 1]], true)
+    let bt = Tensor([[10, 20, 30]], true)
+    let xt = Tensor([[1, 2], [3, 4]], false)
+    let yt = xt.matmul(wt).add(bt)
+    t = test_arr_eq(t, "REGRESSION: forward with a broadcast bias", yt.data(), [[13, 23, 33], [17, 27, 37]])
+    yt.sum().backward(nil)
+    t = test_arr_eq(t, "REGRESSION: bias gradient is reduced to its OWN shape, not the batch's", bt.grad.data(), [[2, 2, 2]])
+    t = test_arr_eq(t, "REGRESSION: bias gradient shape matches bias shape, not batch shape", bt.grad.shape(), [1, 3])
+    t = test_arr_eq(t, "REGRESSION: weight gradient through a broadcast bias is still correct", wt.grad.data(), [[4, 4, 4], [6, 6, 6]])
+
+    return t
+
+
+fn suite_nn():
+    let t = test_suite("nn")
+
+    # -- Dense ---------------------------------------------------------
+    let d = Dense(2, 3)
+    t = test_arr_eq(t, "Dense weight shape", d.w.shape(), [2, 3])
+    t = test_arr_eq(t, "Dense bias shape", d.bias.shape(), [1, 3])
+    t = test_eq(t, "Dense.parameters() has 2 entries", len(d.parameters()), 2)
+
+    # -- activations as layers ------------------------------------------
+    let relu_layer = ReLU()
+    t = test_arr_eq(t, "ReLU layer forward", relu_layer.forward(Tensor([-1, 0, 2], false)).data(), [0, 0, 2])
+    t = test_eq(t, "ReLU layer has no parameters", len(relu_layer.parameters()), 0)
+
+    # -- Sequential chains layers and aggregates parameters -------------
+    let model = Sequential([Dense(2, 4), ReLU(), Dense(4, 1)])
+    t = test_eq(t, "Sequential.parameters() aggregates every layer's params", len(model.parameters()), 4)
+    let out = model.forward(Tensor([[1, 2]], false))
+    t = test_arr_eq(t, "Sequential forward produces the expected output shape", out.shape(), [1, 1])
+
+    # -- mse_loss ---------------------------------------------------------
+    let pred = Tensor([[1, 2], [3, 4]], true)
+    let target = Tensor([[1, 1], [3, 3]], false)
+    let loss = mse_loss(pred, target)
+    # errors: 0, 1, 0, 1 -> squared: 0,1,0,1 -> mean = 2/4 = 0.5
+    t = test_eq(t, "mse_loss forward", loss.data(), 0.5)
+    loss.backward(nil)
+    t = test_not_nil(t, "mse_loss backward produces a gradient", pred.grad)
+
+    # -- SGD: step() updates params using their grad, zero_grad() clears --
+    let p = Tensor([[1, 1]], true)
+    p.grad = Tensor([[2, 4]], false)
+    let opt = SGD([p], 0.1)
+    opt.step()
+    t = test_arr_close(t, "SGD.step() applies lr * grad", p.data(), [[0.8, 0.6]], 0.0001)
+    opt.zero_grad()
+    t = test_nil(t, "SGD.zero_grad() clears the gradient", p.grad)
+
+    # -- end-to-end: a tiny model actually learns y = 2x + 1 ------------
+    let xs = Tensor([[1], [2], [3], [4]], false)
+    let ys = Tensor([[3], [5], [7], [9]], false)
+    let lin_model = Sequential([Dense(1, 1)])
+    let lin_opt = SGD(lin_model.parameters(), 0.01)
+    let first_loss = 0
+    let i = 0
+    while i < 300:
+        let p2 = lin_model.forward(xs)
+        let l = mse_loss(p2, ys)
+        if i == 0:
+            first_loss = l.data()
+        lin_opt.zero_grad()
+        l.backward(nil)
+        lin_opt.step()
+        i = i + 1
+    let final_loss = mse_loss(lin_model.forward(xs), ys).data()
+    t = test_true(t, "a Dense(1,1) model's loss drops by at least 100x over training", final_loss < first_loss / 100)
+
+    # -- end-to-end: a small MLP solves XOR (needs a nonlinearity -- a
+    # linear model provably cannot do this, so this is a genuine test
+    # of ReLU + the broadcasting fixes above working together, not
+    # just "runs without crashing"). -----------------------------------
+    let X = Tensor([[0, 0], [0, 1], [1, 0], [1, 1]], false)
+    let Y = Tensor([[0], [1], [1], [0]], false)
+    let xor_model = Sequential([Dense(2, 8), ReLU(), Dense(8, 1)])
+    let xor_opt = SGD(xor_model.parameters(), 0.1)
+    let j = 0
+    while j < 3000:
+        let pr = xor_model.forward(X)
+        let l2 = mse_loss(pr, Y)
+        xor_opt.zero_grad()
+        l2.backward(nil)
+        xor_opt.step()
+        j = j + 1
+    let xor_loss = mse_loss(xor_model.forward(X), Y).data()
+    t = test_true(t, "REGRESSION: a tiny MLP solves XOR (loss < 0.01) -- needs row-broadcast bias + ReLU backward together", xor_loss < 0.01)
+
+    # -- softmax / argmax -------------------------------------------------
+    let probs_t = _tensor_softmax(_tensor_from_nested([[2, 1, 0], [0, 1, 3]]))
+    let probs = _tensor_to_nested(probs_t)
+    t = test_arr_close(t, "softmax rows sum to 1",
+                        [probs[0][0] + probs[0][1] + probs[0][2], probs[1][0] + probs[1][1] + probs[1][2]],
+                        [1.0, 1.0], 0.000001)
+    t = test_arr_eq(t, "argmax picks the highest-probability class per row", _tensor_argmax(probs_t), [0, 2])
+
+    let sm_leaf = Tensor([[2, 1, 0]], false).softmax()
+    t = test_false(t, "Tensor.softmax() does not build a graph node", sm_leaf.requires_grad)
+
+    # -- cross_entropy_loss: forward and backward checked against the
+    # same hand-computed values as the native-level test for
+    # _tensor_cross_entropy_loss/_grad (loss ~0.288726; grad is
+    # (probs - one_hot(target))/N) -- here through the Tensor/nn.kh
+    # wrapper, confirming the fused graph node dispatches correctly. ---
+    let logits = Tensor([[2, 1, 0], [0, 1, 3]], true)
+    let target = [0, 2]
+    let ce = cross_entropy_loss(logits, target)
+    t = test_arr_close(t, "cross_entropy_loss forward", [ce.data()], [0.288726], 0.00001)
+    ce.backward(nil)
+    t = test_arr_close(t, "cross_entropy_loss backward row 0", logits.grad.data()[0], [-0.16738, 0.122364, 0.0450153], 0.00001)
+    t = test_arr_close(t, "cross_entropy_loss backward row 1", logits.grad.data()[1], [0.021005, 0.0570976, -0.0781026], 0.00001)
+    t = test_eq(t, "accuracy() counts matching argmax predictions", accuracy(logits, [0, 2]), 1)
+    t = test_eq(t, "accuracy() with one wrong prediction", accuracy(logits, [1, 2]), 0.5)
+
+    # -- Adam ---------------------------------------------------------
+    let ap = Tensor([[1, 1]], true)
+    ap.grad = Tensor([[2, 4]], false)
+    let adam = Adam([ap], 0.1)
+    adam.step()
+    # a single Adam step always moves by ~lr in the direction of -sign(grad)
+    # regardless of magnitude (that's the point of the per-parameter
+    # normalization) -- both entries should drop by very close to 0.1.
+    t = test_arr_close(t, "Adam.step() moves each parameter by ~lr on step 1", ap.data(), [[0.9, 0.9]], 0.01)
+    adam.zero_grad()
+    t = test_nil(t, "Adam.zero_grad() clears the gradient", ap.grad)
+
+    # -- REGRESSION: end-to-end multi-class classifier, trained with
+    # Adam + cross_entropy_loss together, actually reaching 100%
+    # accuracy on a small separable synthetic task. This is exactly the
+    # kind of real training loop that found three broadcasting bugs
+    # earlier (see docs/tensor.md) -- kept as a standing check that the
+    # whole path (Dense -> ReLU -> Dense -> softmax -> cross-entropy ->
+    # Adam) still works together, not just each piece in isolation. ---
+    let CX = Tensor([
+        [5, 0, 0], [4, 1, 0], [0, 5, 0], [1, 4, 0],
+        [0, 0, 5], [0, 1, 4], [3, 0, 0], [0, 3, 0],
+        [0, 0, 3], [2, 2, 5]
+    ], false)
+    let CY = [0, 0, 1, 1, 2, 2, 0, 1, 2, 2]
+    let cmodel = Sequential([Dense(3, 16), ReLU(), Dense(16, 3)])
+    let copt = Adam(cmodel.parameters(), 0.05)
+    let k = 0
+    while k < 300:
+        let cl = cmodel.forward(CX)
+        let closs = cross_entropy_loss(cl, CY)
+        copt.zero_grad()
+        closs.backward(nil)
+        copt.step()
+        k = k + 1
+    let final_acc = accuracy(cmodel.forward(CX), CY)
+    t = test_eq(t, "REGRESSION: Dense+ReLU+Dense classifier trained with Adam+CrossEntropy reaches 100% on a separable task", final_acc, 1)
+
+    return t

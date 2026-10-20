@@ -1,0 +1,130 @@
+# tests/suites/control_flow.kh — if/elif/else, while, for-in, break, continue.
+import "test"
+
+fn suite_control_flow():
+    let t = test_suite("Control Flow")
+
+    # ── if / elif / else ──────────────────────────────────────────────
+    let branch = ""
+    if 1 > 2:
+        branch = "if"
+    elif 2 > 1:
+        branch = "elif"
+    else:
+        branch = "else"
+    t = test_eq(t, "elif branch taken correctly", branch, "elif")
+
+    if false:
+        branch = "if"
+    else:
+        branch = "else"
+    t = test_eq(t, "else branch taken correctly", branch, "else")
+
+    # ── REGRESSION: a top-level `let` inside if/while/for used to
+    # silently evaluate to nil (fixed: vm_run's script frame had an
+    # off-by-one in its slots pointer, identical in spirit to the
+    # function-call argument bug below). These specific patterns must
+    # never regress. ──────────────────────────────────────────────────
+    let arr = [10, 20, 30]
+    if true:
+        let picked = arr[0]
+        t = test_eq(t, "REGRESSION: let-from-index inside top-level if", picked, 10)
+
+    let i = 0
+    let seen = []
+    while i < len(arr):
+        let v = arr[i]
+        seen = push(seen, v)
+        i = i + 1
+    t = test_eq(t, "REGRESSION: let-from-index inside top-level while (len)", len(seen), 3)
+    t = test_eq(t, "REGRESSION: let-from-index inside top-level while (values)", seen[0] + seen[1] + seen[2], 60)
+
+    let computed = []
+    let j = 0
+    while j < 3:
+        let doubled = j * 10
+        computed = push(computed, doubled)
+        j = j + 1
+    t = test_eq(t, "REGRESSION: let-from-expression inside top-level while", computed[0] + computed[1] + computed[2], 30)
+
+    # ── while loop ─────────────────────────────────────────────────────
+    let sum = 0
+    let k = 1
+    while k <= 5:
+        sum = sum + k
+        k = k + 1
+    t = test_eq(t, "while loop sums 1..5", sum, 15)
+
+    # ── for-in over an array ───────────────────────────────────────────
+    let total = 0
+    for n in [1, 2, 3, 4]:
+        total = total + n
+    t = test_eq(t, "for-in sums array elements", total, 10)
+
+    # ── break ──────────────────────────────────────────────────────────
+    let stopped_at = 0
+    let m = 0
+    while m < 100:
+        if m == 5:
+            break
+        stopped_at = m
+        m = m + 1
+    t = test_eq(t, "break exits the loop early", stopped_at, 4)
+
+    # ── continue ───────────────────────────────────────────────────────
+    let odd_sum = 0
+    let n2 = 0
+    while n2 < 10:
+        n2 = n2 + 1
+        if n2 % 2 == 0:
+            continue
+        odd_sum = odd_sum + n2
+    t = test_eq(t, "continue skips even numbers (sum of 1,3,5,7,9)", odd_sum, 25)
+
+    # ── nested loops ───────────────────────────────────────────────────
+    let pairs = 0
+    for a in [1, 2, 3]:
+        for b in [1, 2]:
+            pairs = pairs + 1
+    t = test_eq(t, "nested for-in loops multiply iteration counts", pairs, 6)
+
+    # ── REGRESSION: `continue`'s jump-patch offset had a sign error
+    # (+2 instead of the correct -2 used by patch_jump elsewhere),
+    # landing 4 bytes past its real target and effectively behaving
+    # like a `break` after the first `continue`. Separately, the
+    # break/continue "how many locals to pop" calculation compared a
+    # scope DEPTH against a bytecode OFFSET (comparing unrelated
+    # quantities), so it always computed zero pops — meaning any local
+    # declared inside the loop body was never cleaned off the stack on
+    # continue, corrupting every local slot read afterward. Both fixed
+    # in vm.c/compiler.c. These must never regress. ────────────────────
+    let odd_sum2 = 0
+    let n3 = 0
+    while n3 < 10:
+        n3 = n3 + 1
+        if n3 % 2 == 0:
+            continue
+        odd_sum2 = odd_sum2 + n3
+    t = test_eq(t, "REGRESSION: while-continue doesn't terminate the loop early", odd_sum2, 25)
+
+    let odd_sum3 = 0
+    for n4 in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        if n4 % 2 == 0:
+            continue
+        odd_sum3 = odd_sum3 + n4
+    t = test_eq(t, "REGRESSION: for-continue doesn't terminate the loop early", odd_sum3, 25)
+
+    # continue with a local declared in the loop body before it fires —
+    # this is what exposed the "always zero pops" half of the bug
+    let total_with_locals = 0
+    let n5 = 0
+    while n5 < 6:
+        n5 = n5 + 1
+        if n5 % 2 == 0:
+            let skip_marker = n5 * 1000  # local pushed before continue
+            continue
+        let contribution = n5 * 2  # local pushed on the taken path too
+        total_with_locals = total_with_locals + contribution
+    t = test_eq(t, "REGRESSION: continue past a local doesn't corrupt later slots", total_with_locals, 18)
+
+    return t

@@ -1,0 +1,26 @@
+# Test for json_db package
+import "../packages/json_db/json_db.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("JSON DB Suite")
+
+# Clean start
+write_file("test_db.json", "{}")
+
+let db = db_open("test_db.json")
+t = test_eq(t, "db path should be correct", db["path"], "test_db.json")
+
+db = db_set(db, "count", 42)
+db = db_set(db, "user", {"name": "Irfan"})
+
+t = test_eq(t, "count should be 42", db_get(db, "count", 0), 42)
+t = test_eq(t, "user name should be Irfan", db_get(db, "user", {})["name"], "Irfan")
+
+db_save(db)
+
+# Reopen
+let db2 = db_open("test_db.json")
+t = test_eq(t, "reopened count should be 42", db_get(db2, "count", 0), 42)
+t = test_true(t, "db_has count should be true", db_has(db2, "count"))
+
+test_run(t)

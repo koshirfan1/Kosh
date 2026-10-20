@@ -1,0 +1,13 @@
+# Test for grpc package
+import "../packages/grpc/grpc.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("gRPC Suite")
+
+let client = grpc_client("localhost:50051")
+let res = grpc_call(client, "UserService", "GetProfile", {"id": 123})
+
+t = test_eq(t, "status check", res["status"], "OK")
+t = test_eq(t, "data ID check", res["data"]["id"], 123)
+
+test_run(t)

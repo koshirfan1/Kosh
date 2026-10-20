@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ledger — task tracker</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <section class="login-screen" id="loginScreen">
+    <div class="wordmark">khan<span>://</span>tasks</div>
+    <form class="login-card" id="loginForm">
+      <input type="text" id="usernameInput" placeholder="pick a username" autocomplete="off" autofocus>
+      <button type="submit" class="primary">Open ledger</button>
+      <div class="error-text" id="loginError"></div>
+      <div class="login-hint">No password — any username opens or creates that ledger.<br>Built to prove Khan can hold real, per-user state.</div>
+    </form>
+  </section>
+
+  <section class="app-screen" id="appScreen">
+    <div class="top-row">
+      <div class="ledger-title">ledger / <span class="user" id="userLabel"></span></div>
+      <button class="signout" id="signoutBtn">sign out</button>
+    </div>
+    <div class="tally" id="tally">—</div>
+
+    <form class="composer" id="composerForm">
+      <input type="text" id="taskInput" placeholder="add a line to the ledger…" autocomplete="off">
+      <button type="submit">Add</button>
+    </form>
+
+    <ul class="ledger" id="ledgerList"></ul>
+  </section>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

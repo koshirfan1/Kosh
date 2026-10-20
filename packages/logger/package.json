@@ -1,0 +1,14 @@
+{
+  "name": "logger",
+  "version": "1.0.1",
+  "description": "Structured logger: debug/info/warn/error levels, file output, silent mode",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "logger.kh",
+  "files": [
+    "logger.kh"
+  ],
+  "changelog": {
+    "1.0.1": "Fixed syntax the parser doesn't actually support (single-line inline block bodies after ':') that prevented this package from compiling at all."
+  }
+}

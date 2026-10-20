@@ -1,0 +1,157 @@
+# webi/middleware.kh — middleware registration + built-in middlewares.
+
+# ---------------------------------------------------------------------------
+# use(app, middleware_fn) -> app
+# Add a middleware function. Middlewares run before every route handler.
+# middleware signature:  fn my_middleware(req) -> req
+# Return the (possibly modified) req map to pass it along.
+#
+# Example — logging middleware:
+#   fn my_logger(req):
+#       print "Request: " + req["method"] + " " + req["path"]
+#       return req
+#   app = use(app, my_logger)
+# ---------------------------------------------------------------------------
+fn use(app, middleware_fn):
+    app["middlewares"] = push(app["middlewares"], middleware_fn)
+    return app
+
+# ---------------------------------------------------------------------------
+# after(app, hook_fn) -> app                                        (v1.1.3)
+# Add an after-hook. After-hooks run once the route handler has already
+# produced a response — the opposite end of the request from
+# middleware, which only ever sees `req` before the handler runs and
+# never sees a response at all.
+#
+# hook signature: fn my_hook(req, res) -> res
+# Return the (possibly modified) res map to pass it along. Hooks run in
+# registration order, each one seeing the previous hook's result.
+#
+# This is what makes real post-response logging (status code, elapsed
+# time, response size — the things Node's `morgan` logs) possible as an
+# ordinary installable package instead of something baked into webi's
+# core: see the `morgos` package.
+#
+#   from webi import webi
+#   import "morgos"
+#   app = after(app, morgos)
+# ---------------------------------------------------------------------------
+fn after(app, hook_fn):
+    app["after_hooks"] = push(app["after_hooks"], hook_fn)
+    return app
+
+# ---------------------------------------------------------------------------
+# Internal: run all middlewares on a request
+#
+# v1.1.1: also stamps req["_app"] = app so built-in middlewares (CORS,
+# rate limiting, API-key auth) can read their configuration off the app
+# map (set via webi_set_cors_origins/webi_set_rate_limit/etc. — see
+# webi_security.kh) without needing the language to support closures.
+#
+# If a middleware sets req["_webi_short_circuit"] (rejecting the request),
+# later middlewares are skipped — no point running more checks once one
+# has already decided to reject.
+# ---------------------------------------------------------------------------
+fn _webi_run_middlewares(app, req):
+    req["_app"] = app
+    let mws = app["middlewares"]
+    let i = 0
+    while i < len(mws):
+        req = mws[i](req)
+        if has(req, "_webi_short_circuit") and req["_webi_short_circuit"] != nil:
+            return req
+        i = i + 1
+    return req
+
+# ---------------------------------------------------------------------------
+# Internal: run all after-hooks on a response, once the route handler (or
+# a short-circuited middleware) has already produced it.                (v1.1.3)
+#
+# Unlike _webi_run_middlewares, there's no short-circuit path here — a
+# response already exists by the time after-hooks run, so there's
+# nothing left to reject; every hook just gets a chance to observe or
+# modify the response (log it, add a header, ...) and pass it along.
+# ---------------------------------------------------------------------------
+fn _webi_run_after_hooks(app, req, res):
+    let hooks = app["after_hooks"]
+    let i = 0
+    while i < len(hooks):
+        res = hooks[i](req, res)
+        i = i + 1
+    return res
+
+# ===========================================================================
+# BUILT-IN MIDDLEWARE
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# mw_logger(req) -> req
+# Logs every incoming request to stdout
+# ---------------------------------------------------------------------------
+fn mw_logger(req):
+    print "[webi] " + req["method"] + " " + req["path"]
+    return req
+
+# ---------------------------------------------------------------------------
+# Internal: does `list` (array of strings) contain `s`?
+# ---------------------------------------------------------------------------
+fn contains_str_in_list(list, s):
+    let i = 0
+    while i < len(list):
+        if list[i] == s:
+            return true
+        i = i + 1
+    return false
+
+# ---------------------------------------------------------------------------
+# mw_cors(req) -> req                                              (v1.1.1)
+#
+# Real CORS handling — the old version of this function was a no-op
+# despite its docstring claiming it handled preflight. Reads its allowed
+# origins from app["_cors_origins"] (set via webi_set_cors_origins(app,
+# origins) in webi_security.kh); defaults to ["*"] — same wide-open
+# behaviour as before — if never configured, so this isn't a silent
+# breaking change.
+#
+# On an OPTIONS request it short-circuits with a 204 + the CORS headers
+# directly, instead of letting it fall through to route matching (there's
+# usually no OPTIONS route registered, so it would otherwise 404).
+# Add as first middleware: app = use(app, mw_cors)
+# ---------------------------------------------------------------------------
+fn mw_cors(req):
+    let app = req["_app"]
+    let origins = ["*"]
+    if has(app, "_cors_origins"):
+        origins = app["_cors_origins"]
+
+    let origin_header = header_get(req, "Origin", "")
+    let allow_origin = "*"
+    if not contains_str_in_list(origins, "*"):
+        allow_origin = ""
+        if origin_header != "" and contains_str_in_list(origins, origin_header):
+            allow_origin = origin_header
+
+    if req["method"] == "OPTIONS":
+        let res = res_status(204, "")
+        if allow_origin != "":
+            res["headers"]["Access-Control-Allow-Origin"] = allow_origin
+        res["headers"]["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        res["headers"]["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-CSRF-Token, X-API-Key"
+        req["_webi_short_circuit"] = res
+        return req
+
+    req["_cors_allow_origin"] = allow_origin
+    return req
+
+
+# ---------------------------------------------------------------------------
+# mw_json_only(req) -> req
+# Mark non-JSON POST/PUT/PATCH requests for easy detection.
+# Sets req["_json_only_rejected"] if content type is wrong.
+# ---------------------------------------------------------------------------
+fn mw_json_only(req):
+    let method = req["method"]
+    if method == "POST" or method == "PUT" or method == "PATCH":
+        if not is_json_req(req):
+            req["_json_only_rejected"] = true
+    return req

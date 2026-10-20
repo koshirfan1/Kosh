@@ -1,0 +1,72 @@
+# Khan webi package v1.1.3
+# Usage: import "webi"
+#
+# webi is a lightweight web framework for Khan — inspired by Flask.
+# It lets you define routes, handle requests, build responses, and
+# run an HTTP server, all from .kh scripts.
+#
+# Quick start:
+#
+#   import "webi"
+#
+#   let app = webi_app()
+#
+#   app = route(app, "GET", "/", fn_index)
+#   app = route(app, "GET", "/hello", fn_hello)
+#   app = route(app, "POST", "/echo", fn_echo)
+#
+#   fn fn_index(req):
+#       return res_html("<h1>Welcome to webi!</h1>")
+#
+#   fn fn_hello(req):
+#       let name = query_get(req, "name", "World")
+#       return res_text("Hello, " + name + "!")
+#
+#   fn fn_echo(req):
+#       return res_json(req["body_json"])
+#
+#   webi_run(app, 8080)
+#
+# ---------------------------------------------------------------------------
+# This file is just the package entry point. The implementation lives in a
+# handful of sibling files, split up by concern:
+#
+#   util.kh        internal string helper (str_replace) other files rely on
+#   app.kh         app context: webi_app / webi_debug / webi_name
+#   routing.kh     route registration + path pattern matching +
+#                  serve_static() for mounted static folders (v1.1.2)
+#   request.kh     helpers for reading data off the req map
+#   response.kh    res_* response builders
+#   middleware.kh  middleware registration + built-in middlewares
+#   security.kh    CSRF, rate limiting, API-key auth, CORS config (v1.1.1)
+#   server.kh      dispatch, the native-bridge handler, webi_run / webi_run_host
+#   template.kh    render() / render_file() + html_escape()      (v1.1.2)
+#   meta.kh        webi_version() / webi_routes()
+#   requests.kh    thin http_* re-export — `from webi import requests`
+#   json.kh        thin json_* re-export — `from webi import json`
+#
+# `import "webi"` (this file) pulls all of the above into your script's
+# scope, so nothing about using webi changes — this is purely an internal
+# reorganization for maintainability.
+#
+# IMPORT ORDER MATTERS: Khan captures a snapshot of the surrounding scope
+# at the moment a function is *declared*, not a live reference — so a
+# function can only call something that was already defined earlier in
+# this sequence, the same way it would need to be if this were all still
+# one big file. Concretely: middleware.kh's built-ins (mw_cors,
+# mw_json_only) call helpers from request.kh and response.kh, and
+# security.kh's built-ins call helpers from all of the above — so those
+# go later. If you add a new file here, put it after whatever it calls
+# into, not just after whatever seems topically related.
+# ---------------------------------------------------------------------------
+
+import "util.kh"
+import "app.kh"
+import "routing.kh"
+import "request.kh"
+import "response.kh"
+import "middleware.kh"
+import "security.kh"
+import "server.kh"
+import "template.kh"
+import "meta.kh"

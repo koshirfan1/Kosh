@@ -1,0 +1,120 @@
+# webi/request.kh — request helpers.
+#
+#   req  — incoming request map (built by webi from raw HTTP):
+#             req["method"]      "GET", "POST", etc.
+#             req["path"]        "/hello"
+#             req["query"]       map of query params  {"name": "Irfan"}
+#             req["headers"]     map of request headers
+#             req["body"]        raw body string
+#             req["body_json"]   decoded JSON body (or nil)
+#             req["params"]      map of URL params from path pattern e.g. /users/:id
+#             req["ip"]          client IP string
+
+# ---------------------------------------------------------------------------
+# query_get(req, key, default) -> string
+# Get a query parameter, returning default if not present
+# ---------------------------------------------------------------------------
+fn query_get(req, key, default):
+    let q = req["query"]
+    if has(q, key):
+        return q[key]
+    return default
+
+# ---------------------------------------------------------------------------
+# header_get(req, key, default) -> string
+# Get a request header value (case-sensitive key)
+# ---------------------------------------------------------------------------
+fn header_get(req, key, default):
+    let h = req["headers"]
+    if has(h, key):
+        return h[key]
+    return default
+
+# ---------------------------------------------------------------------------
+# param_get(req, key, default) -> string
+# Get a URL param from route pattern e.g. /users/:id
+# ---------------------------------------------------------------------------
+fn param_get(req, key, default):
+    let p = req["params"]
+    if has(p, key):
+        return p[key]
+    return default
+
+# ---------------------------------------------------------------------------
+# body_json(req) -> map/array/nil
+# Get the parsed JSON body
+# ---------------------------------------------------------------------------
+fn body_json(req):
+    return req["body_json"]
+
+# ---------------------------------------------------------------------------
+# form_get(req, key, default) -> string
+# Parse application/x-www-form-urlencoded body and get a field
+# body looks like "name=Irfan&age=25"
+# ---------------------------------------------------------------------------
+fn form_get(req, key, default):
+    let body = req["body"]
+    if len(body) == 0:
+        return default
+    let pairs = split(body, "&")
+    let i = 0
+    while i < len(pairs):
+        let pair = pairs[i]
+        let kv = split(pair, "=")
+        if len(kv) >= 2 and kv[0] == key:
+            return kv[1]
+        i = i + 1
+    return default
+
+# ---------------------------------------------------------------------------
+# is_get(req) / is_post(req) / is_json_req(req) — quick checks
+# ---------------------------------------------------------------------------
+fn is_get(req):
+    return req["method"] == "GET"
+
+fn is_post(req):
+    return req["method"] == "POST"
+
+fn is_put(req):
+    return req["method"] == "PUT"
+
+fn is_patch(req):
+    return req["method"] == "PATCH"
+
+fn is_delete(req):
+    return req["method"] == "DELETE"
+
+fn is_json_req(req):
+    let ct = header_get(req, "Content-Type", "")
+    return contains(ct, "application/json")
+
+# ---------------------------------------------------------------------------
+# cookie_get(req, name, default) -> string   (v1.1.1)
+# Read a single cookie value out of the request's "Cookie" header.
+# The header looks like: "a=1; b=2; csrf_token=abc123"
+# ---------------------------------------------------------------------------
+fn cookie_get(req, name, default):
+    let raw = header_get(req, "Cookie", "")
+    if len(raw) == 0:
+        return default
+
+    let parts = split(raw, ";")
+    let i = 0
+    while i < len(parts):
+        let piece = trim(parts[i])
+        # Split on the FIRST "=" only — cookie values (base64 tokens, JWTs)
+        # can legitimately contain "=" themselves.
+        let eq_pos = -1
+        let k = 0
+        while k < len(piece):
+            if substring(piece, k, 1) == "=":
+                eq_pos = k
+                k = len(piece)
+            k = k + 1
+        if eq_pos > 0:
+            let key = trim(substring(piece, 0, eq_pos))
+            let val = trim(substring(piece, eq_pos + 1, len(piece) - eq_pos - 1))
+            if key == name:
+                return val
+        i = i + 1
+    return default

@@ -1,0 +1,14 @@
+{
+  "name": "fs",
+  "version": "1.0.1",
+  "description": "File system utilities: read, write, append, copy, path helpers, JSON config",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "fs.kh",
+  "files": [
+    "fs.kh"
+  ],
+  "changelog": {
+    "1.0.1": "Fixed syntax the parser doesn't actually support (single-line inline block bodies after ':') that prevented this package from compiling at all."
+  }
+}

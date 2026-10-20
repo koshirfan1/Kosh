@@ -1,0 +1,24 @@
+# tests/suites/stdlib_json.kh — json_encode / json_decode.
+import "test"
+
+fn suite_stdlib_json():
+    let t = test_suite("Stdlib: JSON")
+
+    let obj = {"name": "khan", "version": 1, "active": true, "tags": ["a", "b"]}
+    let encoded = json_encode(obj)
+    t = test_true(t, "json_encode produces a non-empty string", len(encoded) > 0)
+
+    let decoded = json_decode(encoded)
+    t = test_eq(t, "round-trip preserves a string field", decoded["name"], "khan")
+    t = test_eq(t, "round-trip preserves a number field", decoded["version"], 1)
+    t = test_eq(t, "round-trip preserves a bool field", decoded["active"], true)
+    t = test_eq(t, "round-trip preserves an array field length", len(decoded["tags"]), 2)
+    t = test_eq(t, "round-trip preserves array contents", decoded["tags"][0], "a")
+
+    let nested = json_decode("{\"a\": {\"b\": {\"c\": 42}}}")
+    t = test_eq(t, "decode handles nested objects", nested["a"]["b"]["c"], 42)
+
+    let arr_json = json_decode("[1, 2, 3]")
+    t = test_eq(t, "decode handles a top-level array", len(arr_json), 3)
+
+    return t

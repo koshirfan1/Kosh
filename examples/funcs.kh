@@ -1,0 +1,5 @@
+fn greet:
+    print "Hello!"
+    let x = 5
+
+print "done"

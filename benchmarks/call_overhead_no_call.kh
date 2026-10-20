@@ -1,0 +1,8 @@
+# benchmarks/call_overhead_no_call.kh — same shape, no call at all
+# (baseline). See call_overhead.kh.
+let total = 0
+let i = 0
+while i < 3000000:
+    total = total + 5
+    i = i + 1
+print total

@@ -1,0 +1,75 @@
+import "vision"
+import "webi"
+
+# Single-binary demo: classical vision analysis + local LLM description,
+# served over HTTP - one static Khan binary, no venv, no pip, no docker.
+#
+# The vision half works right now, no setup needed. The LLM half needs a
+# real GGUF model file (this sandbox has no path to download one - see
+# README.md next to this file) at MODEL_PATH; without one, /analyze still
+# returns the real vision analysis and just says so in llm_description
+# instead of failing.
+#
+# Build: make LLM=1   (see docs/llm.md)
+# Run:   ./kosh examples/vision_llm_demo/app.kh
+
+let SAMPLE_IMAGE = "sample.png"
+let MODEL_PATH   = "examples/vision_llm_demo/model.gguf"
+# Note: vision's paths above resolve relative to THIS script's directory;
+# llm_load() resolves relative to the process's working directory instead
+# (it doesn't get the same treatment vision_lib.c's _vision_resolve does).
+# Found this the honest way - by actually running the demo end-to-end and
+# hitting it. Run kosh from the repo root, as documented in README.md.
+
+fn build_prompt(info, brightness, blob_count):
+    let desc = "This is a " + str(info["width"]) + "x" + str(info["height"])
+    desc = desc + " pixel image with " + str(info["channels"]) + " color channels. "
+    desc = desc + "Average brightness is " + str(brightness["average"]) + " out of 255"
+    desc = desc + " (min " + str(brightness["min"]) + ", max " + str(brightness["max"]) + "). "
+    desc = desc + "After thresholding, " + str(blob_count) + " distinct blob regions were found. "
+    desc = desc + "In one short sentence, describe what this photo most likely shows."
+    return desc
+
+let app = webi_app()
+
+fn fn_analyze(req):
+    let info = image_info(SAMPLE_IMAGE)
+    if info == nil:
+        return res_server_error("could not read " + SAMPLE_IMAGE)
+
+    let brightness = histogram_stats(SAMPLE_IMAGE)
+    let blobs = find_blobs_after_threshold(SAMPLE_IMAGE, 50)
+
+    let result = {
+        "vision": {
+            "width": info["width"],
+            "height": info["height"],
+            "channels": info["channels"],
+            "brightness": brightness,
+            "blob_count": len(blobs)
+        }
+    }
+
+    let model = llm_load(MODEL_PATH)
+    if model == nil:
+        result["llm_description"] = "(no model loaded - place a real .gguf at " + MODEL_PATH + "; see README.md)"
+        result["llm_available"] = false
+    else:
+        let prompt = build_prompt(info, brightness, len(blobs))
+        result["llm_description"] = llm_complete(model, prompt, 80)
+        result["llm_available"] = true
+        llm_free(model)
+
+    return res_json(result)
+
+fn fn_index(req):
+    let html = "<h1>Khan vision + LLM + webi demo</h1>"
+    html = html + "<p>One static binary. No venv, no pip, no docker.</p>"
+    html = html + "<p><a href=\"/analyze\">Run analysis on sample.png</a></p>"
+    return res_html(html)
+
+app = route(app, "GET", "/", fn_index)
+app = route(app, "GET", "/analyze", fn_analyze)
+
+print "Demo running on http://localhost:8123  (try /analyze)"
+webi_run(app, 8123)

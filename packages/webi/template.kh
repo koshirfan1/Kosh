@@ -1,0 +1,109 @@
+# webi/template.kh — tiny string template renderer + HTML escaping.
+# Depends on str_replace from util.kh.
+
+# ---------------------------------------------------------------------------
+# render(template, vars) -> string
+# Simple string template renderer.
+# Replace {{key}} placeholders with values from vars map.
+#
+# Example:
+#   let html = render("<h1>Hello, {{name}}!</h1>", {"name": "Irfan"})
+# ---------------------------------------------------------------------------
+fn render(template, vars):
+    let result = template
+    let ks = keys(vars)
+    let i = 0
+    while i < len(ks):
+        let k = ks[i]
+        let placeholder = "{{" + k + "}}"
+        let v = str(vars[k])
+        result = str_replace(result, placeholder, v)
+        i = i + 1
+    return result
+
+# ---------------------------------------------------------------------------
+# Internal: does `path` end in a recognized template extension?
+# Defined before render_file() below since this interpreter's closures
+# snapshot the enclosing scope at declaration time (see AST_FN_DECL) — a
+# function can only call helpers that were already defined earlier in
+# the file.
+# ---------------------------------------------------------------------------
+fn _webi_has_template_ext(path):
+    let allowed = [".html", ".htm", ".txt", ".xml", ".svg"]
+    let i = 0
+    while i < len(allowed):
+        let ext = allowed[i]
+        let elen = len(ext)
+        if len(path) >= elen and substring(path, len(path) - elen, elen) == ext:
+            return true
+        i = i + 1
+    return false
+
+# ---------------------------------------------------------------------------
+# render_file(path, vars) -> string | nil                       (v1.1.2)
+# Same as render(), but reads the template off disk instead of taking a
+# string literal directly.
+#
+#   let html = render_file("templates/index.html", {"name": "Irfan"})
+#
+# `path` is resolved directory-aware: relative to whichever .kh file is
+# calling render_file() (same mechanism `import` already uses), not
+# relative to whatever directory `kosh` happens to be run from. So this
+# works the same whether you run `kosh app.kh` from the project root or
+# from somewhere else entirely.
+#
+# Guards against the same class of bug as "GET /static/../../server.kh"
+# in serve_static() below — `path` is meant to be something you write
+# yourself, but if it's ever built from request input (e.g.
+# "templates/" + req["query"]["page"] + ".html"), these stop that from
+# turning into an arbitrary-file-read:
+#   1. Containment — the resolved file must stay inside the directory
+#      render_file() is called from. A ".." segment (raw or
+#      percent-encoded), an absolute path, or a symlink pointing outside
+#      it (POSIX) all get rejected, not just a literal ".." string check.
+#   2. Extension allow-list — must look like a template
+#      (.html/.htm/.txt/.xml/.svg). There's no legitimate reason for a
+#      template renderer to be opening anything else.
+#   3. Size cap (2 MB) — templates are meant to be small hand-written
+#      files; this is a sanity backstop, not a real limit anyone should
+#      ever hit.
+#
+# Returns nil on any rejection (and prints a warning) instead of raising
+# — a broken template path shouldn't take the whole app down. Check for
+# nil before using the result, e.g.:
+#   let html = render_file("templates/index.html", vars)
+#   if html == nil:
+#       return res_server_error("template error")
+#   return res_html(html)
+# ---------------------------------------------------------------------------
+fn render_file(path, vars):
+    let base_dir = _webi_script_dir()
+    let safe_path = _webi_safe_static_path(base_dir, path)
+
+    if safe_path == nil:
+        print "[webi] render_file: rejected '" + path + "' (missing, or escapes its own directory)"
+        return nil
+
+    if not _webi_has_template_ext(safe_path):
+        print "[webi] render_file: rejected '" + path + "' (not a recognized template extension: .html/.htm/.txt/.xml/.svg)"
+        return nil
+
+    let content = read_file(safe_path)
+
+    if len(content) > 2000000:
+        print "[webi] render_file: rejected '" + path + "' (file too large, over 2MB)"
+        return nil
+
+    return render(content, vars)
+
+# ---------------------------------------------------------------------------
+# html_escape(str) -> string
+# Escape HTML special characters to prevent XSS
+# ---------------------------------------------------------------------------
+fn html_escape(s):
+    s = str_replace(s, "&", "&amp;")
+    s = str_replace(s, "<", "&lt;")
+    s = str_replace(s, ">", "&gt;")
+    s = str_replace(s, "\"", "&quot;")
+    s = str_replace(s, "'", "&#39;")
+    return s

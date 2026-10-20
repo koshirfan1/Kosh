@@ -1,0 +1,22 @@
+# Khan Webi Auth Package
+# Usage: import "webi_auth"
+
+import "webi"
+
+# Middleware to require Authorization header
+fn mw_auth(req):
+    let auth = header_get(req, "Authorization", "")
+    if len(auth) == 0:
+        req["_webi_short_circuit"] = res_unauthorized("Authentication required")
+    return req
+
+# Middleware to require a specific API key
+fn mw_require_key(req, valid_key):
+    let auth = header_get(req, "Authorization", "")
+    if auth != "Bearer " + valid_key:
+        req["_webi_short_circuit"] = res_forbidden("Invalid or missing API key")
+    return req
+
+fn auth_create_token(user_id):
+    # Placeholder for a more secure token
+    return "token_" + str(user_id) + "_" + str(clock())

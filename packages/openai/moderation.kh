@@ -1,0 +1,34 @@
+# openai/moderation.kh — content moderation. Needs transport.kh, errors.kh.
+
+# ---------------------------------------------------------------------------
+# openai_moderate(client, input) -> result map, or error map
+# result["flagged"] -> bool
+# result["categories"] -> map of category name -> bool
+# result["category_scores"] -> map of category name -> number
+# ---------------------------------------------------------------------------
+fn openai_moderate(client, input):
+    let body = {"input": input}
+    let result = _openai_post(client, "/moderations", body)
+
+    if openai_is_error(result):
+        client["last_error"] = result
+        return result
+
+    client["last_error"] = nil
+    if has(result, "results") and len(result["results"]) > 0:
+        return result["results"][0]
+    return result
+
+# ---------------------------------------------------------------------------
+# openai_is_flagged(client, input) -> bool
+# Convenience: just tells you whether the input was flagged. Treats a
+# request failure as "not flagged" — check openai_last_error(client) if
+# that distinction matters for your use case.
+# ---------------------------------------------------------------------------
+fn openai_is_flagged(client, input):
+    let result = openai_moderate(client, input)
+    if openai_is_error(result):
+        return false
+    if not has(result, "flagged"):
+        return false
+    return result["flagged"]

@@ -1,0 +1,11 @@
+# benchmarks/map_scale.kh — build a map with 4,000 keys, one at a time.
+# See docs/hash-table-audit.md — Khan's {} map is currently a linear-
+# scan array, not a hash table, so this is O(n^2), not O(n). This
+# benchmark exists specifically to make that a trackable number over
+# time rather than a one-off finding.
+let m = {}
+let i = 0
+while i < 4000:
+    m["key" + str(i)] = i
+    i = i + 1
+print len(keys(m))

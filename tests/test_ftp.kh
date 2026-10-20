@@ -1,0 +1,13 @@
+# Test for ftp package
+import "../packages/ftp/ftp.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("FTP Suite")
+
+let client = ftp_client("ftp.example.com", "user", "pass")
+t = test_eq(t, "host check", client["host"], "ftp.example.com")
+
+let up = ftp_upload(client, "test.txt", "/remote/test.txt")
+t = test_true(t, "upload check", up)
+
+test_run(t)

@@ -1,0 +1,713 @@
+# Khan math package v2.0.0
+# Author: Irfan Khan
+# Extends v1 with full 3D math for Khan Engine and Khan Studio
+#
+# NEW in v2:
+#   Trig         — sin, cos, tan, asin, acos, atan, atan2, deg/rad
+#   Vec2         — 2D vector (x, y)
+#   Vec3         — 3D vector (x, y, z)
+#   Vec4         — 4D vector / RGBA color
+#   Mat4         — 4x4 matrix (row-major, stored as 16-element array)
+#   Quaternion   — rotation (w, x, y, z)
+#   Interpolation — lerp, smoothstep, cubic, bezier
+#   Geometry     — ray, AABB, plane, sphere intersection helpers
+#
+# Usage:
+#   import "math"
+#   let v = vec3(1, 0, 0)
+#   let len = vec3_len(v)
+
+# ─────────────────────────────────────────────────────────────
+# CONSTANTS
+# ─────────────────────────────────────────────────────────────
+
+let PI      = 3.141592653589793
+let TAU     = 6.283185307179586
+let E       = 2.718281828459045
+let DEG2RAD = 0.017453292519943
+let RAD2DEG = 57.29577951308232
+let EPSILON = 0.000001
+let INF     = 999999999999.0
+
+# ─────────────────────────────────────────────────────────────
+# V1 CORE (kept for backward compat)
+# ─────────────────────────────────────────────────────────────
+
+fn math_sqrt(n):
+    if n < 0:
+        return nil
+    if n == 0:
+        return 0
+    let guess = n / 2.0
+    let i = 0
+    while i < 60:
+        guess = (guess + n / guess) / 2.0
+        i = i + 1
+    return guess
+
+fn math_pow(base, exp):
+    if exp == 0:
+        return 1
+    if exp < 0:
+        return 1.0 / math_pow(base, 0 - exp)
+    let result = 1
+    let i = 0
+    while i < exp:
+        result = result * base
+        i = i + 1
+    return result
+
+fn math_abs(n):
+    if n < 0:
+        return 0 - n
+    return n
+
+fn math_floor(n):
+    return floor(n)
+fn math_ceil(n):
+    return ceil(n)
+fn math_round(n):
+    return floor(n + 0.5)
+fn math_max(a, b):
+    if a > b:
+        return a
+    return b
+fn math_min(a, b):
+    if a < b:
+        return a
+    return b
+
+fn math_clamp(val, lo, hi):
+    return math_max(lo, math_min(hi, val))
+
+fn math_sign(n):
+    if n > 0:
+        return 1
+    elif n < 0:
+        return -1
+    return 0
+
+fn math_gcd(a, b):
+    a = math_abs(a)
+    b = math_abs(b)
+    while b != 0:
+        let t = b
+        b = a - (floor(a / b) * b)
+        a = t
+    return a
+
+fn math_lcm(a, b):
+    return math_abs(a * b) / math_gcd(a, b)
+
+fn math_is_prime(n):
+    if n < 2:
+        return false
+    if n == 2:
+        return true
+    if n % 2 == 0:
+        return false
+    let i = 3
+    while i * i <= n:
+        if n % i == 0:
+            return false
+        i = i + 2
+    return true
+
+fn math_sum(arr):
+    let total = 0
+    for v in arr:
+        total = total + v
+    return total
+
+fn math_mean(arr):
+    if len(arr) == 0:
+        return nil
+    return math_sum(arr) / len(arr)
+
+fn math_factorial(n):
+    if n <= 1:
+        return 1
+    return n * math_factorial(n - 1)
+
+fn math_range(start, stop, step):
+    let arr = []
+    let i = start
+    while i < stop:
+        arr = push(arr, i)
+        i = i + step
+    return arr
+
+# ─────────────────────────────────────────────────────────────
+# TRIG  (Taylor series — no C trig dependency)
+# ─────────────────────────────────────────────────────────────
+
+fn math_deg(rad):
+    return rad * RAD2DEG
+
+fn math_rad(deg):
+    return deg * DEG2RAD
+
+fn _norm_angle(x):
+    while x > PI:
+        x = x - TAU
+    while x < 0 - PI:
+        x = x + TAU
+    return x
+
+fn math_sin(x):
+    x = _norm_angle(x)
+    let r = x
+    let t = x
+    let i = 1
+    while i <= 8:
+        t = 0 - t * x * x / ((2 * i) * (2 * i + 1))
+        r = r + t
+        i = i + 1
+    return r
+
+fn math_cos(x):
+    return math_sin(x + PI / 2.0)
+
+fn math_tan(x):
+    let c = math_cos(x)
+    if math_abs(c) < EPSILON:
+        return INF
+    return math_sin(x) / c
+
+fn math_asin(x):
+    x = math_clamp(x, 0 - 1.0, 1.0)
+    let r = x
+    let t = x
+    let i = 1
+    while i <= 10:
+        let num = (2 * i - 1)
+        let den = (2 * i)
+        t = t * (num * num) * x * x / (den * (den + 1))
+        r = r + t
+        i = i + 1
+    return r
+
+fn math_acos(x):
+    return PI / 2.0 - math_asin(x)
+
+fn math_atan(x):
+    if math_abs(x) > 1.0:
+        if x > 0:
+            return PI / 2.0 - math_atan(1.0 / x)
+        return 0 - PI / 2.0 + math_atan(1.0 / math_abs(x))
+    let r = x
+    let t = x
+    let i = 1
+    while i <= 12:
+        t = 0 - t * x * x
+        r = r + t / (2 * i + 1)
+        i = i + 1
+    return r
+
+fn math_atan2(y, x):
+    if math_abs(x) < EPSILON:
+        if y > 0:
+            return PI / 2.0
+        if y < 0:
+            return 0 - PI / 2.0
+        return 0
+    let a = math_atan(y / x)
+    if x < 0:
+        if y >= 0:
+            return a + PI
+        return a - PI
+    return a
+
+# ─────────────────────────────────────────────────────────────
+# VEC2  {x, y}
+# ─────────────────────────────────────────────────────────────
+
+fn vec2(x, y):
+    return {"x": x, "y": y}
+
+fn vec2_add(a, b):
+    return vec2(a["x"] + b["x"], a["y"] + b["y"])
+
+fn vec2_sub(a, b):
+    return vec2(a["x"] - b["x"], a["y"] - b["y"])
+
+fn vec2_scale(v, s):
+    return vec2(v["x"] * s, v["y"] * s)
+
+fn vec2_dot(a, b):
+    return a["x"] * b["x"] + a["y"] * b["y"]
+
+fn vec2_len(v):
+    return math_sqrt(v["x"] * v["x"] + v["y"] * v["y"])
+
+fn vec2_norm(v):
+    let l = vec2_len(v)
+    if l < EPSILON:
+        return vec2(0, 0)
+    return vec2_scale(v, 1.0 / l)
+
+fn vec2_dist(a, b):
+    return vec2_len(vec2_sub(a, b))
+
+fn vec2_lerp(a, b, t):
+    return vec2(
+        a["x"] + (b["x"] - a["x"]) * t,
+        a["y"] + (b["y"] - a["y"]) * t
+    )
+
+fn vec2_angle(v):
+    return math_atan2(v["y"], v["x"])
+
+fn vec2_perp(v):
+    return vec2(0 - v["y"], v["x"])
+
+fn vec2_eq(a, b):
+    return math_abs(a["x"] - b["x"]) < EPSILON and math_abs(a["y"] - b["y"]) < EPSILON
+
+fn vec2_str(v):
+    return "vec2(" + str(v["x"]) + ", " + str(v["y"]) + ")"
+
+# ─────────────────────────────────────────────────────────────
+# VEC3  {x, y, z}
+# ─────────────────────────────────────────────────────────────
+
+fn vec3(x, y, z):
+    return {"x": x, "y": y, "z": z}
+
+fn vec3_add(a, b):
+    return vec3(a["x"] + b["x"], a["y"] + b["y"], a["z"] + b["z"])
+
+fn vec3_sub(a, b):
+    return vec3(a["x"] - b["x"], a["y"] - b["y"], a["z"] - b["z"])
+
+fn vec3_scale(v, s):
+    return vec3(v["x"] * s, v["y"] * s, v["z"] * s)
+
+fn vec3_neg(v):
+    return vec3(0 - v["x"], 0 - v["y"], 0 - v["z"])
+
+fn vec3_dot(a, b):
+    return a["x"] * b["x"] + a["y"] * b["y"] + a["z"] * b["z"]
+
+fn vec3_cross(a, b):
+    return vec3(
+        a["y"] * b["z"] - a["z"] * b["y"],
+        a["z"] * b["x"] - a["x"] * b["z"],
+        a["x"] * b["y"] - a["y"] * b["x"]
+    )
+
+fn vec3_len(v):
+    return math_sqrt(v["x"] * v["x"] + v["y"] * v["y"] + v["z"] * v["z"])
+
+fn vec3_len_sq(v):
+    return v["x"] * v["x"] + v["y"] * v["y"] + v["z"] * v["z"]
+
+fn vec3_norm(v):
+    let l = vec3_len(v)
+    if l < EPSILON:
+        return vec3(0, 0, 0)
+    return vec3_scale(v, 1.0 / l)
+
+fn vec3_dist(a, b):
+    return vec3_len(vec3_sub(a, b))
+
+fn vec3_lerp(a, b, t):
+    return vec3(
+        a["x"] + (b["x"] - a["x"]) * t,
+        a["y"] + (b["y"] - a["y"]) * t,
+        a["z"] + (b["z"] - a["z"]) * t
+    )
+
+fn vec3_reflect(v, normal):
+    let d = 2.0 * vec3_dot(v, normal)
+    return vec3_sub(v, vec3_scale(normal, d))
+
+fn vec3_angle(a, b):
+    let d = math_clamp(vec3_dot(vec3_norm(a), vec3_norm(b)), 0 - 1.0, 1.0)
+    return math_acos(d)
+
+fn vec3_project(v, onto):
+    let d = vec3_dot(v, onto) / vec3_len_sq(onto)
+    return vec3_scale(onto, d)
+
+fn vec3_eq(a, b):
+    return (math_abs(a["x"] - b["x"]) < EPSILON and
+            math_abs(a["y"] - b["y"]) < EPSILON and
+            math_abs(a["z"] - b["z"]) < EPSILON)
+
+fn vec3_str(v):
+    return "vec3(" + str(v["x"]) + ", " + str(v["y"]) + ", " + str(v["z"]) + ")"
+
+let VEC3_ZERO    = vec3(0, 0, 0)
+let VEC3_ONE     = vec3(1, 1, 1)
+let VEC3_UP      = vec3(0, 1, 0)
+let VEC3_DOWN    = vec3(0, 0 - 1, 0)
+let VEC3_RIGHT   = vec3(1, 0, 0)
+let VEC3_LEFT    = vec3(0 - 1, 0, 0)
+let VEC3_FORWARD = vec3(0, 0, 0 - 1)
+let VEC3_BACK    = vec3(0, 0, 1)
+
+# ─────────────────────────────────────────────────────────────
+# VEC4  {x, y, z, w}  — also used as RGBA color
+# ─────────────────────────────────────────────────────────────
+
+fn vec4(x, y, z, w):
+    return {"x": x, "y": y, "z": z, "w": w}
+
+fn vec4_add(a, b):
+    return vec4(a["x"]+b["x"], a["y"]+b["y"], a["z"]+b["z"], a["w"]+b["w"])
+
+fn vec4_scale(v, s):
+    return vec4(v["x"]*s, v["y"]*s, v["z"]*s, v["w"]*s)
+
+fn vec4_dot(a, b):
+    return a["x"]*b["x"] + a["y"]*b["y"] + a["z"]*b["z"] + a["w"]*b["w"]
+
+fn vec4_len(v):
+    return math_sqrt(vec4_dot(v, v))
+
+fn vec4_norm(v):
+    let l = vec4_len(v)
+    if l < EPSILON:
+        return vec4(0,0,0,0)
+    return vec4_scale(v, 1.0 / l)
+
+fn color(r, g, b, a):
+    return vec4(r, g, b, a)
+
+let COLOR_WHITE   = color(1, 1, 1, 1)
+let COLOR_BLACK   = color(0, 0, 0, 1)
+let COLOR_RED     = color(1, 0, 0, 1)
+let COLOR_GREEN   = color(0, 1, 0, 1)
+let COLOR_BLUE    = color(0, 0, 1, 1)
+let COLOR_CLEAR   = color(0, 0, 0, 0)
+
+# ─────────────────────────────────────────────────────────────
+# QUATERNION  {w, x, y, z}
+# ─────────────────────────────────────────────────────────────
+
+fn quat(w, x, y, z):
+    return {"w": w, "x": x, "y": y, "z": z}
+
+fn quat_identity():
+    return quat(1, 0, 0, 0)
+
+fn quat_mul(a, b):
+    return quat(
+        a["w"]*b["w"] - a["x"]*b["x"] - a["y"]*b["y"] - a["z"]*b["z"],
+        a["w"]*b["x"] + a["x"]*b["w"] + a["y"]*b["z"] - a["z"]*b["y"],
+        a["w"]*b["y"] - a["x"]*b["z"] + a["y"]*b["w"] + a["z"]*b["x"],
+        a["w"]*b["z"] + a["x"]*b["y"] - a["y"]*b["x"] + a["z"]*b["w"]
+    )
+
+fn quat_conj(q):
+    return quat(q["w"], 0 - q["x"], 0 - q["y"], 0 - q["z"])
+
+fn quat_len(q):
+    return math_sqrt(q["w"]*q["w"] + q["x"]*q["x"] + q["y"]*q["y"] + q["z"]*q["z"])
+
+fn quat_norm(q):
+    let l = quat_len(q)
+    if l < EPSILON:
+        return quat_identity()
+    return quat(q["w"]/l, q["x"]/l, q["y"]/l, q["z"]/l)
+
+fn quat_from_axis_angle(axis, angle):
+    let a = vec3_norm(axis)
+    let half = angle / 2.0
+    let s = math_sin(half)
+    return quat(math_cos(half), a["x"]*s, a["y"]*s, a["z"]*s)
+
+fn quat_from_euler(pitch, yaw, roll):
+    let cp = math_cos(pitch / 2.0)
+    let sp = math_sin(pitch / 2.0)
+    let cy = math_cos(yaw   / 2.0)
+    let sy = math_sin(yaw   / 2.0)
+    let cr = math_cos(roll  / 2.0)
+    let sr = math_sin(roll  / 2.0)
+    return quat(
+        cr*cp*cy + sr*sp*sy,
+        sr*cp*cy - cr*sp*sy,
+        cr*sp*cy + sr*cp*sy,
+        cr*cp*sy - sr*sp*cy
+    )
+
+fn quat_rotate_vec3(q, v):
+    let qv = vec3(q["x"], q["y"], q["z"])
+    let uv = vec3_cross(qv, v)
+    let uuv = vec3_cross(qv, uv)
+    let uv2 = vec3_scale(uv, 2.0 * q["w"])
+    let uuv2 = vec3_scale(uuv, 2.0)
+    return vec3_add(v, vec3_add(uv2, uuv2))
+
+fn quat_slerp(a, b, t):
+    let dot = a["w"]*b["w"] + a["x"]*b["x"] + a["y"]*b["y"] + a["z"]*b["z"]
+    let bw = b["w"]
+    let bx = b["x"]
+    let by = b["y"]
+    let bz = b["z"]
+    if dot < 0:
+        dot = 0 - dot
+        bw = 0 - bw
+        bx = 0 - bx
+        by = 0 - by
+        bz = 0 - bz
+    if dot > 0.9995:
+        return quat_norm(quat(
+            a["w"] + t*(bw - a["w"]),
+            a["x"] + t*(bx - a["x"]),
+            a["y"] + t*(by - a["y"]),
+            a["z"] + t*(bz - a["z"])
+        ))
+    let theta0 = math_acos(dot)
+    let theta  = theta0 * t
+    let s0 = math_cos(theta) - dot * math_sin(theta) / math_sin(theta0)
+    let s1 = math_sin(theta) / math_sin(theta0)
+    return quat(
+        s0*a["w"] + s1*bw,
+        s0*a["x"] + s1*bx,
+        s0*a["y"] + s1*by,
+        s0*a["z"] + s1*bz
+    )
+
+fn quat_to_euler(q):
+    let sinr_cosp = 2.0 * (q["w"]*q["x"] + q["y"]*q["z"])
+    let cosr_cosp = 1.0 - 2.0 * (q["x"]*q["x"] + q["y"]*q["y"])
+    let pitch = math_atan2(sinr_cosp, cosr_cosp)
+    let sinp = 2.0 * (q["w"]*q["y"] - q["z"]*q["x"])
+    let yaw = 0
+    if math_abs(sinp) >= 1:
+        yaw = math_sign(sinp) * PI / 2.0
+    else:
+        yaw = math_asin(sinp)
+    let siny_cosp = 2.0 * (q["w"]*q["z"] + q["x"]*q["y"])
+    let cosy_cosp = 1.0 - 2.0 * (q["y"]*q["y"] + q["z"]*q["z"])
+    let roll = math_atan2(siny_cosp, cosy_cosp)
+    return vec3(pitch, yaw, roll)
+
+# ─────────────────────────────────────────────────────────────
+# MAT4  — stored as 16-element flat array, row-major
+#         [m00 m01 m02 m03  m10 m11 ...]
+# ─────────────────────────────────────────────────────────────
+
+fn mat4(m):
+    return m
+
+fn mat4_identity():
+    return [1,0,0,0,
+            0,1,0,0,
+            0,0,1,0,
+            0,0,0,1]
+
+fn mat4_get(m, row, col):
+    return m[row * 4 + col]
+
+fn mat4_mul(a, b):
+    let r = [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]
+    let row = 0
+    while row < 4:
+        let col = 0
+        while col < 4:
+            let s = 0
+            let k = 0
+            while k < 4:
+                s = s + a[row*4+k] * b[k*4+col]
+                k = k + 1
+            r[row*4+col] = s
+            col = col + 1
+        row = row + 1
+    return r
+
+fn mat4_mul_vec4(m, v):
+    return vec4(
+        m[0]*v["x"] + m[1]*v["y"] + m[2]*v["z"]  + m[3]*v["w"],
+        m[4]*v["x"] + m[5]*v["y"] + m[6]*v["z"]  + m[7]*v["w"],
+        m[8]*v["x"] + m[9]*v["y"] + m[10]*v["z"] + m[11]*v["w"],
+        m[12]*v["x"]+ m[13]*v["y"]+ m[14]*v["z"] + m[15]*v["w"]
+    )
+
+fn mat4_translate(tx, ty, tz):
+    return [1,0,0,tx,
+            0,1,0,ty,
+            0,0,1,tz,
+            0,0,0,1]
+
+fn mat4_scale(sx, sy, sz):
+    return [sx,0,0,0,
+            0,sy,0,0,
+            0,0,sz,0,
+            0,0,0,1]
+
+fn mat4_rotate_x(angle):
+    let c = math_cos(angle)
+    let s = math_sin(angle)
+    return [1,0,0,0,
+            0,c,0-s,0,
+            0,s,c,0,
+            0,0,0,1]
+
+fn mat4_rotate_y(angle):
+    let c = math_cos(angle)
+    let s = math_sin(angle)
+    return [c,0,s,0,
+            0,1,0,0,
+            0-s,0,c,0,
+            0,0,0,1]
+
+fn mat4_rotate_z(angle):
+    let c = math_cos(angle)
+    let s = math_sin(angle)
+    return [c,0-s,0,0,
+            s,c,0,0,
+            0,0,1,0,
+            0,0,0,1]
+
+fn mat4_from_quat(q):
+    let x = q["x"]
+    let y = q["y"]
+    let z = q["z"]
+    let w = q["w"]
+    return [
+        1-2*(y*y+z*z),  2*(x*y-w*z),    2*(x*z+w*y),  0,
+        2*(x*y+w*z),    1-2*(x*x+z*z),  2*(y*z-w*x),  0,
+        2*(x*z-w*y),    2*(y*z+w*x),    1-2*(x*x+y*y),0,
+        0,              0,              0,             1
+    ]
+
+fn mat4_perspective(fov_rad, aspect, near, far):
+    let f = 1.0 / math_tan(fov_rad / 2.0)
+    let d = near - far
+    return [
+        f/aspect, 0, 0,                     0,
+        0,        f, 0,                     0,
+        0,        0, (far+near)/d,          (2*far*near)/d,
+        0,        0, 0 - 1,                 0
+    ]
+
+fn mat4_look_at(eye, target, up):
+    let f = vec3_norm(vec3_sub(target, eye))
+    let r = vec3_norm(vec3_cross(f, up))
+    let u = vec3_cross(r, f)
+    return [
+        r["x"],       r["y"],       r["z"],       0 - vec3_dot(r, eye),
+        u["x"],       u["y"],       u["z"],       0 - vec3_dot(u, eye),
+        0-f["x"],     0-f["y"],     0-f["z"],     vec3_dot(f, eye),
+        0,            0,            0,            1
+    ]
+
+fn mat4_transpose(m):
+    return [
+        m[0], m[4], m[8],  m[12],
+        m[1], m[5], m[9],  m[13],
+        m[2], m[6], m[10], m[14],
+        m[3], m[7], m[11], m[15]
+    ]
+
+fn mat4_trs(pos, rot_quat, scl):
+    let t = mat4_translate(pos["x"], pos["y"], pos["z"])
+    let r = mat4_from_quat(rot_quat)
+    let s = mat4_scale(scl["x"], scl["y"], scl["z"])
+    return mat4_mul(t, mat4_mul(r, s))
+
+# ─────────────────────────────────────────────────────────────
+# INTERPOLATION
+# ─────────────────────────────────────────────────────────────
+
+fn lerp(a, b, t):
+    return a + (b - a) * t
+
+fn lerp_clamp(a, b, t):
+    return lerp(a, b, math_clamp(t, 0, 1))
+
+fn smoothstep(edge0, edge1, x):
+    let t = math_clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+fn smootherstep(edge0, edge1, x):
+    let t = math_clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
+fn ease_in(t):
+    return t * t
+
+fn ease_out(t):
+    return t * (2.0 - t)
+
+fn ease_in_out(t):
+    if t < 0.5:
+        return 2.0 * t * t
+    return 0 - 1.0 + (4.0 - 2.0 * t) * t
+
+fn bezier(p0, p1, p2, p3, t):
+    let u = 1.0 - t
+    return u*u*u*p0 + 3.0*u*u*t*p1 + 3.0*u*t*t*p2 + t*t*t*p3
+
+fn remap(val, in_lo, in_hi, out_lo, out_hi):
+    let t = (val - in_lo) / (in_hi - in_lo)
+    return lerp(out_lo, out_hi, t)
+
+# ─────────────────────────────────────────────────────────────
+# GEOMETRY HELPERS
+# ─────────────────────────────────────────────────────────────
+
+fn ray(origin, direction):
+    return {"origin": origin, "dir": vec3_norm(direction)}
+
+fn ray_at(r, t):
+    return vec3_add(r["origin"], vec3_scale(r["dir"], t))
+
+fn aabb(min_pt, max_pt):
+    return {"min": min_pt, "max": max_pt}
+
+fn aabb_center(box):
+    return vec3_scale(vec3_add(box["min"], box["max"]), 0.5)
+
+fn aabb_size(box):
+    return vec3_sub(box["max"], box["min"])
+
+fn aabb_contains(box, point):
+    return (point["x"] >= box["min"]["x"] and point["x"] <= box["max"]["x"] and
+            point["y"] >= box["min"]["y"] and point["y"] <= box["max"]["y"] and
+            point["z"] >= box["min"]["z"] and point["z"] <= box["max"]["z"])
+
+fn aabb_intersects(a, b):
+    return (a["min"]["x"] <= b["max"]["x"] and a["max"]["x"] >= b["min"]["x"] and
+            a["min"]["y"] <= b["max"]["y"] and a["max"]["y"] >= b["min"]["y"] and
+            a["min"]["z"] <= b["max"]["z"] and a["max"]["z"] >= b["min"]["z"])
+
+fn sphere(center, radius):
+    return {"center": center, "radius": radius}
+
+fn sphere_contains(s, point):
+    return vec3_dist(s["center"], point) <= s["radius"]
+
+fn sphere_intersects(a, b):
+    return vec3_dist(a["center"], b["center"]) <= (a["radius"] + b["radius"])
+
+fn ray_sphere(r, s):
+    let oc = vec3_sub(r["origin"], s["center"])
+    let a  = vec3_dot(r["dir"], r["dir"])
+    let b  = 2.0 * vec3_dot(oc, r["dir"])
+    let c  = vec3_dot(oc, oc) - s["radius"] * s["radius"]
+    let disc = b*b - 4*a*c
+    if disc < 0:
+        return nil
+    return (0 - b - math_sqrt(disc)) / (2.0 * a)
+
+fn ray_aabb(r, box):
+    let tmin = 0 - INF
+    let tmax = INF
+    let axes = ["x", "y", "z"]
+    for ax in axes:
+        let d = r["dir"][ax]
+        if math_abs(d) < EPSILON:
+            if r["origin"][ax] < box["min"][ax] or r["origin"][ax] > box["max"][ax]:
+                return nil
+        else:
+            let t1 = (box["min"][ax] - r["origin"][ax]) / d
+            let t2 = (box["max"][ax] - r["origin"][ax]) / d
+            tmin = math_max(tmin, math_min(t1, t2))
+            tmax = math_min(tmax, math_max(t1, t2))
+    if tmax < tmin:
+        return nil
+    return tmin

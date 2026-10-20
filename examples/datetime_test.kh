@@ -1,0 +1,17 @@
+# Datetime library test
+
+let today = now()
+print "Today: " + date_format(today, "%Y-%m-%d")
+print "Time:  " + date_format(today, "%H:%M:%S")
+print "Full:  " + date_format(today, "%A, %B %d %Y")
+
+# Arithmetic
+let in_30_days = date_add(today, "days", 30)
+print "In 30 days: " + date_format(in_30_days, "%Y-%m-%d")
+
+let diff = date_diff(in_30_days, today)
+print "Seconds between: " + str(diff)
+
+# Parse
+let d = date_parse("2000-01-01", "%Y-%m-%d")
+print "Parsed year: " + str(d["year"])

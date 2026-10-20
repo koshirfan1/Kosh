@@ -1,0 +1,23 @@
+{
+  "name": "webi",
+  "version": "1.1.3",
+  "description": "Lightweight Flask-inspired web framework for Kosh: routing, request/response helpers, middleware, CSRF/rate-limit/API-key security, templates, and an HTTP server.",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "webi.kh",
+  "files": [
+    "webi.kh",
+    "util.kh",
+    "app.kh",
+    "routing.kh",
+    "request.kh",
+    "response.kh",
+    "middleware.kh",
+    "security.kh",
+    "server.kh",
+    "template.kh",
+    "meta.kh",
+    "requests.kh",
+    "json.kh"
+  ]
+}

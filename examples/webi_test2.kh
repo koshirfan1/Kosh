@@ -1,0 +1,209 @@
+# webi_test2.kh — full test suite for webi v1.1.1 (multi-file package)
+# Run: kosh examples/webi_test2.kh
+#
+# Uses webi_handle() to drive requests through the whole stack (routing,
+# middleware, handlers) WITHOUT starting a real server socket, so this runs
+# instantly and needs no port.
+
+import "webi"
+
+# NOTE: Khan function closures snapshot outer variables BY VALUE at the
+# point the function is defined, not by live reference. So a plain
+# `stats["pass"] = ...` inside test_eq would silently mutate test_eq's own
+# private copy of `stats`, invisible to the caller. Threading `stats`
+# through as a parameter and returning it — same pattern webi itself uses
+# for app/req/res — is what makes the mutation actually visible.
+fn test_eq(stats, label, actual, expected):
+    if actual == expected:
+        stats["pass"] = stats["pass"] + 1
+        print "  OK   " + label
+    else:
+        stats["fail"] = stats["fail"] + 1
+        print "  FAIL " + label + "  (got: " + str(actual) + ", want: " + str(expected) + ")"
+    return stats
+
+let stats = {"pass": 0, "fail": 0}
+
+print "=========================================="
+print "webi " + webi_version() + " — test suite"
+print "=========================================="
+
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
+let app = webi_app()
+app = webi_name(app, "test-app")
+app = webi_debug(app, false)
+
+fn h_index(req):
+    return res_html("<h1>home</h1>")
+
+fn h_user(req):
+    let id = param_get(req, "id", "?")
+    return res_json({"id": id})
+
+fn h_file(req):
+    return res_text("file:" + req["path"])
+
+fn h_echo_body(req):
+    return res_json(body_json(req))
+
+fn h_form(req):
+    let name = form_get(req, "name", "anon")
+    return res_text("hi " + name)
+
+fn h_created(req):
+    return res_created({"id": 1})
+
+fn h_query(req):
+    return res_text(query_get(req, "q", "none"))
+
+fn h_header(req):
+    return res_text(header_get(req, "X-Test", "none"))
+
+fn h_methods(req):
+    let out = ""
+    if is_get(req):
+        out = out + "G"
+    if is_post(req):
+        out = out + "P"
+    if is_put(req):
+        out = out + "U"
+    if is_patch(req):
+        out = out + "A"
+    if is_delete(req):
+        out = out + "D"
+    if is_json_req(req):
+        out = out + "J"
+    return res_text(out)
+
+fn custom_404(req):
+    return res_status(404, "nope: " + req["path"])
+
+app = route(app, "GET", "/", h_index)
+app = get_route(app, "/users/:id", h_user)
+app = post_route(app, "/echo", h_echo_body)
+app = post_route(app, "/form", h_form)
+app = put_route(app, "/put-test", h_methods)
+app = patch_route(app, "/patch-test", h_methods)
+app = delete_route(app, "/del-test", h_methods)
+app = route(app, "GET", "/files/*", h_file)
+app = route(app, "POST", "/created", h_created)
+app = route(app, "GET", "/query", h_query)
+app = route(app, "GET", "/header", h_header)
+app = webi_not_found(app, custom_404)
+app = use(app, mw_logger)
+
+print ""
+print "-- routing --"
+let routes = webi_routes(app)
+stats = test_eq(stats, "route count", len(routes), 11)
+
+let r1 = webi_handle(app, "GET", "/", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "GET / status", r1["status"], 200)
+stats = test_eq(stats, "GET / body", r1["body"], "<h1>home</h1>")
+
+let r2 = webi_handle(app, "GET", "/users/42", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "GET /users/:id status", r2["status"], 200)
+stats = test_eq(stats, "GET /users/:id body", r2["body"], "{\"id\": \"42\"}")
+
+let r3 = webi_handle(app, "GET", "/files/a/b/c.txt", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "wildcard route status", r3["status"], 200)
+stats = test_eq(stats, "wildcard route body", r3["body"], "file:/files/a/b/c.txt")
+
+let r4 = webi_handle(app, "GET", "/nope", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "custom 404 status", r4["status"], 404)
+stats = test_eq(stats, "custom 404 body", r4["body"], "nope: /nope")
+
+print ""
+print "-- request helpers --"
+let r5 = webi_handle(app, "GET", "/query", "q=hello", "", "", "127.0.0.1")
+stats = test_eq(stats, "query_get", r5["body"], "hello")
+
+let r6 = webi_handle(app, "GET", "/header", "", "X-Test: abc123", "", "127.0.0.1")
+stats = test_eq(stats, "header_get", r6["body"], "abc123")
+
+let r7 = webi_handle(app, "POST", "/echo", "", "Content-Type: application/json", "{\"x\": 1}", "127.0.0.1")
+stats = test_eq(stats, "body_json via POST", r7["body"], "{\"x\": 1}")
+
+let r8 = webi_handle(app, "POST", "/form", "", "", "name=Irfan&age=20", "127.0.0.1")
+stats = test_eq(stats, "form_get", r8["body"], "hi Irfan")
+
+let r9 = webi_handle(app, "PUT", "/put-test", "", "Content-Type: application/json", "", "127.0.0.1")
+stats = test_eq(stats, "is_put + is_json_req", r9["body"], "UJ")
+
+let r10 = webi_handle(app, "PATCH", "/patch-test", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "is_patch", r10["body"], "A")
+
+let r11 = webi_handle(app, "DELETE", "/del-test", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "is_delete", r11["body"], "D")
+
+print ""
+print "-- response helpers --"
+let rc = h_created(nil)
+stats = test_eq(stats, "res_created status", rc["status"], 201)
+
+stats = test_eq(stats, "res_no_content status", res_no_content()["status"], 204)
+stats = test_eq(stats, "res_bad_request status", res_bad_request("bad")["status"], 400)
+stats = test_eq(stats, "res_unauthorized status", res_unauthorized("no")["status"], 401)
+stats = test_eq(stats, "res_forbidden status", res_forbidden("no")["status"], 403)
+stats = test_eq(stats, "res_server_error status", res_server_error("err")["status"], 500)
+stats = test_eq(stats, "res_redirect status", res_redirect("/x")["status"], 302)
+stats = test_eq(stats, "res_redirect location header", res_redirect("/x")["headers"]["Location"], "/x")
+stats = test_eq(stats, "res_redirect_permanent status", res_redirect_permanent("/y")["status"], 301)
+stats = test_eq(stats, "res_json_str body", res_json_str("{\"a\":1}")["body"], "{\"a\":1}")
+
+# Nested header/cookie/cors assignment (relies on the interpreter's nested
+# index-assignment fix — this used to crash before that fix)
+let hdr = res_with_header(res_text("ok"), "X-Foo", "bar")
+stats = test_eq(stats, "res_with_header", hdr["headers"]["X-Foo"], "bar")
+
+# v1.1.1: cookies now live in res["cookies"] (an array, so a response can
+# carry more than one — a map can only hold one Set-Cookie value).
+let cookie = res_with_cookie(res_text("ok"), "sid", "abc123")
+stats = test_eq(stats, "res_with_cookie", cookie["cookies"][0], "sid=abc123; Path=/")
+
+# v1.1.1: res_cors(res, req) now takes req too, to honor mw_cors()'s
+# origin allow-list — pass an empty map to fall back to "*" (unconfigured).
+let cors = res_cors(res_text("ok"), {})
+stats = test_eq(stats, "res_cors origin", cors["headers"]["Access-Control-Allow-Origin"], "*")
+stats = test_eq(stats, "res_cors methods", cors["headers"]["Access-Control-Allow-Methods"],
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+
+# Chaining all three together on one response
+let chained = res_cors(res_with_cookie(res_with_header(res_text("ok"), "X-Foo", "bar"), "sid", "abc"), {})
+stats = test_eq(stats, "chained headers: X-Foo", chained["headers"]["X-Foo"], "bar")
+stats = test_eq(stats, "chained headers: cookie", chained["cookies"][0], "sid=abc; Path=/")
+stats = test_eq(stats, "chained headers: cors", chained["headers"]["Access-Control-Allow-Origin"], "*")
+
+print ""
+print "-- template + escaping --"
+stats = test_eq(stats, "render", render("hi {{name}}, age {{age}}", {"name": "Irfan", "age": 20}),
+        "hi Irfan, age 20")
+stats = test_eq(stats, "html_escape amp", html_escape("a & b"), "a &amp; b")
+stats = test_eq(stats, "html_escape lt/gt", html_escape("<b>hi</b>"), "&lt;b&gt;hi&lt;/b&gt;")
+stats = test_eq(stats, "html_escape quotes", html_escape("say \"hi\" and 'bye'"),
+        "say &quot;hi&quot; and &#39;bye&#39;")
+
+print ""
+print "-- middleware --"
+let app2 = webi_app()
+fn h_mw(req):
+    return res_text(query_get(req, "seen", "no"))
+
+fn mw_tag(req):
+    req["query"]["seen"] = "yes"
+    return req
+
+app2 = route(app2, "GET", "/mw", h_mw)
+app2 = use(app2, mw_tag)
+let rmw = webi_handle(app2, "GET", "/mw", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "middleware mutates request", rmw["body"], "yes")
+
+print ""
+print "=========================================="
+print str(stats["pass"]) + " passed, " + str(stats["fail"]) + " failed"
+print "=========================================="
+
+if stats["fail"] > 0:
+    exit(1)

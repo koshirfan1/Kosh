@@ -1,0 +1,29 @@
+from webi import webi
+import "morgos"
+
+let app = webi_app()
+app = after(app, morgos)
+
+fn fn_index(req):
+    let vars = {
+        "name":         "Irfan Khan",
+        "initial":      "I",
+        "tagline":      "Full-Stack Developer & Khan Language Creator",
+        "bio":          "I build modern web applications and create programming languages. Passionate about open-source, clean code, and developer tools that make a difference.",
+        "about_text":   "I'm a passionate software developer with expertise in full-stack web development, programming language design, and system architecture. I created the Khan programming language — a modern, expressive language that bridges the gap between simplicity and power. When I'm not coding, I enjoy contributing to open-source projects and exploring new technologies.",
+        "email":        "khandev1211@gmail.com",
+        "location":     "Karachi, Pakistan",
+        "freelance":    "Available",
+        "github":       "https://github.com/khandev1211-cpu",
+        "linkedin":     "https://linkedin.com/in/irfan-khan",
+        "contact_text": "Have a project in mind or just want to say hi? I'd love to hear from you!",
+        "year":         "2026"
+    }
+    let html = render_file("templates/portfolio.html", vars)
+    if html == nil:
+        return res_server_error("template error")
+    return res_html(html)
+
+app = route(app, "GET", "/", fn_index)
+
+webi_run(app, 8099)

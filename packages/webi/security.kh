@@ -1,0 +1,183 @@
+# webi/security.kh — CSRF, rate limiting, API-key auth, CORS config (v1.1.1)
+#
+# This file provides opt-in security middleware. Nothing here runs
+# automatically — you wire up what your app needs with `use(app, ...)`,
+# the same way as any other middleware. See webi_version() docs / README
+# for a full example.
+#
+# Depends on request.kh, response.kh (already loaded earlier by webi.kh).
+
+# ===========================================================================
+# CORS configuration
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# webi_set_cors_origins(app, origins) -> app
+# origins: array of allowed origin strings, e.g. ["https://example.com"],
+# or ["*"] to allow any origin (the default if you never call this at all).
+# Read by mw_cors() (middleware.kh).
+# ---------------------------------------------------------------------------
+fn webi_set_cors_origins(app, origins):
+    app["_cors_origins"] = origins
+    return app
+
+# ===========================================================================
+# Rate limiting
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# webi_set_rate_limit(app, max_requests, window_seconds) -> app
+# Configure the limit mw_rate_limit() enforces, e.g.
+#   app = webi_set_rate_limit(app, 100, 60)   # 100 requests / IP / minute
+# The actual counting happens in native code (see rate_limit_check() in
+# webi_lib.c) — it has to, since a request handler only ever sees a fresh
+# copy of `app`, so counts can't live on the Khan map itself and survive
+# to the next request.
+# ---------------------------------------------------------------------------
+fn webi_set_rate_limit(app, max_requests, window_seconds):
+    app["_rate_limit_max"] = max_requests
+    app["_rate_limit_window"] = window_seconds
+    return app
+
+# ---------------------------------------------------------------------------
+# mw_rate_limit(req) -> req
+# Rejects with 429 once the requesting IP exceeds the configured limit.
+# Add with: app = use(app, mw_rate_limit)
+# If webi_set_rate_limit() was never called, defaults to 60 requests/min.
+# ---------------------------------------------------------------------------
+fn mw_rate_limit(req):
+    let app = req["_app"]
+    let max_requests = 60
+    if has(app, "_rate_limit_max"):
+        max_requests = app["_rate_limit_max"]
+    let window_seconds = 60
+    if has(app, "_rate_limit_window"):
+        window_seconds = app["_rate_limit_window"]
+
+    let key = req["ip"]
+    if key == "":
+        key = "unknown"
+
+    if not rate_limit_check(key, max_requests, window_seconds):
+        req["_webi_short_circuit"] = res_status(429, "429 Too Many Requests")
+    return req
+
+# ===========================================================================
+# API-key auth
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# webi_require_api_key(app, valid_keys) -> app
+# valid_keys: array of accepted key strings.
+# ---------------------------------------------------------------------------
+fn webi_require_api_key(app, valid_keys):
+    app["_api_keys"] = valid_keys
+    return app
+
+# Internal: "Bearer abc123" -> "abc123"
+fn _webi_strip_bearer_prefix(auth):
+    return trim(substring(auth, 7, len(auth) - 7))
+
+# ---------------------------------------------------------------------------
+# mw_require_api_key(req) -> req
+# Accepts the key from either an "X-API-Key" header or an
+# "Authorization: Bearer <key>" header. Rejects with 401 if missing/invalid.
+# Add with: app = use(app, mw_require_api_key)
+#
+# This is a simple shared-secret check, not a full auth system — it's
+# meant for service-to-service or internal-tool endpoints. For anything
+# with real user accounts, write your own middleware that checks
+# credentials/sessions the way your app actually models them; any normal
+# Khan function can be registered with use(app, ...).
+# ---------------------------------------------------------------------------
+fn mw_require_api_key(req):
+    let app = req["_app"]
+    let valid_keys = []
+    if has(app, "_api_keys"):
+        valid_keys = app["_api_keys"]
+
+    let key = header_get(req, "X-API-Key", "")
+    if key == "":
+        let auth = header_get(req, "Authorization", "")
+        if contains(auth, "Bearer "):
+            key = _webi_strip_bearer_prefix(auth)
+
+    if key == "" or not contains_str_in_list(valid_keys, key):
+        req["_webi_short_circuit"] = res_unauthorized("Missing or invalid API key")
+    return req
+
+# ===========================================================================
+# CSRF protection (double-submit token, HttpOnly cookie)
+# ===========================================================================
+#
+# How to use it:
+#
+#   1. When rendering a form (a GET handler), issue a token and hand it to
+#      both the cookie and the template:
+#
+#        fn fn_new_post(req):
+#            let token = csrf_new_token()
+#            let html = render(FORM_TEMPLATE, {"csrf_token": token})
+#            return csrf_issue(res_html(html), token)
+#
+#      ...with a hidden field in FORM_TEMPLATE:
+#        <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+#
+#   2. Protect the routes that accept the submission:
+#
+#        app = use(app, mw_csrf)
+#
+#      mw_csrf compares the cookie's token against the one submitted in
+#      the form field / "X-CSRF-Token" header / JSON body, on every
+#      POST/PUT/PATCH/DELETE. A mismatch (or either one missing) is
+#      rejected with 403 before the request reaches your handler.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# csrf_new_token() -> string
+# A fresh, unguessable token (uses the OS CSPRNG via secure_token(), not
+# the predictable rand()-based random()).
+# ---------------------------------------------------------------------------
+fn csrf_new_token():
+    return secure_token(16)
+
+# ---------------------------------------------------------------------------
+# csrf_issue(res, token) -> response
+# Attach a CSRF token to a response as an HttpOnly cookie.
+# ---------------------------------------------------------------------------
+fn csrf_issue(res, token):
+    return res_with_secure_cookie(res, "csrf_token", token, {"same_site": "Strict"})
+
+# ---------------------------------------------------------------------------
+# csrf_verify(req) -> bool
+# True if the token in the request's csrf_token cookie matches the token
+# submitted via (in order checked) the "X-CSRF-Token" header, a
+# "csrf_token" form field, or a "csrf_token" key in a JSON body.
+# ---------------------------------------------------------------------------
+fn csrf_verify(req):
+    let cookie_token = cookie_get(req, "csrf_token", "")
+    if cookie_token == "":
+        return false
+
+    let submitted = header_get(req, "X-CSRF-Token", "")
+    if submitted == "":
+        submitted = form_get(req, "csrf_token", "")
+    if submitted == "" and req["body_json"] != nil:
+        if has(req["body_json"], "csrf_token"):
+            submitted = req["body_json"]["csrf_token"]
+
+    if submitted == "":
+        return false
+    return cookie_token == submitted
+
+# ---------------------------------------------------------------------------
+# mw_csrf(req) -> req
+# Enforces csrf_verify() on state-changing methods. Add with:
+#   app = use(app, mw_csrf)
+# ---------------------------------------------------------------------------
+fn mw_csrf(req):
+    let method = req["method"]
+    if method == "POST" or method == "PUT" or method == "PATCH" or method == "DELETE":
+        if not csrf_verify(req):
+            req["_webi_short_circuit"] = res_forbidden("CSRF token missing or invalid")
+    return req

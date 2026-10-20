@@ -1,0 +1,15 @@
+# Test for sqlite package
+import "../packages/sqlite/sqlite.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("SQLite Suite")
+
+let db = db_open("app.db")
+t = test_eq(t, "db path check", db["path"], "app.db")
+
+let ok = db_exec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", [])
+t = test_true(t, "exec check", ok)
+
+db_init(db)
+
+test_run(t)

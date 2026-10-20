@@ -1,0 +1,90 @@
+# Comprehensive test script for the vision package (v3.0.0).
+#
+# HOW TO USE:
+#   1. Put a real photo with at least one clearly visible face next to
+#      this script, named "photo.png" (or edit INPUT_PATH below).
+#   2. Run: .\kosh examples/vision_test_all.kh
+#   3. Open the output files it creates (also next to this script) and
+#      check them against the "what to look for" notes printed for each.
+#
+# Everything prints true/false or a value so you can see at a glance
+# whether each function ran — but seeing "true" only proves it didn't
+# crash. The real check is opening the output images.
+
+import "vision"
+
+let INPUT_PATH = "photo.png"
+
+let info = image_info(INPUT_PATH)
+if info == nil:
+    print "STOP: could not open " + INPUT_PATH + " next to this script."
+    exit(1)
+
+print "Loaded " + str(info["width"]) + "x" + str(info["height"]) + ", " + str(info["channels"]) + " channels"
+print "---"
+
+# ── color ──────────────────────────────────────────────────────────────
+print "[color] grayscale -> test_gray.png (check: no color left)"
+convert_to_grayscale(INPUT_PATH, "test_gray.png")
+
+print "[color] invert -> test_invert.png (check: colors negated, like a film negative)"
+invert_colors(INPUT_PATH, "test_invert.png")
+
+print "[color] is_grayscale on the original: " + str(is_grayscale(INPUT_PATH, 10)) + " (should be false unless your photo IS grayscale)"
+
+print "[color] skin-tone mask -> test_skinmask.png (check: white where skin-toned pixels are, black elsewhere)"
+color_mask(INPUT_PATH, "test_skinmask.png", 0, 30, 20, 100, 20, 100)
+
+# ── transform ──────────────────────────────────────────────────────────
+print "[transform] thumbnail -> test_thumb.png (check: small, same aspect ratio)"
+thumbnail(INPUT_PATH, "test_thumb.png", 150)
+
+print "[transform] rotate 30deg -> test_rotate.png (check: whole image visible, rotated, canvas grew to fit)"
+rotate_file(INPUT_PATH, "test_rotate.png", 30)
+
+print "[transform] flip horizontal -> test_flip.png (check: mirrored left-right)"
+flip_file(INPUT_PATH, "test_flip.png", "h")
+
+# ── filters ────────────────────────────────────────────────────────────
+print "[filters] gaussian blur -> test_blur.png (check: smoothed/soft)"
+blur_gaussian_file(INPUT_PATH, "test_blur.png", 4)
+
+print "[filters] sharpen -> test_sharpen.png (check: edges more pronounced)"
+sharpen_file(INPUT_PATH, "test_sharpen.png")
+
+print "[filters] sobel edges -> test_edges.png (check: black background, bright outlines where edges are)"
+edges_file(INPUT_PATH, "test_edges.png")
+
+# ── threshold + morphology + contours ────────────────────────────────────
+print "[threshold] otsu value: " + str(otsu_value(INPUT_PATH))
+print "[threshold] otsu binary -> test_otsu.png (check: pure black/white, roughly separates subject from background)"
+threshold_otsu_file(INPUT_PATH, "test_otsu.png")
+
+print "[morphology] open -> test_morph_open.png (check: small white speckles removed vs test_otsu.png)"
+morph_open_file("test_otsu.png", "test_morph_open.png", 3)
+
+let blobs = find_blobs("test_morph_open.png", 200)
+print "[contours] found " + str(len(blobs)) + " blobs (min area 200px)"
+print "[contours] drawing all blobs -> test_blobs.png (check: red boxes around distinct regions)"
+draw_boxes(INPUT_PATH, "test_blobs.png", blobs, 255, 0, 0, 2)
+
+# ── histogram ──────────────────────────────────────────────────────────
+let stats = histogram_stats(INPUT_PATH)
+print "[histogram] brightness min/max/avg: " + str(stats["min"]) + " / " + str(stats["max"]) + " / " + str(round(stats["average"]))
+print "[histogram] equalize -> test_equalize.png (check: more contrast than the original)"
+equalize_file(INPUT_PATH, "test_equalize.png")
+
+# ── template matching ─────────────────────────────────────────────────
+print "[match] cropping a known patch -> test_template.png, then searching for it"
+crop_file(INPUT_PATH, "test_template.png", 20, 20, 60, 60)
+let match = locate_template(INPUT_PATH, "test_template.png")
+print "[match] found at x=" + str(match["x"]) + " y=" + str(match["y"]) + " score=" + str(match["score"]) + " (should be x=20,y=20,score=1 -- it's searching for a patch of itself)"
+
+# ── face detection (the big one) ──────────────────────────────────────
+let faces = detect_faces(INPUT_PATH)
+print "[detect] found " + str(len(faces)) + " face(s)"
+print "[detect] drawing boxes -> test_faces.png (check: green box(es) actually on the face(s), not empty background)"
+draw_faces(INPUT_PATH, "test_faces.png")
+
+print "---"
+print "DONE. Open test_faces.png first -- that's the one that matters most."

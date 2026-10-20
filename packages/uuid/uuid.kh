@@ -1,0 +1,80 @@
+# Khan uuid package v1.0.0
+# Author: Irfan Khan
+# Unique ID generation — used by engine for entity IDs, asset IDs, event IDs
+#
+# Usage:
+#   import "uuid"
+#   let id = uuid_v4()
+#   let short = uuid_short()
+#   let named = uuid_named("player")
+
+let _UUID_CHARS = "0123456789abcdef"
+
+fn _uuid_hex(n):
+    let result = ""
+    let i = 0
+    while i < n:
+        let idx = floor(random() * 16)
+        result = result + substring(_UUID_CHARS, idx, 1)
+        i = i + 1
+    return result
+
+# ─────────────────────────────────────────────────────────────
+# UUID v4  (random)  format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+# ─────────────────────────────────────────────────────────────
+
+fn uuid_v4():
+    let p1 = _uuid_hex(8)
+    let p2 = _uuid_hex(4)
+    let p3 = "4" + _uuid_hex(3)
+    let yc = floor(random() * 4)
+    let y_chars = ["8", "9", "a", "b"]
+    let p4 = y_chars[yc] + _uuid_hex(3)
+    let p5 = _uuid_hex(12)
+    return p1 + "-" + p2 + "-" + p3 + "-" + p4 + "-" + p5
+
+# ─────────────────────────────────────────────────────────────
+# SHORT ID  (8 hex chars — good for entity IDs in the engine)
+# ─────────────────────────────────────────────────────────────
+
+fn uuid_short():
+    return _uuid_hex(8)
+
+# ─────────────────────────────────────────────────────────────
+# NAMED ID  (prefix + short — readable entity IDs)
+# e.g.  uuid_named("player")  →  "player_3f9a1c2b"
+# ─────────────────────────────────────────────────────────────
+
+fn uuid_named(prefix):
+    return prefix + "_" + _uuid_hex(8)
+
+# ─────────────────────────────────────────────────────────────
+# NUMERIC ID  (sequential counter — deterministic)
+# ─────────────────────────────────────────────────────────────
+
+fn uuid_counter():
+    return {"n": 0}
+
+fn uuid_next(counter):
+    counter["n"] = counter["n"] + 1
+    return counter
+
+fn uuid_id(counter):
+    return counter["n"]
+
+# ─────────────────────────────────────────────────────────────
+# VALIDATE
+# ─────────────────────────────────────────────────────────────
+
+fn uuid_is_valid(s):
+    if len(s) != 36:
+        return false
+    if substring(s, 8, 1)  != "-":
+        return false
+    if substring(s, 13, 1) != "-":
+        return false
+    if substring(s, 18, 1) != "-":
+        return false
+    if substring(s, 23, 1) != "-":
+        return false
+    return true

@@ -1,0 +1,76 @@
+# vision/color.kh — grayscale, invert, and HSV color-range masking.
+# Needs core.kh (_vision_resolve).
+
+# ---------------------------------------------------------------------------
+# convert_to_grayscale(input_path, output_path) -> bool
+# ---------------------------------------------------------------------------
+fn convert_to_grayscale(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let gray = vision_grayscale(img)
+    let ok = vision_save(gray, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(gray)
+    return ok
+
+# ---------------------------------------------------------------------------
+# invert_colors(input_path, output_path) -> bool
+# ---------------------------------------------------------------------------
+fn invert_colors(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let inv = vision_invert(img)
+    let ok = vision_save(inv, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(inv)
+    return ok
+
+# ---------------------------------------------------------------------------
+# is_grayscale(path, tolerance) -> bool or nil
+# True if every pixel's R, G, B are within `tolerance` of each other.
+# ---------------------------------------------------------------------------
+fn is_grayscale(path, tolerance):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return nil
+    let result = vision_is_grayscale(img, tolerance)
+    vision_free(img)
+    return result
+
+# ---------------------------------------------------------------------------
+# color_mask(input_path, output_path, h_min, h_max, s_min, s_max, v_min, v_max) -> bool
+# Writes a binary mask (white = pixel in range, black = not) marking every
+# pixel whose HSV falls in the given range. Hue 0-360, saturation/value 0-100.
+#
+# This is real color-based object detection for simple cases — e.g. to
+# find "everything red": color_mask(in, out, 0, 15, 40, 100, 30, 100).
+# Hue ranges that wrap past 360 (like red, which straddles 0) are
+# supported by passing h_min > h_max, e.g. (350, 10).
+# ---------------------------------------------------------------------------
+fn color_mask(input_path, output_path, h_min, h_max, s_min, s_max, v_min, v_max):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let mask = vision_color_mask(img, h_min, h_max, s_min, s_max, v_min, v_max)
+    let ok = vision_save(mask, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(mask)
+    return ok
+
+# ---------------------------------------------------------------------------
+# find_color_regions(path, h_min, h_max, s_min, s_max, v_min, v_max, min_area) -> array of blobs
+# Combines color_mask + find_blobs: returns the bounding boxes of every
+# region matching the given color range. Each blob is
+# {"x","y","w","h","area","cx","cy"}.
+# ---------------------------------------------------------------------------
+fn find_color_regions(path, h_min, h_max, s_min, s_max, v_min, v_max, min_area):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return []
+    let mask = vision_color_mask(img, h_min, h_max, s_min, s_max, v_min, v_max)
+    let blobs = vision_find_blobs(mask, min_area)
+    vision_free(img)
+    vision_free(mask)
+    return blobs

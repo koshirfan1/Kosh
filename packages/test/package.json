@@ -1,0 +1,11 @@
+{
+    "name": "test",
+    "version": "1.0.0",
+    "description": "Unit testing framework: assertions, test suites, pass/fail reporting",
+    "author": "khandev1211-cpu",
+    "developer": "Irfan Khan",
+    "main": "test.kh",
+    "files": [
+        "test.kh"
+    ]
+}

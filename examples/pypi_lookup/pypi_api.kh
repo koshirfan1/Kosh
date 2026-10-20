@@ -1,0 +1,32 @@
+# pypi_api.kh — talks to the real PyPI JSON API (pypi.org)
+# Demonstrates: http_get, json_decode, nested map access
+
+# Real-world JSON is messy — PyPI often returns null for optional fields
+# like home_page or author (many packages list these in project_urls
+# instead nowadays). This keeps a nil from breaking string concatenation
+# later when we go to display the package info.
+fn or_default(value, fallback):
+    if value == nil:
+        return fallback
+    return value
+
+fn fetch_package(name):
+    let url = "https://pypi.org/pypi/" + name + "/json"
+    let res = http_get(url)
+
+    if not res["success"]:
+        return {"ok": false, "status": res["status"]}
+
+    let data = json_decode(res["body"])
+    let info = data["info"]
+
+    let pkg = {
+        "ok": true,
+        "name": info["name"],
+        "version": info["version"],
+        "summary": or_default(info["summary"], "(no summary provided)"),
+        "author": or_default(info["author_email"], "(not listed)"),
+        "home_page": or_default(info["home_page"], "(not listed)"),
+        "fetched_at": now()["timestamp"]
+    }
+    return pkg

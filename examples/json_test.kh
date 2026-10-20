@@ -1,0 +1,19 @@
+# JSON library test
+
+# Encode various types
+print json_encode({"name": "Khan", "v": 2, "ready": true})
+print json_encode([1, "two", false, nil])
+
+# Round-trip
+let original = {"x": 10, "y": 20, "label": "point"}
+let encoded = json_encode(original)
+let decoded = json_decode(encoded)
+print decoded["x"]
+print decoded["label"]
+
+# Decode array
+let arr = json_decode("[100, 200, 300]")
+let total = 0
+for v in arr:
+    total = total + v
+print total

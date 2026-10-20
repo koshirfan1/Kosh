@@ -1,0 +1,16 @@
+# Test for mqtt package
+import "../packages/mqtt/mqtt.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("MQTT Suite")
+
+let client = mqtt_client("broker.hivemq.com", 1883)
+t = test_eq(t, "should set host", client["host"], "broker.hivemq.com")
+
+client = mqtt_subscribe(client, "khan/test")
+t = test_eq(t, "should have 1 sub", len(client["subs"]), 1)
+
+let ok = mqtt_publish(client, "khan/test", "Hello IoT")
+t = test_true(t, "publish should return true", ok)
+
+test_run(t)

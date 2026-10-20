@@ -1,0 +1,12 @@
+# benchmarks/string_concat.kh — repeated string concatenation, 20,000
+# iterations. Deliberately not "just" a speed number to compare across
+# languages — see benchmarks/RESULTS.md for why this one's growth rate
+# (not just its absolute time) is the interesting part: string
+# concatenation via `+` appears to be quadratic-or-worse here, which
+# matters a lot for any code building up strings in a loop.
+let s = ""
+let i = 0
+while i < 20000:
+    s = s + "x"
+    i = i + 1
+print len(s)

@@ -1,0 +1,247 @@
+# Khan Tensor package — real n-dimensional tensors with automatic
+# differentiation, backed by the native engine in src/tensor_lib.c
+# (VAL_TENSOR: one contiguous double buffer, not nested Khan arrays).
+# This is the first slice of Khan's AI-native-core direction — see
+# docs/tensor.md for the full design writeup and v1 scope limits.
+#
+# Usage: import "tensor"
+#
+#   let x = Tensor([[1, 2], [3, 4]], true)   # requires_grad = true
+#   let y = Tensor([[5, 6], [7, 8]], true)
+#   let loss = x.add(y).mul(x).sum()
+#   loss.backward(nil)
+#   print x.grad.data()
+
+class Tensor:
+    fn __init__(self, data, requires_grad):
+        if type(data) == "tensor":
+            self.buf = data
+        else:
+            self.buf = _tensor_from_nested(data)
+        self.requires_grad = requires_grad
+        self.grad = nil
+        self.op = "leaf"
+        self.a = nil
+        self.b = nil
+        # used only by the fused softmax+cross-entropy node built by
+        # packages/nn/nn.kh's cross_entropy_loss() -- see backward()'s
+        # "softmax_cross_entropy" case below and docs/nn.md.
+        self._probs = nil
+        self._target = nil
+
+    # -- inspection ----------------------------------------------------
+    fn shape(self):
+        return _tensor_shape(self.buf)
+    fn ndim(self):
+        return _tensor_ndim(self.buf)
+    fn numel(self):
+        return _tensor_numel(self.buf)
+    fn data(self):
+        return _tensor_to_nested(self.buf)
+
+    # Wraps a plain number or nested array as a (non-tracking) Tensor,
+    # so `t.add(5)` works the same as `t.add(Tensor(5, false))`.
+    fn _as_tensor(self, v):
+        if type(v) == "instance":
+            return v
+        return Tensor(v, false)
+
+    # -- ops - each records what it was built from, for backward() ----
+    fn add(self, other):
+        let ot = self._as_tensor(other)
+        let out = Tensor(_tensor_add(self.buf, ot.buf), self.requires_grad or ot.requires_grad)
+        out.op = "add"
+        out.a = self
+        out.b = ot
+        return out
+
+    fn sub(self, other):
+        let ot = self._as_tensor(other)
+        let out = Tensor(_tensor_sub(self.buf, ot.buf), self.requires_grad or ot.requires_grad)
+        out.op = "sub"
+        out.a = self
+        out.b = ot
+        return out
+
+    fn mul(self, other):
+        let ot = self._as_tensor(other)
+        let out = Tensor(_tensor_mul(self.buf, ot.buf), self.requires_grad or ot.requires_grad)
+        out.op = "mul"
+        out.a = self
+        out.b = ot
+        return out
+
+    fn matmul(self, other):
+        let ot = self._as_tensor(other)
+        let out = Tensor(_tensor_matmul(self.buf, ot.buf), self.requires_grad or ot.requires_grad)
+        out.op = "matmul"
+        out.a = self
+        out.b = ot
+        return out
+
+    fn transpose(self):
+        let out = Tensor(_tensor_transpose(self.buf), self.requires_grad)
+        out.op = "transpose"
+        out.a = self
+        return out
+
+    fn reshape(self, shape):
+        let out = Tensor(_tensor_reshape(self.buf, shape), self.requires_grad)
+        out.op = "reshape"
+        out.a = self
+        return out
+
+    fn sum(self):
+        let out = Tensor(_tensor_sum(self.buf), self.requires_grad)
+        out.op = "sum"
+        out.a = self
+        return out
+
+    fn mean(self):
+        return self.sum().mul(1.0 / self.numel())
+
+    # ── activations (used by packages/nn/nn.kh) ──────────────────────
+    fn relu(self):
+        let out = Tensor(_tensor_relu(self.buf), self.requires_grad)
+        out.op = "relu"
+        out.a = self
+        return out
+
+    fn sigmoid(self):
+        let out = Tensor(_tensor_sigmoid(self.buf), self.requires_grad)
+        out.op = "sigmoid"
+        out.a = self
+        return out
+
+    fn tanh(self):
+        let out = Tensor(_tensor_tanh(self.buf), self.requires_grad)
+        out.op = "tanh"
+        out.a = self
+        return out
+
+    # Row-wise softmax, for INFERENCE only (e.g. turning logits into
+    # probabilities to read off with argmax) -- this does NOT build a
+    # graph node and .backward() will not propagate through it. Training
+    # a classifier goes through packages/nn/nn.kh's cross_entropy_loss()
+    # instead, which fuses softmax+cross-entropy into one node with a
+    # simple, numerically-stable closed-form gradient -- see docs/nn.md
+    # for why that's fused rather than composed from this method.
+    fn softmax(self):
+        return Tensor(_tensor_softmax(self.buf), false)
+
+    # -- autograd -------------------------------------------------------
+    # Accumulates an incoming gradient (so a Tensor used more than once
+    # in a graph sums the contributions from every use, standard
+    # reverse-mode behaviour) without recording this add itself in the
+    # graph -- self.grad is bookkeeping, not part of the forward graph.
+    # When this op's forward pass broadcast a smaller operand (always
+    # size-1, by construction of _tensor_add/sub/mul's broadcasting rule
+    # in src/tensor_lib.c) against a bigger one, the incoming gradient
+    # `g` has the BIGGER (output) shape -- but `operand.buf` only has the
+    # smaller one. Passing `g` straight to operand.backward() would
+    # silently reshape `operand` itself to the batch's shape the moment
+    # an optimizer applies it (found via training a Dense(1,1) layer with
+    # a shared bias across a batch -- see docs/tensor.md). The fix is the
+    # standard one: sum the gradient back down over everything that was
+    # broadcast, then reshape to the operand's own shape.
+    fn _reduce_grad_to(self, g, operand):
+        if _tensor_numel(g.buf) == _tensor_numel(operand.buf):
+            return g
+        return Tensor(_tensor_sum_to_shape(g.buf, _tensor_shape(operand.buf)), false)
+
+    fn _accumulate(self, g):
+        if self.grad == nil:
+            self.grad = g
+        else:
+            self.grad = Tensor(_tensor_add(self.grad.buf, g.buf), false)
+
+    # grad may be nil (meaning "I am the final scalar output, seed with
+    # ones" - the usual `loss.backward(nil)` entry point) or an explicit
+    # Tensor for calling backward() on a non-leaf mid-graph.
+    fn backward(self, grad):
+        let g = grad
+        if g == nil:
+            g = Tensor(_tensor_ones_like(self.buf), false)
+        if self.requires_grad:
+            self._accumulate(g)
+
+        if self.op == "add":
+            if self.a.requires_grad:
+                self.a.backward(self._reduce_grad_to(g, self.a))
+            if self.b.requires_grad:
+                self.b.backward(self._reduce_grad_to(g, self.b))
+        elif self.op == "sub":
+            if self.a.requires_grad:
+                self.a.backward(self._reduce_grad_to(g, self.a))
+            if self.b.requires_grad:
+                let neg_g = Tensor(_tensor_mul(g.buf, -1), false)
+                self.b.backward(self._reduce_grad_to(neg_g, self.b))
+        elif self.op == "mul":
+            if self.a.requires_grad:
+                let ga = Tensor(_tensor_mul(g.buf, self.b.buf), false)
+                self.a.backward(self._reduce_grad_to(ga, self.a))
+            if self.b.requires_grad:
+                let gb = Tensor(_tensor_mul(g.buf, self.a.buf), false)
+                self.b.backward(self._reduce_grad_to(gb, self.b))
+        elif self.op == "matmul":
+            # z = a @ b  =>  dL/da = g @ b^T ,  dL/db = a^T @ g
+            if self.a.requires_grad:
+                self.a.backward(Tensor(_tensor_matmul(g.buf, _tensor_transpose(self.b.buf)), false))
+            if self.b.requires_grad:
+                self.b.backward(Tensor(_tensor_matmul(_tensor_transpose(self.a.buf), g.buf), false))
+        elif self.op == "transpose":
+            if self.a.requires_grad:
+                self.a.backward(Tensor(_tensor_transpose(g.buf), false))
+        elif self.op == "sum":
+            if self.a.requires_grad:
+                # d(sum)/d(each element) = 1, so broadcast g (a scalar)
+                # back out to a's original shape.
+                self.a.backward(Tensor(_tensor_add(_tensor_zeros_like(self.a.buf), g.buf), false))
+        elif self.op == "reshape":
+            if self.a.requires_grad:
+                self.a.backward(Tensor(_tensor_reshape(g.buf, _tensor_shape(self.a.buf)), false))
+        elif self.op == "relu":
+            if self.a.requires_grad:
+                self.a.backward(Tensor(_tensor_relu_backward(g.buf, self.a.buf), false))
+        elif self.op == "sigmoid":
+            if self.a.requires_grad:
+                # d(sigmoid)/dx = out * (1 - out), where `out` is this
+                # node's own (already-computed) buffer -- self.buf.
+                let one_minus_out = _tensor_sub(1, self.buf)
+                self.a.backward(Tensor(_tensor_mul(g.buf, _tensor_mul(self.buf, one_minus_out)), false))
+        elif self.op == "tanh":
+            if self.a.requires_grad:
+                # d(tanh)/dx = 1 - out^2
+                let out_sq = _tensor_mul(self.buf, self.buf)
+                self.a.backward(Tensor(_tensor_mul(g.buf, _tensor_sub(1, out_sq)), false))
+        elif self.op == "softmax_cross_entropy":
+            if self.a.requires_grad:
+                # closed-form, fused gradient: (probs - one_hot(target)) / N,
+                # scaled by whatever incoming gradient g carries (ordinarily
+                # just 1, from the usual loss.backward(nil)).
+                let base_grad = _tensor_cross_entropy_grad(self._probs.buf, self._target)
+                self.a.backward(Tensor(_tensor_mul(base_grad, g.buf), false))
+        return nil
+
+
+# -- backward-compatible free functions (nested-array in, nested-array
+# out), kept for anything written against the old array-based package.
+# These now call the native engine instead of the old pure-Khan O(n^3)
+# loops, so they're also just faster. ------------------------------------
+
+fn matmul(A, B):
+    return _tensor_to_nested(_tensor_matmul(_tensor_from_nested(A), _tensor_from_nested(B)))
+
+fn dot(a, b):
+    let ta = _tensor_from_nested(a)
+    let tb = _tensor_from_nested(b)
+    if _tensor_ndim(ta) != 1 or _tensor_ndim(tb) != 1:
+        print "Error: dot() expects two 1-D vectors"
+        return nil
+    return _tensor_to_nested(_tensor_sum(_tensor_mul(ta, tb)))
+
+fn add(a, b):
+    return _tensor_to_nested(_tensor_add(_tensor_from_nested(a), _tensor_from_nested(b)))
+
+fn scale(A, s):
+    return _tensor_to_nested(_tensor_mul(_tensor_from_nested(A), s))

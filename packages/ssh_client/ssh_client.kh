@@ -1,0 +1,14 @@
+# Khan SSH Client Package
+# Usage: import "ssh_client"
+
+fn ssh_client(host, user, pass):
+    return {
+        "host": host,
+        "user": user,
+        "pass": pass
+    }
+
+fn ssh_exec(client, cmd):
+    print "[SSH] " + client["user"] + "@" + client["host"] + " $ " + cmd
+    # Placeholder for remote output
+    return "SSH Output Placeholder"

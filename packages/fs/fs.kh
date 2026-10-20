@@ -1,0 +1,142 @@
+# Khan fs package v1.0.0
+# Author: Irfan Khan
+# File system utilities — read, write, append, copy, walk paths
+#
+# Usage:
+#   import "fs"
+#   let data = fs_read("config.json")
+#   fs_write("out.txt", "hello")
+#   fs_append("log.txt", "new line\n")
+
+# ─────────────────────────────────────────────────────────────
+# READ
+# ─────────────────────────────────────────────────────────────
+
+fn fs_read(path):
+    return read_file(path)
+
+fn fs_read_lines(path):
+    let content = read_file(path)
+    if content == nil:
+        return nil
+    return split(content, "\n")
+
+fn fs_read_json(path):
+    let content = read_file(path)
+    if content == nil:
+        return nil
+    return json_decode(content)
+
+# ─────────────────────────────────────────────────────────────
+# WRITE
+# ─────────────────────────────────────────────────────────────
+
+fn fs_write(path, content):
+    return write_file(path, content)
+
+fn fs_write_json(path, data):
+    return write_file(path, json_encode(data))
+
+fn fs_append(path, content):
+    let existing = read_file(path)
+    if existing == nil:
+        existing = ""
+    return write_file(path, existing + content)
+
+fn fs_append_line(path, line):
+    return fs_append(path, line + "\n")
+
+# ─────────────────────────────────────────────────────────────
+# CHECK
+# ─────────────────────────────────────────────────────────────
+
+fn fs_exists(path):
+    return file_exists(path)
+
+fn fs_is_empty(path):
+    let content = read_file(path)
+    if content == nil:
+        return true
+    return len(content) == 0
+
+fn fs_size(path):
+    let content = read_file(path)
+    if content == nil:
+        return 0
+    return len(content)
+
+# ─────────────────────────────────────────────────────────────
+# PATH HELPERS
+# ─────────────────────────────────────────────────────────────
+
+fn fs_basename(path):
+    let parts = split(path, "/")
+    if len(parts) == 0:
+        return path
+    return parts[len(parts) - 1]
+
+fn fs_dirname(path):
+    let parts = split(path, "/")
+    if len(parts) <= 1:
+        return "."
+    let result = ""
+    let i = 0
+    while i < len(parts) - 1:
+        if i > 0:
+            result = result + "/"
+        result = result + parts[i]
+        i = i + 1
+    return result
+
+fn fs_extname(path):
+    let base = fs_basename(path)
+    let parts = split(base, ".")
+    if len(parts) <= 1:
+        return ""
+    return "." + parts[len(parts) - 1]
+
+fn fs_stem(path):
+    let base = fs_basename(path)
+    let ext  = fs_extname(path)
+    if len(ext) == 0:
+        return base
+    return substring(base, 0, len(base) - len(ext))
+
+fn fs_join(a, b):
+    if len(a) == 0:
+        return b
+    let last = substring(a, len(a) - 1, 1)
+    if last == "/":
+        return a + b
+    return a + "/" + b
+
+# ─────────────────────────────────────────────────────────────
+# COPY / MOVE
+# ─────────────────────────────────────────────────────────────
+
+fn fs_copy(src, dst):
+    let content = read_file(src)
+    if content == nil:
+        return false
+    return write_file(dst, content)
+
+# ─────────────────────────────────────────────────────────────
+# CONFIG HELPERS  (read/write key-value JSON config)
+# ─────────────────────────────────────────────────────────────
+
+fn fs_config_read(path):
+    let data = fs_read_json(path)
+    if data == nil:
+        return {}
+    return data
+
+fn fs_config_get(path, key, default_val):
+    let cfg = fs_config_read(path)
+    if has(cfg, key):
+        return cfg[key]
+    return default_val
+
+fn fs_config_set(path, key, value):
+    let cfg = fs_config_read(path)
+    cfg[key] = value
+    return fs_write_json(path, cfg)

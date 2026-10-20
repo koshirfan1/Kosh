@@ -1,0 +1,8 @@
+# Library file for testing imports
+let greeting = "Hello from imported library!"
+fn say_hello:
+    print greeting
+
+fn add(a, b):
+    let result = a + b
+    print result

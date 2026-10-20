@@ -1,0 +1,24 @@
+# Test for tensor package
+import "../packages/tensor/tensor.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Tensor Suite")
+
+# Test matmul
+# [1, 2] * [5, 6] = [1*5+2*7, 1*6+2*8] = [19, 22]
+# [3, 4]   [7, 8]   [3*5+4*7, 3*6+4*8]   [43, 50]
+let A = [[1, 2], [3, 4]]
+let B = [[5, 6], [7, 8]]
+let C = matmul(A, B)
+
+t = test_eq(t, "matmul row 0 col 0", C[0][0], 19)
+t = test_eq(t, "matmul row 0 col 1", C[0][1], 22)
+t = test_eq(t, "matmul row 1 col 0", C[1][0], 43)
+t = test_eq(t, "matmul row 1 col 1", C[1][1], 50)
+
+# Test dot
+let v1 = [1, 2, 3]
+let v2 = [4, 5, 6]
+t = test_eq(t, "dot product", dot(v1, v2), 32) # 4+10+18=32
+
+test_run(t)

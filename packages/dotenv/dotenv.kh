@@ -1,0 +1,59 @@
+# Khan Dotenv Package
+# Usage: import "dotenv"
+
+# Internal helper: trim whitespace
+fn _trim(s):
+    if type(s) != "string":
+        return s
+    let start = 0
+    while start < len(s):
+        let c = substring(s, start, 1)
+        if c == " " or c == "\t" or c == "\r" or c == "\n":
+            start = start + 1
+        else:
+            break
+
+    let end = len(s)
+    while end > start:
+        let c = substring(s, end - 1, 1)
+        if c == " " or c == "\t" or c == "\r" or c == "\n":
+            end = end - 1
+        else:
+            break
+
+    return substring(s, start, end - start)
+
+# Internal helper: strip quotes
+fn _strip_quotes(s):
+    if len(s) < 2:
+        return s
+    let first = substring(s, 0, 1)
+    let last = substring(s, len(s) - 1, 1)
+    if (first == "\"" and last == "\"") or (first == "'" and last == "'"):
+        return substring(s, 1, len(s) - 2)
+    return s
+
+# Public API
+fn load_env(path):
+    let result = {}
+    let content = read_file(path)
+    if content == nil:
+        return result
+
+    let lines = split(content, "\n")
+    for line in lines:
+        let l = _trim(line)
+        if len(l) > 0:
+            if substring(l, 0, 1) != "#":
+                let parts = split(l, "=")
+                if len(parts) >= 2:
+                    let key = _trim(parts[0])
+                    let val = _trim(parts[1])
+                    val = _strip_quotes(val)
+                    result[key] = val
+    return result
+
+fn env_get(env_map, key):
+    if has(env_map, key):
+        return env_map[key]
+    return nil

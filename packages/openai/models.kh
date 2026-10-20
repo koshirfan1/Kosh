@@ -1,0 +1,19 @@
+# openai/models.kh — list available models. Needs transport.kh, errors.kh.
+
+# ---------------------------------------------------------------------------
+# openai_list_models(client) -> array of model id strings
+# Returns an empty array on failure (check openai_last_error(client)).
+# ---------------------------------------------------------------------------
+fn openai_list_models(client):
+    let result = _openai_get(client, "/models")
+
+    if openai_is_error(result):
+        client["last_error"] = result
+        return []
+
+    client["last_error"] = nil
+    let ids = []
+    if has(result, "data"):
+        for m in result["data"]:
+            ids = push(ids, m["id"])
+    return ids

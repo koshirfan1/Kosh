@@ -1,0 +1,108 @@
+# openai/chat.kh — chat completions, single-shot asks, and multi-turn
+# conversations. Needs transport.kh, errors.kh, messages.kh, util.kh.
+
+# ---------------------------------------------------------------------------
+# openai_chat(client, messages) -> decoded response map, or error map
+# `messages` is an array of msg_system/msg_user/msg_assistant maps.
+# Sets client["last_error"] (nil on success) so you can inspect it later
+# without threading the return value through everything.
+# ---------------------------------------------------------------------------
+fn openai_chat(client, messages):
+    let body = {"model": client["model"], "messages": messages}
+    let result = _openai_post(client, "/chat/completions", body)
+    if openai_is_error(result):
+        client["last_error"] = result
+    else:
+        client["last_error"] = nil
+    return result
+
+# ---------------------------------------------------------------------------
+# openai_chat_opts(client, messages, options) -> decoded response map, or error map
+# `options` is merged into the request body, e.g.:
+#   openai_chat_opts(client, msgs, {"temperature": 0.2, "max_tokens": 200})
+# ---------------------------------------------------------------------------
+fn openai_chat_opts(client, messages, options):
+    let body = {"model": client["model"], "messages": messages}
+    let ks = keys(options)
+    let i = 0
+    while i < len(ks):
+        body[ks[i]] = options[ks[i]]
+        i = i + 1
+
+    let result = _openai_post(client, "/chat/completions", body)
+    if openai_is_error(result):
+        client["last_error"] = result
+    else:
+        client["last_error"] = nil
+    return result
+
+# ---------------------------------------------------------------------------
+# openai_ask(client, prompt) -> string
+# The one-liner: single-turn prompt in, reply text out. Returns "" (and
+# sets client["last_error"]) on failure — check openai_last_error(client)
+# if you need to know why.
+# ---------------------------------------------------------------------------
+fn openai_ask(client, prompt):
+    let result = openai_chat(client, [msg_user(prompt)])
+    if openai_is_error(result):
+        return ""
+    return openai_extract_text(result)
+
+# ---------------------------------------------------------------------------
+# openai_ask_opts(client, prompt, options) -> string
+# Same as openai_ask, with request options (temperature, max_tokens, ...).
+# ---------------------------------------------------------------------------
+fn openai_ask_opts(client, prompt, options):
+    let result = openai_chat_opts(client, [msg_user(prompt)], options)
+    if openai_is_error(result):
+        return ""
+    return openai_extract_text(result)
+
+# ---------------------------------------------------------------------------
+# openai_last_error(client) -> error map or nil
+# ---------------------------------------------------------------------------
+fn openai_last_error(client):
+    return client["last_error"]
+
+# ---------------------------------------------------------------------------
+# conversation_ask(conv, user_text) -> string
+# Sends the full running history plus this new user turn, appends both
+# the user message and the assistant's reply to history on success, and
+# returns the reply text. Returns "" on failure — check
+# conversation_last_error(conv).
+# ---------------------------------------------------------------------------
+fn conversation_ask(conv, user_text):
+    conv["history"] = push(conv["history"], msg_user(user_text))
+    let result = openai_chat(conv["client"], conv["history"])
+
+    if openai_is_error(result):
+        conv["last_error"] = result
+        return ""
+
+    conv["last_error"] = nil
+    let text = openai_extract_text(result)
+    conv["history"] = push(conv["history"], msg_assistant(text))
+    return text
+
+# ---------------------------------------------------------------------------
+# conversation_ask_opts(conv, user_text, options) -> string
+# Same as conversation_ask, with request options.
+# ---------------------------------------------------------------------------
+fn conversation_ask_opts(conv, user_text, options):
+    conv["history"] = push(conv["history"], msg_user(user_text))
+    let result = openai_chat_opts(conv["client"], conv["history"], options)
+
+    if openai_is_error(result):
+        conv["last_error"] = result
+        return ""
+
+    conv["last_error"] = nil
+    let text = openai_extract_text(result)
+    conv["history"] = push(conv["history"], msg_assistant(text))
+    return text
+
+# ---------------------------------------------------------------------------
+# conversation_last_error(conv) -> error map or nil
+# ---------------------------------------------------------------------------
+fn conversation_last_error(conv):
+    return conv["last_error"]

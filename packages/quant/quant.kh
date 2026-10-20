@@ -1,0 +1,287 @@
+# Khan Quantization Package
+# Usage: import "quant"
+#
+# Accuracy-preserving quantization, in pure Khan - no native C bridge, no
+# dtype/Tensor prerequisite. round()/abs()/max()/pow() (all already in the
+# stdlib) are enough to implement and *measure* per-channel calibrated
+# quantization today.
+#
+# Important honesty note (see docs/llm.md for the fuller discussion): this
+# simulates quantization's ACCURACY behavior - it does not get you real
+# int8 storage or faster int8 arithmetic, because Khan has no dtype system
+# yet (every number is still a native double under the hood). Use this to
+# validate a calibration/granularity strategy against your own data *before*
+# investing in the native dtype+Tensor work that would make it actually
+# smaller and faster.
+#
+# A quantized matrix is represented as:
+#   {"data": [[...]...], "scales": [s0, s1, ...], "bits": bits}
+# "data" already holds dequantized (round-tripped) values - one scale per
+# row (per output channel), not one scale for the whole matrix. See
+# quant_error() below and docs/llm.md for why per-channel matters.
+
+fn quantize_per_channel(W, bits):
+    let qmax = pow(2, bits - 1) - 1
+    let data = []
+    let scales = []
+    for row in W:
+        let ch_max = 0
+        for v in row:
+            let a = abs(v)
+            if a > ch_max:
+                ch_max = a
+        let scale = 1
+        if ch_max > 0:
+            scale = ch_max / qmax
+        let qrow = []
+        for v in row:
+            let q = round(v / scale)
+            if q > qmax:
+                q = qmax
+            if q < 0 - qmax:
+                q = 0 - qmax
+            qrow = push(qrow, q * scale)
+        data = push(data, qrow)
+        scales = push(scales, scale)
+    return {"data": data, "scales": scales, "bits": bits}
+
+# Same idea, but calibrated by clipping the top (1 - keep_fraction) of
+# |value| before setting the scale, the way PTQ toolchains often calibrate
+# ACTIVATION ranges (where extreme values are frequently rare/noisy and
+# safe to clip).
+#
+# Tested two ways, both confirmed empirically (see chat), and the second
+# one matters a lot: on light-tailed data with no real outliers, clipping
+# does nothing useful and can do slightly worse than the plain max-based
+# version above. Worse: on data WITH real outliers, if those large values
+# are actually salient (weights, not noisy activations), clipping them is
+# actively destructive - measured 69.97% relative error, vastly worse than
+# not calibrating at all (2.24%), because clipping REPLACES a real large
+# weight with a small wrong one instead of preserving it. For WEIGHT
+# outliers specifically, use quantize_outlier_aware() below (decompose,
+# don't clip) - this function is the right shape for activation
+# calibration, not a general-purpose "handle outliers" tool.
+fn quantize_per_channel_calibrated(W, keep_fraction):
+    let qmax = 127
+    let data = []
+    let scales = []
+    for row in W:
+        let sorted_abs = []
+        for v in row:
+            sorted_abs = push(sorted_abs, abs(v))
+        # insertion sort - fine at calibration time, this isn't the hot path
+        let i = 1
+        while i < len(sorted_abs):
+            let key = sorted_abs[i]
+            let j = i - 1
+            while j >= 0 and sorted_abs[j] > key:
+                sorted_abs[j + 1] = sorted_abs[j]
+                j = j - 1
+            sorted_abs[j + 1] = key
+            i = i + 1
+        let idx = floor(len(sorted_abs) * keep_fraction)
+        if idx >= len(sorted_abs):
+            idx = len(sorted_abs) - 1
+        let clip = sorted_abs[idx]
+        let scale = 1
+        if clip > 0:
+            scale = clip / qmax
+        let qrow = []
+        for v in row:
+            let q = round(v / scale)
+            if q > qmax:
+                q = qmax
+            if q < 0 - qmax:
+                q = 0 - qmax
+            qrow = push(qrow, q * scale)
+        data = push(data, qrow)
+        scales = push(scales, scale)
+    return {"data": data, "scales": scales, "bits": 8}
+
+# Relative L2 error between a true matrix and a quantized+dequantized one -
+# the actual metric the earlier chat numbers were computed with.
+fn quant_error(W_true, W_quant):
+    let num = 0
+    let den = 0
+    let i = 0
+    while i < len(W_true):
+        let j = 0
+        while j < len(W_true[0]):
+            let d = W_true[i][j] - W_quant[i][j]
+            num = num + d * d
+            den = den + W_true[i][j] * W_true[i][j]
+            j = j + 1
+        i = i + 1
+    return sqrt(num / den)
+
+# Bias correction: round-to-nearest error isn't always zero-mean per channel
+# (it's only symmetric if the values in that channel are symmetric around
+# zero). This measures each channel's own mean signed error after
+# quantizing and adds it back - cheap, and only helps when a channel's
+# error genuinely has a non-zero mean; on already-symmetric data (like the
+# synthetic test earlier) expect this to do very little, honestly.
+fn quantize_per_channel_bias_corrected(W, bits):
+    let q = quantize_per_channel(W, bits)
+    let corrected = []
+    let i = 0
+    while i < len(W):
+        let row_true = W[i]
+        let row_q = q["data"][i]
+        let sum_err = 0
+        let j = 0
+        while j < len(row_true):
+            sum_err = sum_err + (row_true[j] - row_q[j])
+            j = j + 1
+        let mean_err = sum_err / len(row_true)
+        let corrected_row = []
+        j = 0
+        while j < len(row_q):
+            corrected_row = push(corrected_row, row_q[j] + mean_err)
+            j = j + 1
+        corrected = push(corrected, corrected_row)
+        i = i + 1
+    return {"data": corrected, "scales": q["scales"], "bits": bits}
+
+# Outlier-aware (sparse decomposition) quantization - the LLM.int8() idea:
+# a handful of extreme values per channel dominate a plain max-based scale
+# and drag every other value's precision down with them. Instead: pull the
+# top `outlier_fraction` of |values| per row OUT, keep those specific
+# numbers at full precision, and quantize only what's left with a scale
+# that's no longer distorted by them. This is exactly the technique aimed
+# at the int4 gap measured earlier (5.71% error) - aggressive bit-widths
+# are where outlier handling starts to matter, not int8.
+#
+# Honesty note: "data" below still comes back as a normal dense array
+# (outliers substituted back at full precision) so quant_error()/dot()
+# work on it unchanged for measurement - a real storage-saving version
+# would keep the dense part quantized-only and the outliers as a separate
+# sparse {index, value} list (which "outliers" already is, per row), only
+# reconstructing the dense form at compute time.
+fn quantize_outlier_aware(W, bits, outlier_fraction):
+    let qmax = pow(2, bits - 1) - 1
+    let data = []
+    let scales = []
+    let outliers = []
+    for row in W:
+        let sorted_abs = []
+        for v in row:
+            sorted_abs = push(sorted_abs, abs(v))
+        let i = 1
+        while i < len(sorted_abs):
+            let key = sorted_abs[i]
+            let j = i - 1
+            while j >= 0 and sorted_abs[j] > key:
+                sorted_abs[j + 1] = sorted_abs[j]
+                j = j - 1
+            sorted_abs[j + 1] = key
+            i = i + 1
+        let cut_idx = floor(len(sorted_abs) * (1 - outlier_fraction))
+        if cut_idx >= len(sorted_abs):
+            cut_idx = len(sorted_abs) - 1
+        let threshold = sorted_abs[cut_idx]
+
+        let row_outliers = []
+        let non_outlier_max = 0
+        let idx = 0
+        while idx < len(row):
+            let a = abs(row[idx])
+            if a > threshold:
+                row_outliers = push(row_outliers, {"index": idx, "value": row[idx]})
+            elif a > non_outlier_max:
+                non_outlier_max = a
+            idx = idx + 1
+
+        let scale = 1
+        if non_outlier_max > 0:
+            scale = non_outlier_max / qmax
+
+        let qrow = []
+        idx = 0
+        while idx < len(row):
+            let a = abs(row[idx])
+            if a > threshold:
+                qrow = push(qrow, row[idx])
+            else:
+                let q = round(row[idx] / scale)
+                if q > qmax:
+                    q = qmax
+                if q < 0 - qmax:
+                    q = 0 - qmax
+                qrow = push(qrow, q * scale)
+            idx = idx + 1
+        data = push(data, qrow)
+        scales = push(scales, scale)
+        outliers = push(outliers, row_outliers)
+    return {"data": data, "scales": scales, "bits": bits, "outliers": outliers}
+
+# Mixed precision at row (per-channel) granularity: quantize everything,
+# measure each row's OWN relative error, and if a row is too sensitive
+# (error above error_threshold) just keep that whole row at full precision
+# instead. Reports how many rows ended up full-precision so the size/
+# accuracy trade-off is visible, not hidden.
+fn quantize_mixed_precision(W, bits, error_threshold):
+    let q = quantize_per_channel(W, bits)
+    let data = []
+    let kept_full_precision = 0
+    let i = 0
+    while i < len(W):
+        let row_true = W[i]
+        let row_q = q["data"][i]
+        let num = 0
+        let den = 0
+        let j = 0
+        while j < len(row_true):
+            let d = row_true[j] - row_q[j]
+            num = num + d * d
+            den = den + row_true[j] * row_true[j]
+            j = j + 1
+        let row_err = 0
+        if den > 0:
+            row_err = sqrt(num / den)
+        if row_err > error_threshold:
+            data = push(data, row_true)
+            kept_full_precision = kept_full_precision + 1
+        else:
+            data = push(data, row_q)
+        i = i + 1
+    return {"data": data, "scales": q["scales"], "bits": bits, "full_precision_rows": kept_full_precision}
+
+# Real (not simulated) per-channel int8 quantization - produces actual
+# VAL_INT8ARRAY storage via int8_pack(), one real packed row per channel,
+# not doubles-pretending-to-be-quantized like quantize_per_channel()
+# above. int8_pack() is int8-only (no bits parameter - that's the honest
+# current scope, see int8array_lib.h).
+fn quantize_real_per_channel(W):
+    let rows = []
+    let scales = []
+    for row in W:
+        let ch_max = 0
+        for v in row:
+            let a = abs(v)
+            if a > ch_max:
+                ch_max = a
+        let scale = 1
+        if ch_max > 0:
+            scale = ch_max / 127
+        rows = push(rows, int8_pack(row, scale))
+        scales = push(scales, scale)
+    return {"rows": rows, "scales": scales}
+
+# Matrix-vector product against a quantize_real_per_channel() result -
+# calls int8_dot() per row, never unpacks. This is the real equivalent of
+# quant.kh's earlier accuracy tests, using actual packed storage/compute
+# instead of simulation.
+fn quantized_matmul(qmodel, x):
+    let y = []
+    for row in qmodel["rows"]:
+        y = push(y, int8_dot(row, x))
+    return y
+
+# Total real bytes used by a quantize_real_per_channel() result's packed
+# rows (not counting the small scales array) - for a direct, honest
+# memory comparison against the equivalent plain Khan array-of-arrays.
+fn quantized_byte_size(qmodel):
+    let total = 0
+    for row in qmodel["rows"]:
+        total = total + int8_byte_size(row)
+    return total

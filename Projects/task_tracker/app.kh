@@ -1,0 +1,135 @@
+import "sqlite"
+import "webi"
+
+# Task tracker - real SQLite persistence (the sqlite package used to be a
+# mock that ignored the SQL entirely and always returned true; that was
+# found and fixed this session - see README.md), real per-user data via
+# session tokens, real parameter-bound queries throughout (no string
+# concatenation of user input into SQL, anywhere in this file).
+#
+# Auth is deliberately simple, and this is stated plainly rather than
+# glossed over: there is no password hashing native in Khan yet (no
+# sha256/bcrypt primitive exists), so this has no passwords at all -
+# POST /login with any username creates that user (first time) or logs
+# into it (after), and returns a real, server-checked session token.
+# That means anyone who knows a username can act as that user. Fine for
+# a local demo; a real deployment needs actual password verification,
+# which needs a real hash primitive added to Khan first.
+
+let DB_PATH = "tasks.db"
+
+fn get_db():
+    return db_open(DB_PATH)
+
+fn init_db():
+    let db = get_db()
+    db_exec(db, "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE)", [])
+    db_exec(db, "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER)", [])
+    db_exec(db, "CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, done INTEGER, created_at TEXT)", [])
+    db_close(db)
+
+fn random_token():
+    return str(random(1000000000)) + "_" + str(random(1000000000)) + "_" + str(clock())
+
+# Returns the authenticated user's id, or nil if the request has no valid
+# session token. Every route below (except /login) calls this first.
+fn get_user_id(req):
+    let auth = header_get(req, "Authorization", "")
+    if len(auth) <= 7:
+        return nil
+    if substring(auth, 0, 7) != "Bearer ":
+        return nil
+    let token = substring(auth, 7, len(auth) - 7)
+    let db = get_db()
+    let rows = db_query(db, "SELECT user_id FROM sessions WHERE token = ?", [token])
+    db_close(db)
+    if len(rows) == 0:
+        return nil
+    return rows[0]["user_id"]
+
+fn h_login(req):
+    let body = req["body_json"]
+    if body == nil or not has(body, "username") or len(body["username"]) == 0:
+        return res_bad_request("username required")
+    let username = body["username"]
+
+    let db = get_db()
+    let existing = db_query(db, "SELECT id FROM users WHERE username = ?", [username])
+    let user_id = 0
+    if len(existing) == 0:
+        db_exec(db, "INSERT INTO users (username) VALUES (?)", [username])
+        let created = db_query(db, "SELECT id FROM users WHERE username = ?", [username])
+        user_id = created[0]["id"]
+    else:
+        user_id = existing[0]["id"]
+
+    let token = random_token()
+    db_exec(db, "INSERT INTO sessions (token, user_id) VALUES (?, ?)", [token, user_id])
+    db_close(db)
+    return res_json({"token": token, "user_id": user_id})
+
+fn h_list_tasks(req):
+    let user_id = get_user_id(req)
+    if user_id == nil:
+        return res_unauthorized("login first")
+    let db = get_db()
+    let rows = db_query(db, "SELECT id, title, done, created_at FROM tasks WHERE user_id = ? ORDER BY id", [user_id])
+    db_close(db)
+    return res_json(rows)
+
+fn h_create_task(req):
+    let user_id = get_user_id(req)
+    if user_id == nil:
+        return res_unauthorized("login first")
+    let body = req["body_json"]
+    if body == nil or not has(body, "title") or len(body["title"]) == 0:
+        return res_bad_request("title required")
+    let db = get_db()
+    db_exec(db, "INSERT INTO tasks (user_id, title, done, created_at) VALUES (?, ?, 0, ?)",
+            [user_id, body["title"], str(clock())])
+    db_close(db)
+    return res_created({"created": true})
+
+fn h_toggle_task(req):
+    let user_id = get_user_id(req)
+    if user_id == nil:
+        return res_unauthorized("login first")
+    let task_id = req["params"]["id"]
+    let db = get_db()
+    # user_id in the WHERE clause, not just the id - a task can only be
+    # toggled by the user who owns it, even if they guess another task's id
+    db_exec(db, "UPDATE tasks SET done = 1 - done WHERE id = ? AND user_id = ?", [task_id, user_id])
+    db_close(db)
+    return res_json({"toggled": true})
+
+fn h_delete_task(req):
+    let user_id = get_user_id(req)
+    if user_id == nil:
+        return res_unauthorized("login first")
+    let task_id = req["params"]["id"]
+    let db = get_db()
+    db_exec(db, "DELETE FROM tasks WHERE id = ? AND user_id = ?", [task_id, user_id])
+    db_close(db)
+    return res_no_content()
+
+fn h_index(req):
+    # read_file() resolves relative to the process's cwd, same as
+    # llm_load() (see docs/llm.md) - unlike serve_static()'s folder
+    # argument, which IS script-relative. Two different native functions,
+    # two different conventions; found by testing, not assumed.
+    let html = read_file("examples/task_tracker/public/index.html")
+    return res_html(html)
+
+init_db()
+
+let app = webi_app()
+app = route(app, "GET",    "/",                h_index)
+app = route(app, "POST",   "/login",           h_login)
+app = route(app, "GET",    "/tasks",           h_list_tasks)
+app = route(app, "POST",   "/tasks",           h_create_task)
+app = route(app, "POST",   "/tasks/:id/toggle", h_toggle_task)
+app = route(app, "DELETE", "/tasks/:id",       h_delete_task)
+app = serve_static(app, "/static", "public")
+
+print "Task tracker running on http://localhost:8200"
+webi_run(app, 8200)

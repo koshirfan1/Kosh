@@ -1,0 +1,38 @@
+# Standard Library Test
+print "=== Type Conversions ==="
+print type(42)
+print type("hello")
+print type(true)
+print type(nil)
+print str(42)
+print str(true)
+print num("3.14")
+
+print "=== String Functions ==="
+print len("hello")
+print upper("hello")
+print lower("HELLO")
+print contains("hello world", "world")
+print contains("hello world", "xyz")
+print trim("  hello  ")
+print substring("hello world", 0, 5)
+
+print "=== Math Functions ==="
+print abs(-5)
+print min(3, 7)
+print max(3, 7)
+print sqrt(16)
+print round(3.7)
+print floor(3.7)
+print ceil(3.7)
+print pow(2, 10)
+
+print "=== Random ==="
+let r = random()
+print r > 0 and r < 1
+
+print "=== Clock ==="
+let c = clock()
+print type(c) == "number"
+
+print "=== All Tests Passed ==="

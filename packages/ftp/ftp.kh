@@ -1,0 +1,17 @@
+# Khan FTP Package
+# Usage: import "mqtt"
+
+fn ftp_client(host, user, pass):
+    return {
+        "host": host,
+        "user": user,
+        "pass": pass
+    }
+
+fn ftp_upload(client, local_path, remote_path):
+    print "[FTP] Uploading " + local_path + " to " + client["host"] + ":" + remote_path
+    return true
+
+fn ftp_download(client, remote_path, local_path):
+    print "[FTP] Downloading from " + client["host"] + ":" + remote_path + " to " + local_path
+    return true

@@ -1,0 +1,59 @@
+# openai/messages.kh — message builders + multi-turn conversation state.
+
+# ---------------------------------------------------------------------------
+# msg_system(content) / msg_user(content) / msg_assistant(content) -> map
+# Build a single chat message. Pass an array of these to openai_chat.
+# ---------------------------------------------------------------------------
+fn msg_system(content):
+    return {"role": "system", "content": content}
+
+fn msg_user(content):
+    return {"role": "user", "content": content}
+
+fn msg_assistant(content):
+    return {"role": "assistant", "content": content}
+
+# ---------------------------------------------------------------------------
+# conversation_new(client) -> conversation
+# conversation_new_with_system(client, system_prompt) -> conversation
+#
+# A conversation tracks message history so multi-turn chat doesn't require
+# manually rebuilding the messages array each time.
+#   conv["client"]      the client to send requests through
+#   conv["history"]     array of message maps sent so far
+#   conv["last_error"]  set by conversation_ask on failure, else nil
+# ---------------------------------------------------------------------------
+fn conversation_new(client):
+    return {
+        "client":     client,
+        "history":    [],
+        "last_error": nil
+    }
+
+fn conversation_new_with_system(client, system_prompt):
+    let conv = conversation_new(client)
+    conv["history"] = push(conv["history"], msg_system(system_prompt))
+    return conv
+
+# ---------------------------------------------------------------------------
+# conversation_add(conv, role, content) -> conv
+# Manually append a message to history without sending anything — useful
+# for seeding few-shot examples before the first real turn.
+# ---------------------------------------------------------------------------
+fn conversation_add(conv, role, content):
+    conv["history"] = push(conv["history"], {"role": role, "content": content})
+    return conv
+
+# ---------------------------------------------------------------------------
+# conversation_history(conv) -> array of message maps
+# ---------------------------------------------------------------------------
+fn conversation_history(conv):
+    return conv["history"]
+
+# ---------------------------------------------------------------------------
+# conversation_reset(conv) -> conv
+# Clears history (keeps the client attached).
+# ---------------------------------------------------------------------------
+fn conversation_reset(conv):
+    conv["history"] = []
+    return conv

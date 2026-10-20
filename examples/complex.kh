@@ -1,0 +1,8 @@
+let x = 10 + 5 * 2
+let y = x > 5 and x < 20
+print x
+print y
+if x == 20:
+    print "x is twenty"
+else:
+    print "x is not twenty"

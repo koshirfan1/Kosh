@@ -1,0 +1,9 @@
+# benchmarks/fib.kh — recursive (exponential, deliberately unmemoized)
+# fibonacci — stresses function call overhead specifically, unlike
+# loop.kh which stresses the bytecode dispatch loop for simple ops.
+fn fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+print fib(28)

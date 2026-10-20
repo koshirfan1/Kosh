@@ -1,0 +1,36 @@
+# Khan NLP (Natural Language Processing)
+# Usage: import "nlp"
+
+# Public API: Basic Sentiment Analysis
+fn sentiment(text):
+    let positive = ["great", "good", "awesome", "excellent", "happy", "love", "best", "perfect"]
+    let negative = ["bad", "awful", "terrible", "sad", "horrible", "hate", "worst", "poor"]
+
+    let score = 0
+    let tokens = tokenize(text)
+
+    for token in tokens:
+        let word = lower(token)
+        if _contains(positive, word):
+            score = score + 1
+        if _contains(negative, word):
+            score = score - 1
+
+    return score
+
+# Public API: Clean words from text
+fn tokenize(text):
+    # Remove basic punctuation and split
+    let punc = [".", ",", "!", "?", ";", ":"]
+    let clean = text
+    for p in punc:
+        clean = str_replace(clean, p, "")
+
+    return split(clean, " ")
+
+# Internal helper
+fn _contains(arr, val):
+    for item in arr:
+        if item == val:
+            return true
+    return false

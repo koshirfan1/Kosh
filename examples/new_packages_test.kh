@@ -1,0 +1,42 @@
+# Test for new validation and OpenAI-ready request features
+
+import "../packages/validation/validation.kh"
+
+print "--- Testing Validation ---"
+let email = "test@example.com"
+let invalid = "not-an-email"
+
+if is_email(email):
+    print email + " is a valid email"
+else:
+    print email + " is NOT a valid email"
+
+if is_email(invalid):
+    print invalid + " is a valid email"
+else:
+    print invalid + " is NOT a valid email"
+
+print "Min length 5 check 'Khan':"
+print is_min_length("Khan", 5)
+print "Min length 4 check 'Khan':"
+print is_min_length("Khan", 4)
+
+print "--- Testing HTTP Request with Headers ---"
+# Note: This is a placeholder since we don't have a real API key here,
+# but it tests if the native function exists and accepts arguments.
+# We'll use a public 'get' API that ignores headers.
+let url = "https://httpbin.org/get"
+let headers = {"X-Khan-Test": "Success", "Content-Type": "text/plain"}
+let res = http_request("GET", url, nil, headers)
+
+if res["success"]:
+    print "HTTP Request successful!"
+    # The body should contain our custom header in the 'headers' field of httpbin
+    if contains(res["body"], "X-Khan-Test"):
+        print "Custom headers confirmed in response!"
+else:
+    print "HTTP Request failed: " + res["body"]
+
+fn contains(str, sub):
+    let parts = split(str, sub)
+    return len(parts) > 1

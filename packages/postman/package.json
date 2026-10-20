@@ -1,0 +1,9 @@
+{
+  "name": "postman",
+  "version": "1.0.0",
+  "description": "API testing toolkit: send requests, assert responses, run test suites",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "postman.kh",
+  "files": ["postman.kh"]
+}

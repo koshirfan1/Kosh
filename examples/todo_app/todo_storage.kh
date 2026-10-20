@@ -1,0 +1,47 @@
+# Todo Storage Library
+# Handles saving and loading todos from files
+
+# Save todos array to a file
+fn save_todos(todos, path):
+    let content = ""
+    for t in todos:
+        let id = str(t["id"])
+        let title = t["title"]
+        let done = str(t["done"])
+        content = content + id + "|" + title + "|" + done + "\n"
+    
+    let bytes = write_file(path, content)
+    if bytes > 0:
+        print "Saved " + str(len(todos)) + " todos to " + path
+        return true
+    else:
+        print "Error: Could not save to " + path
+        return false
+
+# Load todos array from a file
+fn load_todos(path):
+    let todos = []
+
+    # First run / no save file yet - just start with an empty list
+    # instead of crashing.
+    if not file_exists(path):
+        return todos
+
+    let raw = read_file(path)
+    
+    # Parse each line
+    let lines = split(raw, "\n")
+    for line in lines:
+        if len(line) > 0:
+            let parts = split(line, "|")
+            if len(parts) == 3:
+                let id = num(parts[0])
+                let title = parts[1]
+                let done_str = parts[2]
+                let done = false
+                if done_str == "true":
+                    done = true
+                let todo = {"id": id, "title": title, "done": done}
+                todos = push(todos, todo)
+    
+    return todos

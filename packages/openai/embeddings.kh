@@ -1,0 +1,46 @@
+# openai/embeddings.kh — text embeddings. Needs transport.kh, errors.kh.
+
+# ---------------------------------------------------------------------------
+# openai_embeddings(client, input) -> array of numbers, or error map
+# `input` is a single string. Returns the embedding vector directly.
+# Defaults to "text-embedding-3-small" — use openai_embeddings_model for
+# a different one.
+# ---------------------------------------------------------------------------
+fn openai_embeddings(client, input):
+    return openai_embeddings_model(client, input, "text-embedding-3-small")
+
+# ---------------------------------------------------------------------------
+# openai_embeddings_model(client, input, model) -> array of numbers, or error map
+# ---------------------------------------------------------------------------
+fn openai_embeddings_model(client, input, model):
+    let body = {"model": model, "input": input}
+    let result = _openai_post(client, "/embeddings", body)
+
+    if openai_is_error(result):
+        client["last_error"] = result
+        return result
+
+    client["last_error"] = nil
+    if has(result, "data") and len(result["data"]) > 0:
+        return result["data"][0]["embedding"]
+    return result
+
+# ---------------------------------------------------------------------------
+# openai_embeddings_batch(client, inputs) -> array of vectors, or error map
+# `inputs` is an array of strings; returns one embedding vector per input,
+# in the same order.
+# ---------------------------------------------------------------------------
+fn openai_embeddings_batch(client, inputs):
+    let body = {"model": "text-embedding-3-small", "input": inputs}
+    let result = _openai_post(client, "/embeddings", body)
+
+    if openai_is_error(result):
+        client["last_error"] = result
+        return result
+
+    client["last_error"] = nil
+    let out = []
+    if has(result, "data"):
+        for item in result["data"]:
+            out = push(out, item["embedding"])
+    return out

@@ -1,0 +1,50 @@
+# tests/run_all.kh — runs every test suite and reports an aggregate result.
+#
+# Usage (from the project root, same as running any Khan script):
+#   .\khan tests/run_all.kh
+#
+# Exits with code 1 if anything failed (so this is CI-friendly), 0 if
+# everything passed.
+
+import "test"
+import "suites/variables.kh"
+import "suites/control_flow.kh"
+import "suites/functions.kh"
+import "suites/arrays_maps.kh"
+import "suites/strings.kh"
+import "suites/operators.kh"
+import "suites/stdlib_math.kh"
+import "suites/stdlib_json.kh"
+import "suites/stdlib_collections.kh"
+import "suites/classes.kh"
+import "suites/tensor.kh"
+import "suites/nn.kh"
+
+let all_passed = true
+
+all_passed = test_run(suite_variables()) and all_passed
+all_passed = test_run(suite_control_flow()) and all_passed
+all_passed = test_run(suite_functions()) and all_passed
+all_passed = test_run(suite_arrays_maps()) and all_passed
+all_passed = test_run(suite_strings()) and all_passed
+all_passed = test_run(suite_operators()) and all_passed
+all_passed = test_run(suite_stdlib_math()) and all_passed
+all_passed = test_run(suite_stdlib_json()) and all_passed
+all_passed = test_run(suite_stdlib_collections()) and all_passed
+all_passed = test_run(suite_classes()) and all_passed
+all_passed = test_run(suite_inheritance()) and all_passed
+all_passed = test_run(suite_tensor_native()) and all_passed
+all_passed = test_run(suite_tensor_autograd()) and all_passed
+all_passed = test_run(suite_tensor_broadcasting()) and all_passed
+all_passed = test_run(suite_nn()) and all_passed
+
+print ""
+if all_passed:
+    print "=========================================="
+    print "  ALL TEST SUITES PASSED"
+    print "=========================================="
+else:
+    print "=========================================="
+    print "  SOME TESTS FAILED — see output above"
+    print "=========================================="
+    exit(1)

@@ -1,0 +1,38 @@
+# tests/suites/strings.kh — string operations (native + `strings` package).
+import "test"
+import "strings"
+
+fn suite_strings():
+    let t = test_suite("Strings")
+
+    # ── native string ops ──────────────────────────────────────────────
+    t = test_eq(t, "concatenation with +", "foo" + "bar", "foobar")
+    t = test_eq(t, "concatenation with a number", "count: " + str(5), "count: 5")
+    t = test_eq(t, "upper()", upper("hello"), "HELLO")
+    t = test_eq(t, "lower()", lower("HELLO"), "hello")
+    t = test_eq(t, "trim() removes surrounding whitespace", trim("  hi  "), "hi")
+    t = test_true(t, "contains() finds a substring", contains("hello world", "wor"))
+    t = test_false(t, "contains() correctly rejects a non-substring", contains("hello world", "xyz"))
+    t = test_eq(t, "substring()", substring("hello world", 0, 5), "hello")
+    t = test_eq(t, "str_replace()", str_replace("aaa", "a", "b"), "bbb")
+    t = test_eq(t, "len() of a string", len("hello"), 5)
+
+    let parts = split("a,b,c", ",")
+    t = test_eq(t, "split() count", len(parts), 3)
+    t = test_eq(t, "split() first part", parts[0], "a")
+
+    t = test_eq(t, "num() parses a string to a number", num("42") + 1, 43)
+
+    # ── `strings` package ──────────────────────────────────────────────
+    t = test_true(t, "str_starts_with", str_starts_with("hello world", "hello"))
+    t = test_true(t, "str_ends_with", str_ends_with("hello world", "world"))
+    t = test_eq(t, "str_reverse", str_reverse("abc"), "cba")
+    t = test_eq(t, "str_repeat", str_repeat("ab", 3), "ababab")
+    t = test_eq(t, "str_join", str_join(["a", "b", "c"], "-"), "a-b-c")
+    t = test_eq(t, "str_split then str_join round-trips", str_join(str_split("x|y|z", "|"), "|"), "x|y|z")
+    t = test_eq(t, "str_capitalize", str_capitalize("hello"), "Hello")
+    t = test_eq(t, "str_count occurrences", str_count("banana", "a"), 3)
+    t = test_true(t, "str_is_empty on empty string", str_is_empty(""))
+    t = test_false(t, "str_is_empty on non-empty string", str_is_empty("x"))
+
+    return t

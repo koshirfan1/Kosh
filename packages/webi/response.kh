@@ -1,0 +1,212 @@
+# webi/response.kh — response builders.
+#
+#   res  — response map (returned by route handlers):
+#             res["status"]       number  (default 200)
+#             res["body"]         string
+#             res["content_type"] string
+#             res["headers"]      map of extra headers
+#             res["cookies"]      array of raw "name=value; Attr=..." strings
+#                                 (v1.1.1 — a map can only hold one
+#                                 Set-Cookie value, so cookies get their own
+#                                 array to support setting more than one)
+
+# ---------------------------------------------------------------------------
+# Internal: build a base response map
+# ---------------------------------------------------------------------------
+fn _res_base(status, body, content_type):
+    return {
+        "status":       status,
+        "body":         body,
+        "content_type": content_type,
+        "headers":      {},
+        "cookies":      []
+    }
+
+# ---------------------------------------------------------------------------
+# res_text(text) -> response
+# Plain text response (200)
+# ---------------------------------------------------------------------------
+fn res_text(text):
+    return _res_base(200, text, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_html(html) -> response
+# HTML response (200)
+# ---------------------------------------------------------------------------
+fn res_html(html):
+    return _res_base(200, html, "text/html; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_json(data) -> response
+# JSON response (200) — auto-encodes a Khan map/array
+# ---------------------------------------------------------------------------
+fn res_json(data):
+    return _res_base(200, json_encode(data), "application/json")
+
+# ---------------------------------------------------------------------------
+# res_json_str(str) -> response
+# JSON response from a raw string (already serialized)
+# ---------------------------------------------------------------------------
+fn res_json_str(s):
+    return _res_base(200, s, "application/json")
+
+# ---------------------------------------------------------------------------
+# res_status(status, body) -> response
+# Response with a custom status code
+# ---------------------------------------------------------------------------
+fn res_status(status, body):
+    return _res_base(status, body, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_redirect(url) -> response
+# HTTP 302 redirect
+# ---------------------------------------------------------------------------
+fn res_redirect(url):
+    let r = _res_base(302, "", "text/plain")
+    r["headers"]["Location"] = url
+    return r
+
+# ---------------------------------------------------------------------------
+# res_redirect_permanent(url) -> response
+# HTTP 301 permanent redirect
+# ---------------------------------------------------------------------------
+fn res_redirect_permanent(url):
+    let r = _res_base(301, "", "text/plain")
+    r["headers"]["Location"] = url
+    return r
+
+# ---------------------------------------------------------------------------
+# res_not_found(message) -> response
+# 404 response
+# ---------------------------------------------------------------------------
+fn res_not_found(message):
+    return _res_base(404, message, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_bad_request(message) -> response
+# 400 response
+# ---------------------------------------------------------------------------
+fn res_bad_request(message):
+    return _res_base(400, message, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_unauthorized(message) -> response
+# 401 response
+# ---------------------------------------------------------------------------
+fn res_unauthorized(message):
+    return _res_base(401, message, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_forbidden(message) -> response
+# 403 response
+# ---------------------------------------------------------------------------
+fn res_forbidden(message):
+    return _res_base(403, message, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_server_error(message) -> response
+# 500 response
+# ---------------------------------------------------------------------------
+fn res_server_error(message):
+    return _res_base(500, message, "text/plain; charset=utf-8")
+
+# ---------------------------------------------------------------------------
+# res_created(data) -> response
+# 201 Created — typically used after POST creates a resource
+# ---------------------------------------------------------------------------
+fn res_created(data):
+    return _res_base(201, json_encode(data), "application/json")
+
+# ---------------------------------------------------------------------------
+# res_no_content() -> response
+# 204 No Content — typically used after DELETE
+# ---------------------------------------------------------------------------
+fn res_no_content():
+    return _res_base(204, "", "text/plain")
+
+# ---------------------------------------------------------------------------
+# res_with_header(res, key, value) -> response
+# Add a custom header to an existing response
+# ---------------------------------------------------------------------------
+fn res_with_header(res, key, value):
+    res["headers"][key] = value
+    return res
+
+# ---------------------------------------------------------------------------
+# res_with_cookie(res, name, value) -> response
+# Set a response cookie (plain — no HttpOnly/Secure/SameSite).
+#
+# Kept for backward compatibility. For anything holding a session ID, auth
+# token, or CSRF token, use res_with_secure_cookie() instead — a cookie set
+# without these flags can be read by any JS on the page (XSS) or replayed
+# across sites (CSRF).
+# ---------------------------------------------------------------------------
+fn res_with_cookie(res, name, value):
+    res["cookies"] = push(res["cookies"], name + "=" + value + "; Path=/")
+    return res
+
+# ---------------------------------------------------------------------------
+# res_with_secure_cookie(res, name, value, opts) -> response   (v1.1.1)
+#
+# Set a cookie with explicit security flags. opts is a map, all keys
+# optional:
+#   opts["http_only"]  bool    default true   — JS on the page can't read it
+#   opts["secure"]      bool    default false  — only sent over HTTPS
+#                                                (leave false if you're not
+#                                                 running behind TLS yet, or
+#                                                 the browser will drop it)
+#   opts["same_site"]   string  default "Lax"  — "Strict" / "Lax" / "None"
+#   opts["max_age"]     number  — seconds until expiry (omit = session cookie)
+#   opts["path"]        string  default "/"
+#
+# Example:
+#   res = res_with_secure_cookie(res, "session", token, {"max_age": 3600})
+# ---------------------------------------------------------------------------
+fn res_with_secure_cookie(res, name, value, opts):
+    let http_only = true
+    if has(opts, "http_only"):
+        http_only = opts["http_only"]
+
+    let secure = false
+    if has(opts, "secure"):
+        secure = opts["secure"]
+
+    let same_site = "Lax"
+    if has(opts, "same_site"):
+        same_site = opts["same_site"]
+
+    let path = "/"
+    if has(opts, "path"):
+        path = opts["path"]
+
+    let cookie = name + "=" + value + "; Path=" + path + "; SameSite=" + same_site
+
+    if has(opts, "max_age"):
+        cookie = cookie + "; Max-Age=" + str(opts["max_age"])
+    if http_only:
+        cookie = cookie + "; HttpOnly"
+    if secure:
+        cookie = cookie + "; Secure"
+
+    res["cookies"] = push(res["cookies"], cookie)
+    return res
+
+# ---------------------------------------------------------------------------
+# res_cors(res, req) -> response                                  (v1.1.1)
+# Add CORS headers to allow cross-origin requests.
+#
+# BREAKING CHANGE from 1.1.0: now takes `req` as a second argument, so it
+# can honor the origin allow-list set up by mw_cors() / webi_set_cors_origins()
+# instead of always sending a hardcoded wildcard "*". If mw_cors wasn't
+# used (req has no "_cors_allow_origin"), falls back to "*" — same
+# behaviour as before.
+# ---------------------------------------------------------------------------
+fn res_cors(res, req):
+    let allow_origin = "*"
+    if has(req, "_cors_allow_origin"):
+        allow_origin = req["_cors_allow_origin"]
+    if allow_origin != "":
+        res["headers"]["Access-Control-Allow-Origin"] = allow_origin
+    res["headers"]["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    res["headers"]["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-CSRF-Token, X-API-Key"
+    return res

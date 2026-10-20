@@ -1,0 +1,25 @@
+# cache.kh — local caching so repeated lookups don't hit the network
+# every time. Demonstrates: file_exists, read_file/write_file,
+# json_encode/json_decode, and datetime-based freshness checking.
+
+fn cache_path(name):
+    return "cache_" + name + ".json"
+
+# Returns the cached package map, or nil if there's no cache yet.
+fn load_cache(name):
+    let path = cache_path(name)
+    if not file_exists(path):
+        return nil
+    let raw = read_file(path)
+    return json_decode(raw)
+
+fn save_cache(name, data):
+    let path = cache_path(name)
+    write_file(path, json_encode(data))
+
+# A cache entry is "fresh" if it exists and is younger than max_age_seconds.
+fn is_fresh(cached_pkg, max_age_seconds):
+    if cached_pkg == nil:
+        return false
+    let age = now()["timestamp"] - cached_pkg["fetched_at"]
+    return age < max_age_seconds

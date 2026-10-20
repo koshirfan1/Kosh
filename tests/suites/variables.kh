@@ -1,0 +1,43 @@
+# tests/suites/variables.kh — variable declaration, assignment, and scoping.
+import "test"
+
+# A true top-level (script-scope) constant — used to verify nested
+# functions can see real globals (as opposed to an enclosing function's
+# own locals, which they can't — see suite_variables below).
+let TOP_LEVEL_CONST = 777
+
+fn suite_variables():
+    let t = test_suite("Variables & Scoping")
+
+    let a = 5
+    t = test_eq(t, "let binds a value", a, 5)
+
+    a = 10
+    t = test_eq(t, "reassignment updates the binding", a, 10)
+
+    let b = a + 1
+    t = test_eq(t, "initializer can reference an earlier local", b, 11)
+
+    # shadowing across nested blocks
+    let x = 1
+    if true:
+        let x = 2
+        t = test_eq(t, "inner block local shadows outer (inner value)", x, 2)
+    t = test_eq(t, "outer local unaffected after inner block ends", x, 1)
+
+    # a nested function can read a TRUE top-level global (declared
+    # outside any function) — but NOT an enclosing function's own
+    # local variable; Khan functions aren't full lexical closures.
+    fn read_true_global():
+        return TOP_LEVEL_CONST
+    t = test_eq(t, "nested function can read a true top-level global", read_true_global(), 777)
+
+    # multiple locals in the same scope don't collide
+    let p = 1
+    let q = 2
+    let r = 3
+    t = test_eq(t, "multiple same-scope locals: p", p, 1)
+    t = test_eq(t, "multiple same-scope locals: q", q, 2)
+    t = test_eq(t, "multiple same-scope locals: r", r, 3)
+
+    return t

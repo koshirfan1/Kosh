@@ -1,0 +1,20 @@
+fn is_prime(n):
+    if n < 2:
+        return false
+    let i = 2
+    while i * i <= n:
+        if n % i == 0:
+            return false
+        i = i + 1
+    return true
+
+let start = clock()
+let count = 0
+let n = 2
+while n < 50000:
+    if is_prime(n):
+        count = count + 1
+    n = n + 1
+let end = clock()
+print "Khan found " + str(count) + " primes."
+print "Khan Time: " + str(end - start) + "s"

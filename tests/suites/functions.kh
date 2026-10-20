@@ -1,0 +1,94 @@
+# tests/suites/functions.kh — function declarations, calls, recursion.
+import "test"
+
+fn add_two(a, b):
+    return a + b
+
+fn add_three(a, b, c):
+    return a + b + c
+
+fn no_args():
+    return 99
+
+fn one_arg(x):
+    return x * 2
+
+fn factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+fn fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+fn make_map_with(key_name, value):
+    let m = {}
+    m[key_name] = value
+    return m
+
+fn suite_functions():
+    let t = test_suite("Functions")
+
+    # ── REGRESSION: OP_CALL / vm_call_fn used to set up the new call
+    # frame's slots pointing one slot too early, so local slot 0 (the
+    # first parameter) actually held the *callee itself*, and every
+    # parameter after that was shifted by one. This silently corrupted
+    # every multi-argument function call in the language until fixed in
+    # vm.c. These specific shapes must never regress. ──────────────────
+    t = test_eq(t, "REGRESSION: 0-arg function returns its own value (not callee)", no_args(), 99)
+    t = test_eq(t, "REGRESSION: 1-arg function uses the real argument", one_arg(21), 42)
+    t = test_eq(t, "REGRESSION: 2-arg function - first param is the real arg", add_two(10, 20), 30)
+    t = test_eq(t, "REGRESSION: 3-arg function - all params in correct order", add_three(1, 2, 3), 6)
+
+    # this exact call shape (map + function-value passed as 2nd arg,
+    # first param used to index the map) is what originally surfaced the
+    # bug in the webi/morgos "after(app, hook_fn)" pattern
+    let built = make_map_with("name", "khan")
+    t = test_eq(t, "REGRESSION: first param used for map indexing, not the callee", built["name"], "khan")
+
+    # ── recursion ──────────────────────────────────────────────────────
+    t = test_eq(t, "recursive factorial(6)", factorial(6), 720)
+    t = test_eq(t, "recursive fibonacci(10)", fib(10), 55)
+
+    # ── return values ──────────────────────────────────────────────────
+    fn early_return(x):
+        if x > 0:
+            return "positive"
+        return "non-positive"
+    t = test_eq(t, "early return inside if", early_return(5), "positive")
+    t = test_eq(t, "falls through to final return", early_return(-5), "non-positive")
+
+    # ── functions calling other functions ──────────────────────────────
+    fn double_it(n):
+        return n * 2
+    fn quadruple_it(n):
+        return double_it(double_it(n))
+    t = test_eq(t, "function composition", quadruple_it(5), 20)
+
+    # ── REGRESSION: calling a function through a parameter/local
+    # variable (e.g. filter(arr, pred) calling pred(x)) always did a
+    # global lookup for the callee name instead of checking locals
+    # first, unlike every other identifier reference in the compiler.
+    # This broke every higher-order-function pattern — passing a
+    # function as an argument and then calling it — with "Undefined
+    # variable" at runtime. Fixed in compiler.c's AST_CALL handling.
+    # Must never regress. ──────────────────────────────────────────────
+    fn apply_fn(f, x):
+        return f(x)
+    fn triple(n):
+        return n * 3
+    t = test_eq(t, "REGRESSION: calling a function passed as a parameter", apply_fn(triple, 7), 21)
+
+    fn call_with_two(f, a, b):
+        return f(a, b)
+    t = test_eq(t, "REGRESSION: calling a parameter-held function with 2 args", call_with_two(add_two, 5, 6), 11)
+
+    fn apply_twice(f, x):
+        return f(f(x))
+    fn increment(n):
+        return n + 1
+    t = test_eq(t, "REGRESSION: nested calls through a parameter-held function", apply_twice(increment, 10), 12)
+
+    return t

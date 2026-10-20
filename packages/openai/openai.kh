@@ -1,0 +1,66 @@
+# Khan openai package v2.0.0
+# Usage: import "openai"
+#
+# A client wrapper for the OpenAI API — chat, embeddings, moderation, and
+# model listing — with real error handling and retry/backoff instead of
+# just printing on failure.
+#
+# Quick start:
+#
+#   import "openai"
+#
+#   let client = openai_client(env_get("OPENAI_API_KEY", ""))
+#   let reply  = openai_ask(client, "Say hello in one sentence.")
+#   print reply
+#
+# Multi-turn conversation:
+#
+#   let convo = conversation_new_with_system(client, "You are terse.")
+#   print conversation_ask(convo, "What's the capital of France?")
+#   print conversation_ask(convo, "And its population?")
+#
+# Error handling — every call that hits the network can fail (bad key,
+# rate limit, network error, model overloaded, etc). Convenience
+# functions like openai_ask / conversation_ask swallow errors and return
+# "" so you can use them inline; check *_last_error() when you need to
+# know why:
+#
+#   let reply = openai_ask(client, "...")
+#   if reply == "":
+#       let err = openai_last_error(client)
+#       print "Failed: " + err["message"]
+#
+# Lower-level functions (openai_chat, openai_embeddings, ...) return the
+# error map directly instead of a placeholder value — check with
+# openai_is_error(result) before using the result.
+#
+# ---------------------------------------------------------------------------
+# This file is just the package entry point; the implementation is split
+# by concern, same pattern as the `webi` package:
+#
+#   util.kh         header building, response readers (extract_text, usage)
+#   errors.kh       normalizing HTTP responses into error maps
+#   transport.kh    the actual HTTP call + retry/backoff, shared by every endpoint
+#   client.kh       openai_client / setters
+#   messages.kh     msg_* builders + conversation state
+#   chat.kh         chat completions, openai_ask, conversation_ask
+#   embeddings.kh   text embeddings
+#   moderation.kh   content moderation
+#   models.kh       list available models
+#
+# IMPORT ORDER MATTERS (see webi.kh for why): each file below only calls
+# things defined in a file that already came before it in this list.
+# ---------------------------------------------------------------------------
+
+import "requests"
+import "json"
+
+import "util.kh"
+import "errors.kh"
+import "transport.kh"
+import "client.kh"
+import "messages.kh"
+import "chat.kh"
+import "embeddings.kh"
+import "moderation.kh"
+import "models.kh"

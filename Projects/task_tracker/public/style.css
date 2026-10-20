@@ -1,0 +1,298 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+:root {
+  --bg: #14171f;
+  --surface: #1c202a;
+  --line: #2a2f3b;
+  --ink: #edeae3;
+  --ink-dim: #8b8f9c;
+  --brass: #c9973f;
+  --brass-dim: #8a6a34;
+  --sage: #7a9b76;
+  --danger: #a35b4f;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 100% 44px;
+  opacity: 0.35;
+  mask-image: linear-gradient(to bottom, transparent, black 120px, black calc(100% - 200px), transparent);
+}
+
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 72px 24px 120px;
+  position: relative;
+}
+
+/* ---------- Login screen ---------- */
+.login-screen {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.wordmark {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--brass);
+  letter-spacing: 0.08em;
+}
+.wordmark span { color: var(--ink-dim); }
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-hint {
+  font-size: 13px;
+  color: var(--ink-dim);
+  text-align: center;
+  line-height: 1.6;
+}
+
+input[type="text"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  padding: 13px 14px;
+  border-radius: 3px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+input[type="text"]:focus {
+  border-color: var(--brass);
+}
+input[type="text"]::placeholder { color: var(--ink-dim); }
+
+button {
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 14px;
+  border: none;
+  border-radius: 3px;
+  padding: 13px 16px;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+button:focus-visible, input:focus-visible, .task-check:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+button.primary {
+  background: var(--brass);
+  color: #1a1408;
+}
+button.primary:hover { background: #d9a54c; }
+button.primary:active { transform: scale(0.98); }
+
+.error-text {
+  color: var(--danger);
+  font-size: 13px;
+  min-height: 18px;
+}
+
+/* ---------- Main app ---------- */
+.app-screen { display: none; }
+.app-screen.visible { display: block; }
+.login-screen.hidden { display: none; }
+
+.top-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ledger-title {
+  font-family: var(--mono);
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+.ledger-title .user {
+  color: var(--brass);
+}
+
+.signout {
+  background: none;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.signout:hover { color: var(--ink); }
+
+.tally {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-dim);
+  margin-bottom: 36px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+}
+
+/* ---------- Composer ---------- */
+.composer {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 40px;
+}
+.composer input {
+  flex: 1;
+}
+.composer button {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.composer button:hover { border-color: var(--brass); color: var(--brass); }
+
+/* ---------- Ledger rows ---------- */
+.ledger { list-style: none; margin: 0; padding: 0; }
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.row .idx {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-dim);
+  padding-top: 2px;
+  min-width: 34px;
+}
+
+.task-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-dim);
+  background: transparent;
+  flex-shrink: 0;
+  margin-top: 1px;
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+  transition: border-color 0.15s ease;
+}
+.task-check:hover { border-color: var(--brass); }
+
+.row.done .task-check {
+  border-color: var(--sage);
+  background: var(--sage);
+  animation: stamp 0.32s cubic-bezier(.2, 1.4, .5, 1);
+}
+.row.done .task-check::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border-right: 2px solid #10160f;
+  border-bottom: 2px solid #10160f;
+  transform: rotate(45deg);
+}
+
+@keyframes stamp {
+  0%   { transform: scale(1.7) rotate(-14deg); opacity: 0; }
+  60%  { transform: scale(0.92) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.row .body { flex: 1; min-width: 0; }
+
+.row .title {
+  font-size: 15px;
+  line-height: 1.5;
+  position: relative;
+  display: inline;
+}
+.row.done .title { color: var(--ink-dim); }
+.row .title::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 100%;
+  top: 50%;
+  height: 1px;
+  background: var(--ink-dim);
+  transition: right 0.35s ease 0.05s;
+}
+.row.done .title::after { right: 0; }
+
+.row .meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+.row .del {
+  background: none;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.row:hover .del { opacity: 1; }
+.row .del:hover { color: var(--danger); }
+
+.empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--ink-dim);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.empty .big {
+  font-family: var(--mono);
+  font-size: 28px;
+  color: var(--line);
+  margin-bottom: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row.done .task-check { animation: none; }
+  .row .title::after { transition: none; }
+}
+
+@media (max-width: 480px) {
+  .wrap { padding: 40px 18px 100px; }
+  .row .idx { min-width: 26px; }
+}

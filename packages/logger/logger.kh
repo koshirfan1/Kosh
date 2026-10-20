@@ -1,0 +1,141 @@
+# Khan logger package v1.0.0
+# Author: Irfan Khan
+# Structured logging with levels, file output, and formatting
+#
+# Usage:
+#   import "logger"
+#   let log = logger_new("MyApp")
+#   log = log_info(log, "Server started")
+#   log = log_warn(log, "High memory usage")
+#   log = log_error(log, "Connection failed")
+#   logger_save(log, "app.log")
+
+# ─────────────────────────────────────────────────────────────
+# LEVELS
+# ─────────────────────────────────────────────────────────────
+
+let LOG_DEBUG = 0
+let LOG_INFO  = 1
+let LOG_WARN  = 2
+let LOG_ERROR = 3
+let LOG_NONE  = 4
+
+# ─────────────────────────────────────────────────────────────
+# LOGGER
+# ─────────────────────────────────────────────────────────────
+
+fn logger_new(name):
+    return {
+        "name":    name,
+        "entries": [],
+        "level":   LOG_INFO,
+        "silent":  false
+    }
+
+fn logger_set_level(log, level):
+    log["level"] = level
+    return log
+
+fn logger_silent(log):
+    log["silent"] = true
+    return log
+
+# ─────────────────────────────────────────────────────────────
+# INTERNAL
+# ─────────────────────────────────────────────────────────────
+
+fn _log_level_str(level):
+    if level == LOG_DEBUG:
+        return "DEBUG"
+    if level == LOG_INFO:
+        return "INFO"
+    if level == LOG_WARN:
+        return "WARN"
+    if level == LOG_ERROR:
+        return "ERROR"
+    return "???"
+
+fn _log_write(log, level, msg):
+    if level < log["level"]:
+        return log
+    let entry = {
+        "level":   level,
+        "label":   _log_level_str(level),
+        "message": msg,
+        "time":    clock(),
+        "source":  log["name"]
+    }
+    log["entries"] = push(log["entries"], entry)
+    if log["silent"] == false:
+        print "[" + log["name"] + "] [" + entry["label"] + "] " + msg
+    return log
+
+# ─────────────────────────────────────────────────────────────
+# LOG FUNCTIONS
+# ─────────────────────────────────────────────────────────────
+
+fn log_debug(log, msg):
+    return _log_write(log, LOG_DEBUG, msg)
+fn log_info(log, msg):
+    return _log_write(log, LOG_INFO,  msg)
+fn log_warn(log, msg):
+    return _log_write(log, LOG_WARN,  msg)
+fn log_error(log, msg):
+    return _log_write(log, LOG_ERROR, msg)
+
+fn log_divider(log):
+    return log_info(log, "────────────────────────────────────────")
+
+fn log_kv(log, key, value):
+    return log_info(log, key + " = " + str(value))
+
+fn log_map(log, label, m):
+    log = log_info(log, label + ":")
+    for k in keys(m):
+        log = log_info(log, "  " + str(k) + ": " + str(m[k]))
+    return log
+
+# ─────────────────────────────────────────────────────────────
+# QUERY
+# ─────────────────────────────────────────────────────────────
+
+fn logger_errors(log):
+    let result = []
+    for e in log["entries"]:
+        if e["level"] >= LOG_ERROR:
+            result = push(result, e)
+    return result
+
+fn logger_warnings(log):
+    let result = []
+    for e in log["entries"]:
+        if e["level"] == LOG_WARN:
+            result = push(result, e)
+    return result
+
+fn logger_has_errors(log):
+    return len(logger_errors(log)) > 0
+
+fn logger_count(log):
+    return len(log["entries"])
+
+# ─────────────────────────────────────────────────────────────
+# OUTPUT
+# ─────────────────────────────────────────────────────────────
+
+fn logger_to_string(log):
+    let out = ""
+    for e in log["entries"]:
+        out = out + "[" + e["source"] + "] [" + e["label"] + "] " + e["message"] + "\n"
+    return out
+
+fn logger_save(log, path):
+    return write_file(path, logger_to_string(log))
+
+fn logger_summary(log):
+    let errors = len(logger_errors(log))
+    let warns  = len(logger_warnings(log))
+    print "── Logger summary: " + log["name"] + " ──"
+    print "  Total entries : " + str(len(log["entries"]))
+    print "  Warnings      : " + str(warns)
+    print "  Errors        : " + str(errors)

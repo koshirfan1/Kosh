@@ -1,0 +1,36 @@
+# main.kh — PyPI Package Lookup
+#
+# A small real demo app combining everything Khan can do:
+#   - import system (3 separate library modules)
+#   - http_get (requests library) — talks to the real pypi.org API
+#   - json_decode/json_encode (json library) — parses real-world JSON
+#   - now()/timestamp (datetime library) — cache freshness checking
+#   - file_exists/read_file/write_file — local disk caching
+#   - maps, arrays, functions, if/else — core language features
+
+import "pypi_api.kh"
+import "cache.kh"
+import "display.kh"
+
+let CACHE_MAX_AGE = 3600  # 1 hour, in seconds
+
+print "========================================"
+print "       PyPI Package Lookup"
+print "========================================"
+print "Enter a package name (default: requests):"
+let name = input("> ")
+
+if len(name) == 0:
+    name = "requests"
+
+let cached = load_cache(name)
+
+if is_fresh(cached, CACHE_MAX_AGE):
+    print_package_card(cached, true)
+else:
+    let pkg = fetch_package(name)
+    if pkg["ok"]:
+        save_cache(name, pkg)
+        print_package_card(pkg, false)
+    else:
+        print_not_found(name, pkg["status"])

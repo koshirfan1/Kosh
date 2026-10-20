@@ -1,0 +1,13 @@
+# webi/util.kh — internal helpers shared across the webi package.
+#
+# str_replace(s, old, new) used to be defined here as a Khan-level
+# function, since Khan's stdlib had no native string-replace builtin.
+# That implementation built its result with repeated string
+# concatenation (`result = result + ...`), which is O(n^2) — fine for
+# short strings, but catastrophic for anything template-sized (a real
+# HTML page run through render()'s {{var}} substitutions could take
+# tens of seconds and peg a CPU core). str_replace is now a proper O(n)
+# native in src/khan_stdlib.c instead — nothing in this file needs to
+# define it anymore, and every other webi file that calls str_replace()
+# (template.kh's render()/html_escape()) picks up the native
+# automatically without any change on their end.

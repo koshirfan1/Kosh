@@ -1,0 +1,25 @@
+import "webi"
+
+let app = webi_app()
+print "1. app created OK"
+
+fn fn_index(req):
+    return res_html("<h1>Hello from Khan webi!</h1>")
+
+app = route(app, "GET", "/", fn_index)
+print "2. route added OK"
+
+let p = 8099
+print "3. p = " + str(p)
+
+fn test_fn(a, b):
+    print "4. INSIDE test_fn: b=" + str(b)
+
+test_fn(app, p)
+print "5. direct call with variable: done"
+
+test_fn(app, 8099)
+print "6. direct call with literal: done"
+
+print "7. about to call webi_run with literal 8099"
+webi_run(app, 8099)

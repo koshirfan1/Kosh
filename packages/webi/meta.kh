@@ -1,0 +1,21 @@
+# webi/meta.kh — version info + introspection helpers.
+
+# ---------------------------------------------------------------------------
+# webi_version() -> string
+# ---------------------------------------------------------------------------
+fn webi_version():
+    return "webi/1.1.3 (Khan)"
+
+# ---------------------------------------------------------------------------
+# webi_routes(app) -> array of route info strings
+# List all registered routes (useful for debugging)
+# ---------------------------------------------------------------------------
+fn webi_routes(app):
+    let routes = app["routes"]
+    let result = []
+    let i = 0
+    while i < len(routes):
+        let r = routes[i]
+        result = push(result, r["method"] + " " + r["path"])
+        i = i + 1
+    return result

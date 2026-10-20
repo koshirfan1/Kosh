@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Khan face detection — real Haar-cascade detection, one native binary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #161412;
+    --panel: #1e1b17;
+    --panel-raised: #252119;
+    --border: #372f27;
+    --border-bright: #4a3f32;
+    --ember: #e0983a;
+    --ember-dim: #a86f2c;
+    --ember-glow: rgba(224, 152, 58, 0.18);
+    --slate: #8b96a0;
+    --text: #ede7de;
+    --text-dim: #a89e8f;
+    --sage: #8fae7a;
+    --rust: #c96a54;
+    --radius: 3px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Space Grotesk', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { background-image: radial-gradient(ellipse 800px 400px at 85% -10%, var(--ember-glow), transparent); min-height: 100vh; }
+  a { color: var(--ember); }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 60px; }
+
+  header { padding: 44px 0 26px; border-bottom: 1px solid var(--border); }
+  .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate); margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 8px var(--sage); }
+  h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 12px; line-height: 1.05; }
+  h1 .khan { color: var(--ember); }
+  .lede { font-size: 15.5px; color: var(--text-dim); line-height: 1.55; margin: 0; max-width: 620px; }
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; padding: 24px 0; }
+  button.action {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14.5px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border-bright);
+    border-radius: var(--radius); padding: 12px 20px; cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  button.action:hover { border-color: var(--ember-dim); background: var(--panel-raised); }
+  button.action.primary { background: var(--ember); color: #17140f; border-color: var(--ember); }
+  button.action.primary:hover { background: #eaa550; }
+  button.action:disabled { opacity: 0.45; cursor: not-allowed; }
+  input[type="file"] { display: none; }
+
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .stage .empty { color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: center; padding: 40px; line-height: 1.6; }
+  video, canvas.display { max-width: 100%; display: block; }
+  #video { display: none; }
+  #overlay { position: absolute; top: 0; left: 0; }
+  #stageWrap { position: relative; display: none; line-height: 0; }
+
+  .result-bar {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-top: 1px solid var(--border); background: var(--panel-raised);
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--text-dim);
+  }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); flex-shrink: 0; }
+  .status-dot.ok { background: var(--sage); box-shadow: 0 0 6px var(--sage); }
+  .status-dot.err { background: var(--rust); box-shadow: 0 0 6px var(--rust); }
+  .status-dot.busy { background: var(--ember); animation: pulse 0.9s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .status-dot.busy { animation: none; } }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  .honest-note {
+    margin-top: 28px; padding: 16px 18px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px; color: var(--text-dim); line-height: 1.6;
+  }
+  .honest-note strong { color: var(--slate); }
+
+  footer { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 24px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow"><span class="dot"></span> webi (native http server) + vision (real haar-cascade detector) — one binary</p>
+    <h1>Face detection, <span class="khan">from scratch</span></h1>
+    <p class="lede">This page is served by <strong>webi</strong>, a web framework its author built from nothing. The detection is real Viola-Jones cascade matching in <strong>vision</strong> — the same package whose earlier version faked this exact feature by returning hardcoded boxes. This is the rebuild.</p>
+  </header>
+
+  <div class="controls">
+    <button class="action primary" id="btnCamera">Use webcam</button>
+    <button class="action" id="btnUpload">Upload a photo</button>
+    <button class="action" id="btnCapture" style="display:none">Capture frame</button>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <div class="stage" id="stage">
+    <p class="empty">Nothing loaded yet — start your webcam or upload a photo above.<br>Detection runs server-side, in real Khan code.</p>
+    <video id="video" autoplay playsinline muted></video>
+    <div id="stageWrap">
+      <canvas class="display" id="displayCanvas"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+  </div>
+  <div class="result-bar">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">idle</span>
+  </div>
+
+  <div class="honest-note">
+    <strong>Honestly:</strong> this detects front-facing faces in reasonably lit, reasonably ordinary photos. It will miss strongly rotated or profile faces, and can throw an occasional false positive in busy backgrounds — it's genuine Viola-Jones detection, not a modern neural network, and its own docs (<code>packages/vision/detect.kh</code>) say so directly.
+  </div>
+
+  <footer>
+    <span>Khan — built from scratch in C11 by Irfan Khan</span>
+    <span><a href="https://github.com/khandev1211-cpu/Khan">source on GitHub</a></span>
+  </footer>
+</div>
+
+<script>
+const video = document.getElementById('video');
+const stage = document.getElementById('stage');
+const stageWrap = document.getElementById('stageWrap');
+const displayCanvas = document.getElementById('displayCanvas');
+const overlay = document.getElementById('overlay');
+const emptyMsg = stage.querySelector('.empty');
+const btnCamera = document.getElementById('btnCamera');
+const btnUpload = document.getElementById('btnUpload');
+const btnCapture = document.getElementById('btnCapture');
+const fileInput = document.getElementById('fileInput');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+let stream = null;
+
+function setStatus(kind, text) {
+  statusDot.className = 'status-dot' + (kind ? ' ' + kind : '');
+  statusText.textContent = text;
+}
+
+function showStage() {
+  emptyMsg.style.display = 'none';
+  stageWrap.style.display = 'block';
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    stageWrap.style.display = 'none';
+    emptyMsg.style.display = 'none';
+    btnCapture.style.display = 'inline-flex';
+    setStatus('', 'camera live — press capture when ready');
+  } catch (err) {
+    setStatus('err', 'camera access failed: ' + err.message);
+  }
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  video.style.display = 'none';
+  btnCapture.style.display = 'none';
+}
+
+btnCamera.addEventListener('click', startCamera);
+btnUpload.addEventListener('click', () => fileInput.click());
+
+btnCapture.addEventListener('click', () => {
+  const w = video.videoWidth, h = video.videoHeight;
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  tmp.getContext('2d').drawImage(video, 0, 0, w, h);
+  stopCamera();
+  runDetection(tmp.toDataURL('image/png'), w, h);
+});
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => runDetection(reader.result, img.naturalWidth, img.naturalHeight);
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+async function runDetection(dataUrl, srcW, srcH) {
+  showStage();
+  setStatus('busy', 'uploading + running cascade detection…');
+
+  // draw the source image into the display canvas, scaled to fit
+  const maxW = 700;
+  const scale = Math.min(1, maxW / srcW);
+  const dispW = Math.round(srcW * scale), dispH = Math.round(srcH * scale);
+  displayCanvas.width = dispW; displayCanvas.height = dispH;
+  overlay.width = dispW; overlay.height = dispH;
+
+  const img = new Image();
+  img.onload = () => displayCanvas.getContext('2d').drawImage(img, 0, 0, dispW, dispH);
+  img.src = dataUrl;
+
+  const base64 = dataUrl.split(',')[1];
+
+  try {
+    const res = await fetch('/detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64 }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setStatus('err', data.error || 'detection failed');
+      return;
+    }
+
+    const boxScale = dispW / data.width;
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, dispW, dispH);
+    ctx.strokeStyle = '#e0983a';
+    ctx.lineWidth = 2;
+    ctx.font = '12px JetBrains Mono, monospace';
+    ctx.fillStyle = '#e0983a';
+
+    data.faces.forEach((f, i) => {
+      const x = f.x * boxScale, y = f.y * boxScale, w = f.w * boxScale, h = f.h * boxScale;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillText('face ' + (i + 1), x + 2, y - 5 < 10 ? y + 14 : y - 5);
+    });
+
+    setStatus('ok', data.count + (data.count === 1 ? ' face' : ' faces') + ' detected');
+  } catch (err) {
+    setStatus('err', 'request failed: ' + err.message);
+  }
+}
+</script>
+</body>
+</html>

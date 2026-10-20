@@ -1,0 +1,43 @@
+# Test all new language features
+
+# --- elif ---
+fn grade(score):
+    if score >= 90:
+        return "A"
+    elif score >= 80:
+        return "B"
+    elif score >= 70:
+        return "C"
+    elif score >= 60:
+        return "D"
+    else:
+        return "F"
+
+print grade(95)
+print grade(82)
+print grade(71)
+print grade(55)
+
+# --- break ---
+let i = 0
+while true:
+    if i >= 5:
+        break
+    i = i + 1
+print i
+
+# --- continue (skip evens) ---
+let odds = []
+for n in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+    if n % 2 == 0:
+        continue
+    odds = push(odds, n)
+print odds
+
+# --- recursion ---
+fn sum_to(n):
+    if n <= 0:
+        return 0
+    return n + sum_to(n - 1)
+
+print sum_to(100)

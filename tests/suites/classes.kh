@@ -1,0 +1,232 @@
+# tests/suites/classes.kh — classes, instances, methods, constructors.
+import "test"
+
+class Counter:
+    fn __init__(self, start):
+        self.n = start
+    fn inc(self):
+        self.n = self.n + 1
+        return self
+    fn get(self):
+        return self.n
+    fn add(self, a, b):
+        return self.n + a + b
+
+class Bare:
+    fn hello(self):
+        return "hi"
+
+class Thrower:
+    fn boom(self):
+        throw "boom"
+    fn ok(self):
+        return 5
+
+class BadCtor:
+    fn __init__(self):
+        throw "ctor failed"
+
+class Node:
+    fn __init__(self, val, next):
+        self.val = val
+        self.next = next
+    fn sum(self):
+        if self.next == nil:
+            return self.val
+        return self.val + self.next.sum()
+
+fn bump(x):
+    x.inc()
+    return x.get()
+
+fn suite_classes():
+    let t = test_suite("Classes")
+
+    # ── construction + fields ──────────────────────────────────────────
+    let c = Counter(10)
+    t = test_eq(t, "__init__ sets a field", c.n, 10)
+    t = test_eq(t, "method reads a field", c.get(), 10)
+    t = test_eq(t, "method with extra args", c.add(1, 2), 13)
+    c.n = 50
+    t = test_eq(t, "field assignment from outside", c.get(), 50)
+    t = test_nil(t, "missing field reads as nil", c.nothing)
+
+    # ── method calls mutate the instance; chaining ─────────────────────
+    let d = Counter(0)
+    d.inc().inc().inc()
+    t = test_eq(t, "chained method calls", d.get(), 3)
+
+    # ── REGRESSION: method-call frames have no hidden callee slot below
+    # `self`, so OP_RETURN must truncate to slots (not slots - 1). Getting
+    # this wrong corrupts the CALLER's expression temporaries, most
+    # visibly in `1 + obj.m() * 2 + obj.m()`, and unbalances the stack in
+    # a hot loop. Must never regress. ──────────────────────────────────
+    t = test_eq(t, "REGRESSION: temporaries below a method call survive", 1 + d.get() * 2 + d.get(), 10)
+    let loop_c = Counter(0)
+    let i = 0
+    while i < 5000:
+        loop_c.inc().inc()
+        i = i + 1
+    t = test_eq(t, "REGRESSION: stack balanced across 5000 method calls", loop_c.get(), 10000)
+
+    # ── classes without __init__ ───────────────────────────────────────
+    t = test_eq(t, "class with no __init__", Bare().hello(), "hi")
+
+    # ── reference semantics ────────────────────────────────────────────
+    let a = Counter(0)
+    let b = a
+    b.inc()
+    t = test_eq(t, "assignment aliases the same instance", a.get(), 1)
+    t = test_true(t, "== is identity (same)", a == b)
+    t = test_false(t, "== is identity (different)", Counter(1) == Counter(1))
+    t = test_eq(t, "instance mutated through a function arg", bump(a), 2)
+
+    # ── instances inside containers / nested instances ─────────────────
+    let arr = [Counter(1), Counter(5)]
+    arr[0].inc()
+    t = test_eq(t, "instances in arrays", arr[0].get() + arr[1].get(), 7)
+    let list = Node(1, Node(2, Node(3, nil)))
+    t = test_eq(t, "recursion through nested instances", list.sum(), 6)
+
+    # ── type() ─────────────────────────────────────────────────────────
+    t = test_eq(t, "type of an instance", type(a), "instance")
+    t = test_eq(t, "type of a class", type(Counter), "class")
+
+    # ── errors are catchable, and the VM stays healthy afterwards ──────
+    let msg = ""
+    try:
+        Bare().nope()
+    catch e:
+        msg = e
+    t = test_contains_str(t, "undefined method is catchable", msg, "Undefined method")
+
+    try:
+        Counter(1).add(1)
+    catch e:
+        msg = e
+    t = test_contains_str(t, "wrong method arg count is catchable", msg, "Arg count")
+
+    try:
+        Counter()
+    catch e:
+        msg = e
+    t = test_contains_str(t, "wrong constructor arg count is catchable", msg, "constructor")
+
+    try:
+        Bare(1)
+    catch e:
+        msg = e
+    t = test_contains_str(t, "args to a class with no __init__", msg, "no __init__")
+
+    let n = 5
+    try:
+        n.foo()
+    catch e:
+        msg = e
+    t = test_contains_str(t, "method call on a non-instance", msg, "class instances")
+
+    # ── REGRESSION: a `throw` inside __init__ used to unwind across a
+    # nested run_loop and left the stack unbalanced ("stack underflow"
+    # on the next statement). __init__ now runs inline in the caller's
+    # dispatch loop. Must never regress. ───────────────────────────────
+    let th = Thrower()
+    let caught = 0
+    let j = 0
+    while j < 200:
+        try:
+            th.boom()
+        catch e:
+            caught = caught + 1
+        j = j + 1
+    t = test_eq(t, "throw out of a method, 200 times", caught, 200)
+
+    try:
+        BadCtor()
+    catch e:
+        msg = e
+    t = test_eq(t, "REGRESSION: throw inside __init__ is caught", msg, "ctor failed")
+    t = test_eq(t, "REGRESSION: VM healthy after constructor throw", 1 + th.ok() + 1, 7)
+
+    return t
+
+class Animal:
+    fn __init__(self, name):
+        self.name = name
+    fn speak(self):
+        return self.name + " makes a sound"
+    fn describe(self):
+        return "I am " + self.name
+
+class Dog(Animal):
+    fn __init__(self, name, breed):
+        super.__init__(name)
+        self.breed = breed
+    fn speak(self):
+        return self.name + " barks"
+    fn parent_speak(self):
+        return super.speak()
+
+class NoOwnInit(Animal):
+    fn speak(self):
+        return self.name + " (no own __init__)"
+
+class Puppy(Dog):
+    fn speak(self):
+        return super.speak() + " (in a tiny voice)"
+
+fn suite_inheritance():
+    let t = test_suite("Inheritance")
+
+    let d = Dog("Rex", "Labrador")
+    t = test_eq(t, "subclass field set via super.__init__", d.name, "Rex")
+    t = test_eq(t, "subclass field set in its own __init__", d.breed, "Labrador")
+    t = test_eq(t, "overridden method wins over inherited", d.speak(), "Rex barks")
+    t = test_eq(t, "super.method() reaches the parent's implementation", d.parent_speak(), "Rex makes a sound")
+    t = test_eq(t, "inherited method not overridden by subclass", d.describe(), "I am Rex")
+    t = test_eq(t, "type() of a subclass instance", type(d), "instance")
+
+    let n = NoOwnInit("Cat")
+    t = test_eq(t, "subclass with no own __init__ uses the parent's", n.name, "Cat")
+    t = test_eq(t, "subclass with no own __init__ can still override a method", n.speak(), "Cat (no own __init__)")
+    t = test_eq(t, "subclass with no own __init__ still inherits other methods", n.describe(), "I am Cat")
+
+    # ── REGRESSION: global_get/table_get hand back a shallow, BORROWED
+    # Value — same convention OP_GET_GLOBAL relies on by explicitly
+    # value_copy()-ing the result. OP_CALL_SUPER used to value_free() that
+    # borrowed copy, dropping a reference it never owned and freeing the
+    # live superclass out from under the program — invisible until some
+    # LATER, unrelated method call walked the now-corrupted class and
+    # segfaulted (caught by valgrind as a use-after-free in
+    # class_method_lookup). A super call must never free anything the
+    # global table still owns. Must never regress. ─────────────────────
+    let p = Puppy("Fido", "Beagle")
+    t = test_eq(t, "REGRESSION: super call two levels deep", p.speak(), "Fido barks (in a tiny voice)")
+    t = test_eq(t, "REGRESSION: inherited method survives a prior super call", p.describe(), "I am Fido")
+    t = test_eq(t, "REGRESSION: grandparent field still reachable", p.breed, "Beagle")
+
+    let total = 0
+    let i = 0
+    while i < 2000:
+        total = total + len(d.parent_speak())
+        total = total + len(d.describe())
+        total = total + len(p.speak())
+        i = i + 1
+    t = test_eq(t, "REGRESSION: stack/heap stay healthy across 2000 mixed super/inherited calls", total, 106000)
+
+    # ── errors ──────────────────────────────────────────────────────────
+    let msg = ""
+    try:
+        class Bad(NotDefinedAnywhere):
+            fn f(self):
+                return 1
+    catch e:
+        msg = e
+    t = test_contains_str(t, "undefined superclass name", msg, "Undefined variable")
+
+    try:
+        d.no_such_super_method_target()
+    catch e:
+        msg = e
+    t = test_contains_str(t, "calling an undefined method (sanity check)", msg, "Undefined method")
+
+    return t

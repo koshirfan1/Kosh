@@ -1,0 +1,65 @@
+# morgos — a tiny, swappable Morgan-style request logger for webi.
+#
+# Usage:
+#   from webi import webi
+#   import "morgos"
+#
+#   let app = webi_app()
+#   app = after(app, morgos)
+#
+# Every request gets one line, once the response is ready:
+#   GET /users/42 200 12.48 ms - 1024
+#
+# Method, path, status (color-coded — green 2xx, cyan 3xx, yellow 4xx,
+# red 5xx), elapsed time covering the full request (middleware, route
+# matching, and the handler itself), and response size in bytes.
+#
+# Unlike webi's built-in webi_debug() logging, morgos:
+#   - doesn't require debug mode — it logs every request unconditionally
+#     once installed, the same way morgan does in Express
+#   - is a normal after-hook (see webi's after()), so it can be swapped
+#     out, disabled, or combined with other after-hooks — e.g. one that
+#     also writes to a file via the `logger` package — without touching
+#     webi itself
+#
+# Needs webi's after() hook (webi v1.1.3+). Install both:
+#   kh install webi
+#   kh install morgos
+
+# ---------------------------------------------------------------------------
+# Internal: color a status code by class — the same convention morgan
+# itself uses (green 2xx, cyan 3xx, yellow 4xx, red 5xx). Deliberately
+# self-contained rather than reusing webi's own _webi_color_status —
+# morgos is meant to be a standalone package that only depends on webi's
+# public after() hook and req["_start_clock"], never webi's private
+# internals, so it keeps working even if webi's internal implementation
+# changes.
+# ---------------------------------------------------------------------------
+fn _morgos_color_status(status, text):
+    if status >= 500:
+        return "\x1b[31m" + text + "\x1b[0m"
+    if status >= 400:
+        return "\x1b[33m" + text + "\x1b[0m"
+    if status >= 300:
+        return "\x1b[36m" + text + "\x1b[0m"
+    return "\x1b[32m" + text + "\x1b[0m"
+
+# ---------------------------------------------------------------------------
+# morgos(req, res) -> res
+# The logger itself — register it with after(app, morgos).
+# ---------------------------------------------------------------------------
+fn morgos(req, res):
+    let start = 0
+    if has(req, "_start_clock"):
+        start = req["_start_clock"]
+    else:
+        start = clock()
+
+    let elapsed_ms = round((clock() - start) * 100000) / 100
+    let status_str = _morgos_color_status(res["status"], str(res["status"]))
+    let size = 0
+    if has(res, "body"):
+        size = len(res["body"])
+
+    print req["method"] + " " + req["path"] + " " + status_str + " " + str(elapsed_ms) + " ms - " + str(size)
+    return res

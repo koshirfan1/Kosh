@@ -1,0 +1,23 @@
+# Khan SMTP (Email) Package
+# Usage: import "smtp"
+
+import "requests"
+
+fn smtp_config(host, port, user, pass):
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "pass": pass
+    }
+
+fn send_email(cfg, to, subject, body):
+    # This currently simulates sending via a print since we
+    # don't have a native socket-based SMTP client yet.
+    # Future version will use a bridge to a C SMTP library.
+    print "[SMTP] Connecting to " + cfg["host"] + ":" + str(cfg["port"])
+    print "[SMTP] Authenticating as " + cfg["user"]
+    print "[SMTP] To: " + to
+    print "[SMTP] Subject: " + subject
+    print "[SMTP] Body: " + body
+    return true

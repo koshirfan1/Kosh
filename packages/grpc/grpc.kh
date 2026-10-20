@@ -1,0 +1,13 @@
+# Khan gRPC Package
+# High-speed remote procedure calls
+# Usage: import "grpc"
+
+fn grpc_client(address):
+    return {
+        "address": address
+    }
+
+fn grpc_call(client, service, method, data):
+    print "[gRPC] " + client["address"] + " -> CALL " + service + "/" + method
+    # Placeholder for response
+    return {"status": "OK", "data": data}

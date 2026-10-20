@@ -1,0 +1,251 @@
+# webi_security_test.kh — test suite for webi v1.1.1 security features
+# Run: kosh examples/webi_security_test.kh
+#
+# Like webi_test2.kh, this drives requests through webi_handle() directly
+# (no real server socket, runs instantly). Covers everything reachable
+# that way: secure_token, rate_limit_check, cookies, CSRF, CORS, rate
+# limiting middleware, API-key middleware, and the short-circuit dispatch
+# mechanism they all depend on.
+#
+# NOT covered here, because they only exist in the native accept-loop code
+# and can't be exercised without a real socket in a script that also needs
+# to keep running afterward to report results:
+#   - crash containment (a broken handler no longer kills the server)
+#   - request body size cap (413 on oversized bodies)
+#   - request header size cap (431 on oversized headers)
+#   - socket read timeout
+# See webi_security_server_demo.kh for a live server to check those with
+# curl (instructions in that file's header comment).
+
+import "webi"
+
+fn test_eq(stats, label, actual, expected):
+    if actual == expected:
+        stats["pass"] = stats["pass"] + 1
+        print "  OK   " + label
+    else:
+        stats["fail"] = stats["fail"] + 1
+        print "  FAIL " + label + "  (got: " + str(actual) + ", want: " + str(expected) + ")"
+    return stats
+
+fn test_true(stats, label, actual):
+    return test_eq(stats, label, actual, true)
+
+let stats = {"pass": 0, "fail": 0}
+
+print "=========================================="
+print "webi " + webi_version() + " — security test suite"
+print "=========================================="
+
+# ---------------------------------------------------------------------------
+# secure_token() — CSPRNG-backed token generator
+# ---------------------------------------------------------------------------
+print ""
+print "-- secure_token --"
+
+let t1 = secure_token()
+let t2 = secure_token()
+stats = test_eq(stats, "default length is 64 hex chars", len(t1), 64)
+stats = test_true(stats, "two tokens are different", t1 != t2)
+
+let t3 = secure_token(8)
+stats = test_eq(stats, "custom byte length (8 bytes = 16 hex chars)", len(t3), 16)
+
+# ---------------------------------------------------------------------------
+# rate_limit_check() — native limiter
+# ---------------------------------------------------------------------------
+print ""
+print "-- rate_limit_check (native) --"
+
+let rl_key = "test-key-" + secure_token(4)
+stats = test_true(stats, "request 1 allowed", rate_limit_check(rl_key, 3, 60))
+stats = test_true(stats, "request 2 allowed", rate_limit_check(rl_key, 3, 60))
+stats = test_true(stats, "request 3 allowed", rate_limit_check(rl_key, 3, 60))
+stats = test_eq(stats, "request 4 rejected (limit is 3)", rate_limit_check(rl_key, 3, 60), false)
+
+let other_key = "test-key-" + secure_token(4)
+stats = test_true(stats, "different key has its own independent limit", rate_limit_check(other_key, 3, 60))
+
+# ---------------------------------------------------------------------------
+# cookie_get / res_with_cookie / res_with_secure_cookie
+# ---------------------------------------------------------------------------
+print ""
+print "-- cookies --"
+
+let req_with_cookies = {"headers": {"Cookie": "a=1; sid=abc123; empty_ok= "}, "_app": {}}
+stats = test_eq(stats, "cookie_get finds a value", cookie_get(req_with_cookies, "sid", "?"), "abc123")
+stats = test_eq(stats, "cookie_get returns default when missing", cookie_get(req_with_cookies, "nope", "fallback"), "fallback")
+
+let plain_cookie_res = res_with_cookie(res_text("ok"), "sid", "abc123")
+stats = test_eq(stats, "res_with_cookie format", plain_cookie_res["cookies"][0], "sid=abc123; Path=/")
+
+let secure_cookie_res = res_with_secure_cookie(res_text("ok"), "session", "xyz", {"max_age": 3600, "secure": true})
+let secure_cookie_str = secure_cookie_res["cookies"][0]
+stats = test_true(stats, "secure cookie includes HttpOnly by default", contains(secure_cookie_str, "HttpOnly"))
+stats = test_true(stats, "secure cookie includes Secure when requested", contains(secure_cookie_str, "Secure"))
+stats = test_true(stats, "secure cookie includes SameSite default (Lax)", contains(secure_cookie_str, "SameSite=Lax"))
+stats = test_true(stats, "secure cookie includes Max-Age", contains(secure_cookie_str, "Max-Age=3600"))
+
+let two_cookies_res = res_with_cookie(res_with_cookie(res_text("ok"), "a", "1"), "b", "2")
+stats = test_eq(stats, "a response can carry more than one cookie", len(two_cookies_res["cookies"]), 2)
+
+# ---------------------------------------------------------------------------
+# CORS — mw_cors via webi_handle
+# ---------------------------------------------------------------------------
+print ""
+print "-- CORS (mw_cors) --"
+
+let cors_app = webi_app()
+cors_app = use(cors_app, mw_cors)
+
+fn h_cors_ok(req):
+    return res_text("ok")
+
+cors_app = route(cors_app, "GET", "/x", h_cors_ok)
+
+let preflight = webi_handle(cors_app, "OPTIONS", "/x", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "OPTIONS preflight short-circuits with 204", preflight["status"], 204)
+stats = test_eq(stats, "preflight includes Allow-Origin (default *)",
+    preflight["headers"]["Access-Control-Allow-Origin"], "*")
+
+let normal_get = webi_handle(cors_app, "GET", "/x", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "a normal GET still reaches the handler", normal_get["status"], 200)
+
+# Configurable allow-list
+let cors_app2 = webi_app()
+cors_app2 = webi_set_cors_origins(cors_app2, ["https://good.example"])
+cors_app2 = use(cors_app2, mw_cors)
+cors_app2 = route(cors_app2, "GET", "/x", h_cors_ok)
+
+let allowed_origin_req = webi_handle(cors_app2, "OPTIONS", "/x", "", "Origin: https://good.example", "", "127.0.0.1")
+stats = test_eq(stats, "configured allow-list: matching origin is echoed back",
+    allowed_origin_req["headers"]["Access-Control-Allow-Origin"], "https://good.example")
+
+let blocked_origin_req = webi_handle(cors_app2, "OPTIONS", "/x", "", "Origin: https://evil.example", "", "127.0.0.1")
+stats = test_eq(stats, "configured allow-list: non-matching origin gets no Allow-Origin header",
+    has(blocked_origin_req["headers"], "Access-Control-Allow-Origin"), false)
+
+# ---------------------------------------------------------------------------
+# Rate limiting middleware — mw_rate_limit via webi_handle
+# ---------------------------------------------------------------------------
+print ""
+print "-- rate limiting middleware (mw_rate_limit) --"
+
+let rl_app = webi_app()
+rl_app = webi_set_rate_limit(rl_app, 2, 60)
+rl_app = use(rl_app, mw_rate_limit)
+rl_app = route(rl_app, "GET", "/x", h_cors_ok)
+
+# Use a distinct fake IP per test run so repeated runs of this file don't
+# collide with a still-open window from a previous run.
+let rl_ip = "10.0." + secure_token(2) + ".1"
+
+let rl_r1 = webi_handle(rl_app, "GET", "/x", "", "", "", rl_ip)
+let rl_r2 = webi_handle(rl_app, "GET", "/x", "", "", "", rl_ip)
+let rl_r3 = webi_handle(rl_app, "GET", "/x", "", "", "", rl_ip)
+stats = test_eq(stats, "request 1 within limit", rl_r1["status"], 200)
+stats = test_eq(stats, "request 2 within limit", rl_r2["status"], 200)
+stats = test_eq(stats, "request 3 exceeds limit (429)", rl_r3["status"], 429)
+
+let other_ip = "10.0." + secure_token(2) + ".2"
+let rl_other = webi_handle(rl_app, "GET", "/x", "", "", "", other_ip)
+stats = test_eq(stats, "a different IP is not affected by the first IP's limit", rl_other["status"], 200)
+
+# ---------------------------------------------------------------------------
+# API-key middleware — mw_require_api_key via webi_handle
+# ---------------------------------------------------------------------------
+print ""
+print "-- API key middleware (mw_require_api_key) --"
+
+let ak_app = webi_app()
+ak_app = webi_require_api_key(ak_app, ["good-key"])
+ak_app = use(ak_app, mw_require_api_key)
+ak_app = route(ak_app, "GET", "/x", h_cors_ok)
+
+let ak_none  = webi_handle(ak_app, "GET", "/x", "", "", "", "127.0.0.1")
+let ak_wrong = webi_handle(ak_app, "GET", "/x", "", "X-API-Key: bad-key", "", "127.0.0.1")
+let ak_right = webi_handle(ak_app, "GET", "/x", "", "X-API-Key: good-key", "", "127.0.0.1")
+let ak_bearer = webi_handle(ak_app, "GET", "/x", "", "Authorization: Bearer good-key", "", "127.0.0.1")
+stats = test_eq(stats, "no key -> 401", ak_none["status"], 401)
+stats = test_eq(stats, "wrong key -> 401", ak_wrong["status"], 401)
+stats = test_eq(stats, "correct key via X-API-Key -> 200", ak_right["status"], 200)
+stats = test_eq(stats, "correct key via Authorization: Bearer -> 200", ak_bearer["status"], 200)
+
+# ---------------------------------------------------------------------------
+# CSRF — csrf_new_token / csrf_issue / csrf_verify / mw_csrf via webi_handle
+# ---------------------------------------------------------------------------
+print ""
+print "-- CSRF (mw_csrf) --"
+
+let csrf_app = webi_app()
+csrf_app = use(csrf_app, mw_csrf)
+
+fn h_csrf_form(req):
+    let token = csrf_new_token()
+    return csrf_issue(res_text(token), token)
+
+fn h_csrf_submit(req):
+    return res_text("accepted")
+
+csrf_app = route(csrf_app, "GET", "/form", h_csrf_form)
+csrf_app = route(csrf_app, "POST", "/submit", h_csrf_submit)
+
+let form_res = webi_handle(csrf_app, "GET", "/form", "", "", "", "127.0.0.1")
+let issued_token = form_res["body"]
+let set_cookie_line = form_res["cookies"][0]
+stats = test_true(stats, "form GET issues a csrf_token cookie", contains(set_cookie_line, "csrf_token=" + issued_token))
+stats = test_true(stats, "csrf cookie is HttpOnly", contains(set_cookie_line, "HttpOnly"))
+
+# Simulate the browser sending that cookie back
+let cookie_header = "Cookie: csrf_token=" + issued_token
+
+let no_token = webi_handle(csrf_app, "POST", "/submit", "", cookie_header, "", "127.0.0.1")
+stats = test_eq(stats, "POST with cookie but no submitted token -> 403", no_token["status"], 403)
+
+let wrong_token = webi_handle(csrf_app, "POST", "/submit", "", cookie_header + "\nX-CSRF-Token: wrong", "", "127.0.0.1")
+stats = test_eq(stats, "POST with mismatched token -> 403", wrong_token["status"], 403)
+
+let right_token = webi_handle(csrf_app, "POST", "/submit", "", cookie_header + "\nX-CSRF-Token: " + issued_token, "", "127.0.0.1")
+stats = test_eq(stats, "POST with matching cookie + header token -> 200", right_token["status"], 200)
+
+let no_cookie_at_all = webi_handle(csrf_app, "POST", "/submit", "", "X-CSRF-Token: " + issued_token, "", "127.0.0.1")
+stats = test_eq(stats, "POST with header token but no cookie at all -> 403", no_cookie_at_all["status"], 403)
+
+let get_needs_no_token = webi_handle(csrf_app, "GET", "/form", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "GET requests are not CSRF-checked", get_needs_no_token["status"], 200)
+
+# ---------------------------------------------------------------------------
+# Language-level regression: and/or must short-circuit
+# ---------------------------------------------------------------------------
+print ""
+print "-- and/or short-circuit (interpreter regression check) --"
+
+let sc_map = {"present": 1}
+
+fn sc_boom():
+    # If this ever runs when it shouldn't, the "and"/"or" below aren't
+    # short-circuiting, and this whole test suite's has()-guard pattern
+    # (used throughout mw_cors, mw_csrf, mw_require_api_key, etc.) is
+    # unsafe again.
+    return true
+
+let and_ok = true
+if has(sc_map, "missing") and sc_boom():
+    and_ok = false
+stats = test_true(stats, "'and' does not evaluate right side once left is false", and_ok)
+
+let or_ok = true
+if not has(sc_map, "missing") or sc_boom():
+    or_ok = or_ok
+else:
+    or_ok = false
+stats = test_true(stats, "'or' does not evaluate right side once left is true", or_ok)
+
+# ---------------------------------------------------------------------------
+print ""
+print "=========================================="
+print str(stats["pass"]) + " passed, " + str(stats["fail"]) + " failed"
+print "=========================================="
+
+if stats["fail"] > 0:
+    exit(1)

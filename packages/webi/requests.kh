@@ -1,0 +1,59 @@
+# Khan webi requests submodule (v1.1.1)
+# Usage: from webi import requests
+#
+# A thin, framework-agnostic re-export of Khan's native HTTP client
+# builtins (http_get, http_post, http_post_json, http_put, http_delete,
+# and their header/patch/head variants). This exists so a webi app can
+# make an outbound call — calling another API, proxying, firing a
+# webhook — without needing a separate `requests` package install just
+# for that.
+#
+# This is intentionally minimal. For the full-featured HTTP client
+# (retries, sessions, query/url builders, response helpers like
+# json()/ok()/status()) install the standalone `requests` package
+# instead: `kh install requests`.
+#
+# Every function below returns the same response map the native
+# builtins already produce:
+#   res["status"]  -> number   HTTP status code (e.g. 200)
+#   res["body"]    -> string   Raw response body
+#   res["success"] -> bool     true if status 200-299
+
+fn get(url):
+    return http_get(url)
+
+fn get_h(url, headers):
+    return http_get_h(url, headers)
+
+fn post(url, body):
+    return http_post(url, body)
+
+fn post_h(url, body, headers):
+    return http_post_h(url, body, headers)
+
+fn post_json(url, data):
+    return http_post_json(url, data)
+
+fn put(url, body):
+    return http_put(url, body)
+
+fn put_h(url, body, headers):
+    return http_put_h(url, body, headers)
+
+fn put_json(url, data):
+    return http_put_json(url, data)
+
+fn patch(url, body):
+    return http_patch(url, body)
+
+fn patch_json(url, data):
+    return http_patch_json(url, data)
+
+fn delete(url):
+    return http_delete(url)
+
+fn delete_h(url, headers):
+    return http_delete_h(url, headers)
+
+fn head(url):
+    return http_head(url)

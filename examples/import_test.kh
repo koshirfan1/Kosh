@@ -1,0 +1,4 @@
+from math import math_sqrt, PI
+
+func calculate_circle_area(radius: float) -> float:
+    return PI * math_sqrt(radius) ** 2

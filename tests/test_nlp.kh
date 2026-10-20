@@ -1,0 +1,19 @@
+# Test for nlp package
+import "../packages/nlp/nlp.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("NLP Suite")
+
+let text1 = "Khan language is GREAT!"
+let score1 = sentiment(text1)
+t = test_eq(t, "Positive sentence should have score 1", score1, 1)
+
+let text2 = "This is a terrible and bad bug."
+let score2 = sentiment(text2)
+t = test_eq(t, "Negative sentence should have score -2", score2, -2)
+
+let tokens = tokenize("Hello, world!")
+t = test_eq(t, "Tokenize should remove comma", tokens[0], "Hello")
+t = test_eq(t, "Tokenize should remove exclamation", tokens[1], "world")
+
+test_run(t)

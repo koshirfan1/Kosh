@@ -1,0 +1,40 @@
+# vision/histogram.kh — brightness distribution + contrast enhancement.
+# Needs core.kh.
+
+# ---------------------------------------------------------------------------
+# histogram_stats(path) -> {"min","max","average"} brightness (0-255), or nil
+# ---------------------------------------------------------------------------
+fn histogram_stats(path):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return nil
+    let stats = vision_brightness_stats(img)
+    vision_free(img)
+    return stats
+
+# ---------------------------------------------------------------------------
+# histogram(path) -> array[256] of pixel counts per brightness level, or nil
+# ---------------------------------------------------------------------------
+fn histogram(path):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return nil
+    let hist = vision_histogram_gray(img)
+    vision_free(img)
+    return hist
+
+# ---------------------------------------------------------------------------
+# equalize_file(input_path, output_path) -> bool
+# Histogram equalization — spreads out the brightness distribution to
+# use the full 0-255 range, a standard automatic contrast fix. Output is
+# single-channel (grayscale).
+# ---------------------------------------------------------------------------
+fn equalize_file(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_equalize(img)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok

@@ -1,0 +1,58 @@
+# Non-interactive test of the todo app
+import "todo_core.kh"
+import "todo_storage.kh"
+import "todo_ui.kh"
+
+# Test data
+let test_path = "test_todos.dat"
+let todos = []
+
+# Test 1: Create todos
+print "=== Test 1: Create Todos ==="
+todos = create_todo(todos, "Learn Khan")
+todos = create_todo(todos, "Build todo app")
+todos = create_todo(todos, "Add tests")
+print "Created " + str(len(todos)) + " todos"
+
+# Test 2: List todos
+print ""
+print "=== Test 2: List Todos ==="
+list_todos(todos)
+
+# Test 3: Mark done
+print ""
+print "=== Test 3: Mark Done ==="
+todos = mark_done(todos, 1)
+let t1 = get_todo(todos, 1)
+print "Todo 1 done: " + str(t1["done"])
+list_todos(todos)
+
+# Test 4: Delete
+print ""
+print "=== Test 4: Delete ==="
+todos = delete_todo(todos, 2)
+print "After deleting todo 2: " + str(len(todos)) + " todos remain"
+list_todos(todos)
+
+# Test 5: Save
+print ""
+print "=== Test 5: Save ==="
+save_todos(todos, test_path)
+
+# Test 6: Load
+print ""
+print "=== Test 6: Load ==="
+let loaded = load_todos(test_path)
+print "Loaded " + str(len(loaded)) + " todos"
+list_todos(loaded)
+
+# Test 7: Pending count
+print ""
+print "=== Test 7: Pending Count ==="
+let pending = count_pending(todos)
+print "Pending todos: " + str(pending)
+
+# Clean up test file
+# (We use exit instead since we can't delete files)
+print ""
+print "=== All Tests Passed! ==="

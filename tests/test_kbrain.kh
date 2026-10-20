@@ -1,0 +1,23 @@
+# Test for kbrain package
+import "../packages/kbrain/kbrain.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("KBrain Suite")
+
+let model = linear_regression()
+model = set_params(model, 0.1, 500)
+
+# Data: y = 2x
+let x = [[1], [2], [3], [4]]
+let y = [2, 4, 6, 8]
+
+model = train(model, x, y)
+
+let p = predict(model, [5])
+print "Prediction for 5: " + str(p)
+
+# It should be close to 10
+t = test_true(t, "prediction should be > 9.9", p > 9.9)
+t = test_true(t, "prediction should be < 10.1", p < 10.1)
+
+test_run(t)

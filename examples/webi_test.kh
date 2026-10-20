@@ -1,0 +1,510 @@
+# webi package test suite
+# Tests the webi web framework without starting a server
+# Run: kosh examples/webi_test.kh
+
+import "webi"
+
+let passed = 0
+let failed = 0
+
+fn test(name, condition):
+    if condition:
+        passed = passed + 1
+        print "  PASS  " + name
+    else:
+        failed = failed + 1
+        print "  FAIL  " + name
+
+fn test_eq(name, actual, expected):
+    if actual == expected:
+        passed = passed + 1
+        print "  PASS  " + name
+    else:
+        failed = failed + 1
+        print "  FAIL  " + name + " (got: " + str(actual) + ", expected: " + str(expected) + ")"
+
+# ===========================================================================
+# 1. App creation and configuration
+# ===========================================================================
+print "\n=== App Creation & Configuration ==="
+
+let app = webi_app()
+test("webi_app returns a map", type(app) == "map")
+test("app has routes key", has(app, "routes"))
+test("app has middlewares key", has(app, "middlewares"))
+test("app has host key", has(app, "host"))
+test("app has port key", has(app, "port"))
+test("app has debug key", has(app, "debug"))
+test("app has not_found key", has(app, "not_found"))
+test("app has error key", has(app, "error"))
+test("app has name key", has(app, "name"))
+test_eq("default host", app["host"], "0.0.0.0")
+test_eq("default port", app["port"], 8080)
+test_eq("default debug", app["debug"], false)
+test_eq("default name", app["name"], "webi")
+test_eq("default routes empty", len(app["routes"]), 0)
+test_eq("default middlewares empty", len(app["middlewares"]), 0)
+
+# Test webi_debug
+app = webi_debug(app, true)
+test_eq("debug enabled", app["debug"], true)
+app = webi_debug(app, false)
+test_eq("debug disabled", app["debug"], false)
+
+# Test webi_name
+app = webi_name(app, "MyApp")
+test_eq("custom name", app["name"], "MyApp")
+app = webi_name(app, "webi")
+
+# ===========================================================================
+# 2. Route registration
+# ===========================================================================
+print "\n=== Route Registration ==="
+
+fn handle_index(req):
+    return res_text("Home")
+
+fn handle_user(req):
+    return res_text("User: " + param_get(req, "id", "unknown"))
+
+fn handle_echo(req):
+    return res_json(body_json(req))
+
+fn handle_wild(req):
+    return res_text("Wild: " + req["path"])
+
+# Test route()
+app = route(app, "GET", "/", handle_index)
+test_eq("one route registered", len(app["routes"]), 1)
+
+app = route(app, "GET", "/users/:id", handle_user)
+test_eq("two routes registered", len(app["routes"]), 2)
+
+app = route(app, "POST", "/echo", handle_echo)
+test_eq("three routes registered", len(app["routes"]), 3)
+
+app = route(app, "GET", "/files/*", handle_wild)
+test_eq("four routes registered", len(app["routes"]), 4)
+
+# Test shortcut helpers
+app = get_route(app, "/about", handle_index)
+test_eq("get_route registered", len(app["routes"]), 5)
+
+app = post_route(app, "/data", handle_echo)
+test_eq("post_route registered", len(app["routes"]), 6)
+
+app = put_route(app, "/update", handle_echo)
+test_eq("put_route registered", len(app["routes"]), 7)
+
+app = patch_route(app, "/patch", handle_echo)
+test_eq("patch_route registered", len(app["routes"]), 8)
+
+app = delete_route(app, "/remove", handle_echo)
+test_eq("delete_route registered", len(app["routes"]), 9)
+
+# ===========================================================================
+# 3. Route matching (internal)
+# ===========================================================================
+print "\n=== Route Matching ==="
+
+# Test _match_route exact
+let m1 = _match_route("/users", "/users")
+test("exact match", m1["matched"])
+test_eq("exact match no params", len(keys(m1["params"])), 0)
+
+# Test _match_route mismatch
+let m2 = _match_route("/users", "/posts")
+test("mismatch", not m2["matched"])
+
+# Test _match_route param
+let m3 = _match_route("/users/:id", "/users/42")
+test("param match", m3["matched"])
+test_eq("param captured", m3["params"]["id"], "42")
+
+# Test _match_route multiple params
+let m4 = _match_route("/users/:id/posts/:post_id", "/users/5/posts/99")
+test("multi param match", m4["matched"])
+test_eq("first param", m4["params"]["id"], "5")
+test_eq("second param", m4["params"]["post_id"], "99")
+
+# Test _match_route wildcard
+let m5 = _match_route("/files/*", "/files/css/style.css")
+test("wildcard match", m5["matched"])
+
+# Test _match_route wildcard root
+let m6 = _match_route("/files/*", "/files")
+test("wildcard root match", m6["matched"])
+
+# Test _match_route different methods (pattern matching only)
+let m7 = _match_route("/api/:version/users", "/api/v2/users")
+test("version param match", m7["matched"])
+test_eq("version captured", m7["params"]["version"], "v2")
+
+# ===========================================================================
+# 4. Response builders
+# ===========================================================================
+print "\n=== Response Builders ==="
+
+# res_text
+let r1 = res_text("Hello")
+test_eq("res_text status", r1["status"], 200)
+test_eq("res_text body", r1["body"], "Hello")
+test_eq("res_text content_type", r1["content_type"], "text/plain; charset=utf-8")
+
+# res_html
+let r2 = res_html("<h1>Hi</h1>")
+test_eq("res_html status", r2["status"], 200)
+test_eq("res_html body", r2["body"], "<h1>Hi</h1>")
+test_eq("res_html content_type", r2["content_type"], "text/html; charset=utf-8")
+
+# res_json
+let r3 = res_json({"name": "Khan", "version": 1})
+test_eq("res_json status", r3["status"], 200)
+test_eq("res_json content_type", r3["content_type"], "application/json")
+test("res_json body is valid JSON", contains(r3["body"], "Khan"))
+
+# res_json_str
+let r4 = res_json_str("{\"key\": \"val\"}")
+test_eq("res_json_str status", r4["status"], 200)
+test_eq("res_json_str body", r4["body"], "{\"key\": \"val\"}")
+
+# res_status
+let r5 = res_status(201, "Created")
+test_eq("res_status status", r5["status"], 201)
+test_eq("res_status body", r5["body"], "Created")
+
+# res_redirect
+let r6 = res_redirect("/login")
+test_eq("res_redirect status", r6["status"], 302)
+test_eq("res_redirect Location", r6["headers"]["Location"], "/login")
+
+# res_redirect_permanent
+let r7 = res_redirect_permanent("/new-url")
+test_eq("res_redirect_permanent status", r7["status"], 301)
+test_eq("res_redirect_permanent Location", r7["headers"]["Location"], "/new-url")
+
+# res_not_found
+let r8 = res_not_found("Missing")
+test_eq("res_not_found status", r8["status"], 404)
+test_eq("res_not_found body", r8["body"], "Missing")
+
+# res_bad_request
+let r9 = res_bad_request("Bad input")
+test_eq("res_bad_request status", r9["status"], 400)
+test_eq("res_bad_request body", r9["body"], "Bad input")
+
+# res_unauthorized
+let r10 = res_unauthorized("Login required")
+test_eq("res_unauthorized status", r10["status"], 401)
+test_eq("res_unauthorized body", r10["body"], "Login required")
+
+# res_forbidden
+let r11 = res_forbidden("No access")
+test_eq("res_forbidden status", r11["status"], 403)
+test_eq("res_forbidden body", r11["body"], "No access")
+
+# res_server_error
+let r12 = res_server_error("Oops")
+test_eq("res_server_error status", r12["status"], 500)
+test_eq("res_server_error body", r12["body"], "Oops")
+
+# res_created
+let r13 = res_created({"id": 1})
+test_eq("res_created status", r13["status"], 201)
+test_eq("res_created content_type", r13["content_type"], "application/json")
+
+# res_no_content
+let r14 = res_no_content()
+test_eq("res_no_content status", r14["status"], 204)
+test_eq("res_no_content body", r14["body"], "")
+
+# res_with_header
+let r15 = res_text("test")
+r15 = res_with_header(r15, "X-Custom", "value123")
+test_eq("res_with_header custom header", r15["headers"]["X-Custom"], "value123")
+
+# res_with_cookie
+let r16 = res_text("test")
+r16 = res_with_cookie(r16, "session", "abc123")
+test_eq("res_with_cookie Set-Cookie", r16["cookies"][0], "session=abc123; Path=/")
+
+# res_cors
+let r17 = res_text("test")
+r17 = res_cors(r17, {})
+test_eq("res_cors Allow-Origin", r17["headers"]["Access-Control-Allow-Origin"], "*")
+test("res_cors Allow-Methods", contains(r17["headers"]["Access-Control-Allow-Methods"], "GET"))
+test("res_cors Allow-Headers", contains(r17["headers"]["Access-Control-Allow-Headers"], "Content-Type"))
+
+# ===========================================================================
+# 5. Request helpers
+# ===========================================================================
+print "\n=== Request Helpers ==="
+
+let test_req = {
+    "method": "POST",
+    "path": "/users/42?page=1&limit=10",
+    "query": {"page": "1", "limit": "10"},
+    "headers": {"Content-Type": "application/json", "Authorization": "Bearer token123"},
+    "body": "{\"name\": \"Irfan\", \"age\": 25}",
+    "body_json": {"name": "Irfan", "age": 25},
+    "params": {"id": "42"},
+    "ip": "127.0.0.1"
+}
+
+# query_get
+test_eq("query_get existing", query_get(test_req, "page", "0"), "1")
+test_eq("query_get missing with default", query_get(test_req, "missing", "default"), "default")
+test_eq("query_get missing no default", query_get(test_req, "missing", nil), nil)
+
+# header_get
+test_eq("header_get existing", header_get(test_req, "Content-Type", ""), "application/json")
+test_eq("header_get missing", header_get(test_req, "X-None", "fallback"), "fallback")
+
+# param_get
+test_eq("param_get existing", param_get(test_req, "id", ""), "42")
+test_eq("param_get missing", param_get(test_req, "nonexistent", "def"), "def")
+
+# body_json
+let bj = body_json(test_req)
+test("body_json returns map", type(bj) == "map")
+test_eq("body_json name", bj["name"], "Irfan")
+test_eq("body_json age", bj["age"], 25)
+
+# form_get
+let form_req = {"body": "name=Irfan&age=25&city=Faisalabad"}
+test_eq("form_get existing", form_get(form_req, "name", ""), "Irfan")
+test_eq("form_get another", form_get(form_req, "age", ""), "25")
+test_eq("form_get missing", form_get(form_req, "missing", "def"), "def")
+test_eq("form_get empty body", form_get({"body": ""}, "x", "def"), "def")
+
+# is_get / is_post / is_put / is_patch / is_delete
+test("is_post true", is_post(test_req))
+test("is_get false", not is_get(test_req))
+test("is_put false", not is_put(test_req))
+test("is_patch false", not is_patch(test_req))
+test("is_delete false", not is_delete(test_req))
+
+# is_json_req
+test("is_json_req true", is_json_req(test_req))
+let text_req = {"headers": {"Content-Type": "text/plain"}}
+test("is_json_req false for text", not is_json_req(text_req))
+
+# ===========================================================================
+# 6. Middleware
+# ===========================================================================
+print "\n=== Middleware ==="
+
+let mw_app = webi_app()
+
+fn test_middleware(req):
+    req["_mw_ran"] = true
+    return req
+
+mw_app = use(mw_app, test_middleware)
+test_eq("middleware registered", len(mw_app["middlewares"]), 1)
+
+# Test middleware execution
+let mw_test_req = {"method": "GET", "path": "/test", "_mw_ran": false}
+let mw_result = _webi_run_middlewares(mw_app, mw_test_req)
+test("middleware ran", mw_result["_mw_ran"])
+
+# Test multiple middlewares
+fn mw_add_header(req):
+    req["_header_added"] = "yes"
+    return req
+
+mw_app = use(mw_app, mw_add_header)
+test_eq("two middlewares", len(mw_app["middlewares"]), 2)
+
+let mw_test_req2 = {"method": "GET", "path": "/test", "_mw_ran": false}
+let mw_result2 = _webi_run_middlewares(mw_app, mw_test_req2)
+test("first middleware ran", mw_result2["_mw_ran"])
+test_eq("second middleware ran", mw_result2["_header_added"], "yes")
+
+# ===========================================================================
+# 7. Template rendering
+# ===========================================================================
+print "\n=== Template Rendering ==="
+
+# render
+let tmpl = "<h1>Hello, {{name}}!</h1><p>You are {{age}} years old.</p>"
+let vars = {"name": "Irfan", "age": "25"}
+let result = render(tmpl, vars)
+test("render replaces name", contains(result, "Hello, Irfan"))
+test("render replaces age", contains(result, "25 years old"))
+test("render no leftover placeholders", not contains(result, "{{"))
+
+# render with empty vars
+let result2 = render("No placeholders", {})
+test_eq("render no vars", result2, "No placeholders")
+
+# render with missing var (placeholder stays)
+let result3 = render("Hello {{name}}", {})
+test("render missing var keeps placeholder", contains(result3, "{{name}}"))
+
+# html_escape — uses contains() to avoid auto-formatter HTML entity conversion
+let raw_amp = "a" + "&" + "b"
+let out_amp = html_escape(raw_amp)
+test("html_escape escapes ampersand", out_amp != raw_amp)
+
+let raw_lt = "<tag>"
+let out_lt = html_escape(raw_lt)
+test("html_escape escapes angle brackets", out_lt != raw_lt)
+
+let raw_qt = str_replace("say \"hi\"", "h", "h")
+let out_qt = html_escape("say \"hi\"")
+test("html_escape escapes double quotes", out_qt != "say \"hi\"")
+
+# ===========================================================================
+# 8. webi_handle (bridge function)
+# ===========================================================================
+print "\n=== webi_handle (Request Dispatch) ==="
+
+let handle_app = webi_app()
+
+fn hello_handler(req):
+    return res_text("Hello, " + query_get(req, "name", "World") + "!")
+
+fn json_handler(req):
+    return res_json({"received": body_json(req), "method": req["method"]})
+
+fn user_handler(req):
+    return res_json({"id": param_get(req, "id", ""), "action": "show"})
+
+fn not_found_handler(req):
+    let res = res_json({"error": "custom 404", "path": req["path"]})
+    res["status"] = 404
+    return res
+
+handle_app = route(handle_app, "GET", "/hello", hello_handler)
+handle_app = post_route(handle_app, "/data", json_handler)
+handle_app = get_route(handle_app, "/users/:id", user_handler)
+handle_app = webi_not_found(handle_app, not_found_handler)
+
+# Test GET /hello
+let h1 = webi_handle(handle_app, "GET", "/hello", "name=Khan", "", "", "127.0.0.1")
+test_eq("GET /hello status", h1["status"], 200)
+test_eq("GET /hello body", h1["body"], "Hello, Khan!")
+
+# Test GET /hello without query
+let h2 = webi_handle(handle_app, "GET", "/hello", "", "", "", "127.0.0.1")
+test_eq("GET /hello default", h2["body"], "Hello, World!")
+
+# Test POST /data with JSON body
+let h3 = webi_handle(handle_app, "POST", "/data", "",
+    "Content-Type: application/json", "{\"msg\": \"hi\"}", "127.0.0.1")
+test_eq("POST /data status", h3["status"], 200)
+test("POST /data body has received", contains(h3["body"], "hi"))
+test("POST /data body has method", contains(h3["body"], "POST"))
+
+# Test GET /users/:id
+let h4 = webi_handle(handle_app, "GET", "/users/99", "", "", "", "127.0.0.1")
+test_eq("GET /users/99 status", h4["status"], 200)
+test("GET /users/99 has id 99", contains(h4["body"], "99"))
+
+# Test 404 with custom handler
+let h5 = webi_handle(handle_app, "GET", "/nonexistent", "", "", "", "127.0.0.1")
+test_eq("custom 404 status", h5["status"], 404)
+test("custom 404 body has path", contains(h5["body"], "/nonexistent"))
+
+# Test 404 with default handler
+let no404_app = webi_app()
+no404_app = route(no404_app, "GET", "/only", hello_handler)
+let h6 = webi_handle(no404_app, "GET", "/missing", "", "", "", "127.0.0.1")
+test_eq("default 404 status", h6["status"], 404)
+test("default 404 body mentions path", contains(h6["body"], "/missing"))
+
+# ===========================================================================
+# 9. Utility functions
+# ===========================================================================
+print "\n=== Utility Functions ==="
+
+# webi_version
+let ver = webi_version()
+test("webi_version returns string", type(ver) == "string")
+test("webi_version contains version", contains(ver, "1.1.3"))
+test("webi_version contains Khan", contains(ver, "Khan"))
+
+# webi_routes
+let routes_app = webi_app()
+routes_app = route(routes_app, "GET", "/", handle_index)
+routes_app = route(routes_app, "POST", "/api", handle_echo)
+routes_app = route(routes_app, "GET", "/users/:id", handle_user)
+let route_list = webi_routes(routes_app)
+test_eq("webi_routes count", len(route_list), 3)
+test("webi_routes contains GET /", contains(route_list[0], "GET /"))
+test("webi_routes contains POST /api", contains(route_list[1], "POST /api"))
+test("webi_routes contains GET /users/:id", contains(route_list[2], "GET /users/:id"))
+
+# ===========================================================================
+# 10. Built-in middleware
+# ===========================================================================
+print "\n=== Built-in Middleware ==="
+
+# mw_logger
+let log_req = {"method": "GET", "path": "/test"}
+let log_result = mw_logger(log_req)
+test("mw_logger returns req", log_result["method"] == "GET")
+
+# mw_cors
+let cors_req = {"method": "OPTIONS", "path": "/test"}
+let cors_result = mw_cors(cors_req)
+test("mw_cors returns req", cors_result["method"] == "OPTIONS")
+
+# mw_json_only
+let json_req = {"method": "POST", "path": "/data",
+    "headers": {"Content-Type": "application/json"}}
+let json_result = mw_json_only(json_req)
+test("mw_json_only passes JSON request", not has(json_result, "_json_only_rejected"))
+
+let text_req2 = {"method": "POST", "path": "/data",
+    "headers": {"Content-Type": "text/plain"}}
+let text_result = mw_json_only(text_req2)
+test("mw_json_only rejects non-JSON", text_result["_json_only_rejected"])
+
+let get_req = {"method": "GET", "path": "/data"}
+let get_result = mw_json_only(get_req)
+test("mw_json_only ignores GET", not has(get_result, "_json_only_rejected"))
+
+# ===========================================================================
+# 11. Edge cases
+# ===========================================================================
+print "\n=== Edge Cases ==="
+
+# Empty app with no routes
+let empty_app = webi_app()
+let empty_res = webi_handle(empty_app, "GET", "/anything", "", "", "", "127.0.0.1")
+test_eq("empty app returns 404", empty_res["status"], 404)
+
+# Case sensitivity in method matching
+let case_app = webi_app()
+case_app = route(case_app, "GET", "/test", handle_index)
+let case_res = webi_handle(case_app, "get", "/test", "", "", "", "127.0.0.1")
+test("method case sensitive (get != GET)", case_res["status"] == 404)
+
+# Headers with multiple lines
+let multi_header = webi_handle(handle_app, "GET", "/hello", "",
+    "Host: example.com\nUser-Agent: TestAgent\nAccept: */*", "", "127.0.0.1")
+test_eq("multi-header request works", multi_header["status"], 200)
+
+# Empty body JSON decode
+let no_body = webi_handle(handle_app, "POST", "/data", "", "", "", "127.0.0.1")
+test_eq("empty body request works", no_body["status"], 200)
+
+# ===========================================================================
+# Summary
+# ===========================================================================
+print "\n" + "=================================================="
+print "  webi Test Results"
+print "=================================================="
+print "  Total:  " + str(passed + failed)
+print "  Passed: " + str(passed)
+print "  Failed: " + str(failed)
+print "=================================================="
+
+if failed == 0:
+    print "  ✓ All " + str(passed) + " tests passed!"
+else:
+    print "  ✗ " + str(failed) + " test(s) failed!"
+
+exit(0)

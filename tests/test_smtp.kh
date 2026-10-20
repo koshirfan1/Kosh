@@ -1,0 +1,13 @@
+# Test for smtp package
+import "../packages/smtp/smtp.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("SMTP Suite")
+
+let cfg = smtp_config("smtp.gmail.com", 587, "user@gmail.com", "secret")
+t = test_eq(t, "host should be set", cfg["host"], "smtp.gmail.com")
+
+let sent = send_email(cfg, "target@example.com", "Test", "Hello World")
+t = test_true(t, "should return true on send", sent)
+
+test_run(t)

@@ -1,0 +1,24 @@
+let nums = [1, 2, 3, 4, 5]
+print nums
+
+for n in nums:
+    print n
+
+print nums[0]
+print nums[4]
+
+nums[0] = 99
+print nums
+
+let mixed = ["hello", 42, true, nil]
+print mixed
+
+let empty = []
+print empty
+for x in empty:
+    print "should not print"
+
+let total = 0
+for n in [10, 20, 30]:
+    total = total + n
+print total

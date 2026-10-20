@@ -1,0 +1,25 @@
+# Test for webi_socket package
+import "../packages/webi_socket/webi_socket.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Webi Socket Suite")
+
+fn chat_handler(req):
+    return res_text("ws upgrade simulation")
+
+let app = webi_app()
+app = ws_route(app, "/chat", chat_handler)
+
+# Verify route registration
+let routes = webi_routes(app)
+let found = false
+for r in routes:
+    if r == "GET /chat":
+        found = true
+
+t = test_true(t, "should find chat route in webi_routes", found)
+
+let ok = ws_send("client1", "hello")
+t = test_true(t, "ws_send should return true", ok)
+
+test_run(t)

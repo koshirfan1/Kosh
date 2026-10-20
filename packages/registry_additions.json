@@ -1,0 +1,8 @@
+[
+  {"name":"fs","version":"1.0.0","developer":"Irfan Khan","description":"File system utilities: read, write, append, copy, path helpers, JSON config","author":"khandev1211-cpu","url":"https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/fs/fs.kh"},
+  {"name":"datetime","version":"1.0.0","developer":"Irfan Khan","description":"Date and time utilities: timer, elapsed, human-readable duration, sleep helpers","author":"khandev1211-cpu","url":"https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/datetime/datetime.kh"},
+  {"name":"test","version":"1.0.0","developer":"Irfan Khan","description":"Unit testing framework: assertions, test suites, pass/fail reporting","author":"khandev1211-cpu","url":"https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/test/test.kh"},
+  {"name":"events","version":"1.0.0","developer":"Irfan Khan","description":"Event emitter system: on, emit, once, off, history — built for Kosh Engine game events","author":"khandev1211-cpu","url":"https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/events/events.kh"},
+  {"name":"logger","version":"1.0.0","developer":"Irfan Khan","description":"Structured logger: debug/info/warn/error levels, file output, silent mode","author":"khandev1211-cpu","url":"https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/logger/logger.kh"},
+  {"name":"uuid","version":"1.0.0","developer":"Irfan Khan","description":"Unique ID generation: uuid_v4, short IDs, named entity IDs, sequential counters","author":"khandev1211-cpu","url":"https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/uuid/uuid.kh"}
+]

@@ -1,0 +1,62 @@
+# openai/util.kh — internal helpers + response readers.
+# Needs no other openai/*.kh file — everything else depends on this one.
+
+# ---------------------------------------------------------------------------
+# Internal: build the request headers string for a client.
+# ---------------------------------------------------------------------------
+fn _openai_headers(client):
+    let h = "Authorization: Bearer " + client["api_key"]
+    if len(client["organization"]) > 0:
+        h = h + "\r\nOpenAI-Organization: " + client["organization"]
+    return h
+
+# ---------------------------------------------------------------------------
+# openai_extract_text(response) -> string
+# Pulls choices[0].message.content out of a chat completion response.
+# Returns "" (not nil) if the shape doesn't match, so callers can safely
+# concatenate the result without a nil check.
+# ---------------------------------------------------------------------------
+fn openai_extract_text(response):
+    if type(response) != "map":
+        return ""
+    if not has(response, "choices"):
+        return ""
+    let choices = response["choices"]
+    if len(choices) == 0:
+        return ""
+    let first = choices[0]
+    if not has(first, "message"):
+        return ""
+    let message = first["message"]
+    if not has(message, "content"):
+        return ""
+    let content = message["content"]
+    if content == nil:
+        return ""
+    return content
+
+# ---------------------------------------------------------------------------
+# openai_finish_reason(response) -> string ("stop", "length", "content_filter", ...)
+# Returns "" if unavailable.
+# ---------------------------------------------------------------------------
+fn openai_finish_reason(response):
+    if type(response) != "map":
+        return ""
+    if not has(response, "choices"):
+        return ""
+    let choices = response["choices"]
+    if len(choices) == 0:
+        return ""
+    if not has(choices[0], "finish_reason"):
+        return ""
+    return choices[0]["finish_reason"]
+
+# ---------------------------------------------------------------------------
+# openai_usage(response) -> map {"prompt_tokens", "completion_tokens", "total_tokens"} or nil
+# ---------------------------------------------------------------------------
+fn openai_usage(response):
+    if type(response) != "map":
+        return nil
+    if not has(response, "usage"):
+        return nil
+    return response["usage"]

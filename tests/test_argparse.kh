@@ -1,0 +1,19 @@
+# Test for argparse package
+import "../packages/argparse/argparse.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Argparse Suite")
+let parser = arg_parser("Test App")
+parser = add_arg(parser, "--port", "8080", "Port")
+parser = add_flag(parser, "--verbose", "Verbose")
+
+print "Flags list: " + str(parser["flags"])
+
+let mock_argv = ["--port", "9000", "--verbose"]
+let args = parse_args(parser, mock_argv)
+
+print "Parsed args: " + str(args)
+
+t = test_eq(t, "port is 9000", args["port"], "9000")
+t = test_true(t, "verbose is true", args["verbose"])
+test_run(t)

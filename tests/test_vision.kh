@@ -1,0 +1,30 @@
+# Test for vision package (v2.0.1 file-path-based API).
+#
+# NOTE: this test previously targeted a pre-rewrite API (load_image() ->
+# image object, detect_faces(img)) that no longer exists — the vision
+# package was rewritten into a path-based classical CV toolkit (see
+# examples/vision_demo.kh, examples/vision_test_all.kh). Updated to match.
+import "../packages/vision/vision.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Vision Suite")
+
+let IMG = "../examples/photo.png"
+
+let info = image_info(IMG)
+t = test_not_nil(t, "image_info() finds the sample photo", info)
+if info != nil:
+    t = test_gt(t, "width is positive", info["width"], 0)
+    t = test_gt(t, "height is positive", info["height"], 0)
+    t = test_gt(t, "channels is positive", info["channels"], 0)
+
+# detect_faces() returns an array (possibly empty depending on the photo
+# and cascade sensitivity) — assert the shape/type, not a specific count,
+# since that's a data-dependent fact about the sample image, not something
+# this test should hard-code.
+let faces = detect_faces(IMG)
+t = test_not_nil(t, "detect_faces() returns a result", faces)
+if faces != nil:
+    t = test_type(t, "detect_faces() result is an array", faces, "array")
+
+test_run(t)

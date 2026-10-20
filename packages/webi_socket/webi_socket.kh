@@ -1,0 +1,21 @@
+# Khan Webi Socket
+# Real-time communication support for Webi
+# Usage: import "webi_socket"
+
+import "webi"
+
+# Helper to register a WebSocket route
+fn ws_route(app, path, handler):
+    # handler(req, ws)
+    # Internally WebSockets start as a GET request with Upgrade header
+    return route(app, "GET", path, handler)
+
+# Send a message to a client (Placeholder for native bridge)
+fn ws_send(ws_id, message):
+    print "[WS] Sending to " + str(ws_id) + ": " + message
+    return true
+
+# Broadcast to all (Placeholder)
+fn ws_broadcast(message):
+    print "[WS] Broadcasting: " + message
+    return true

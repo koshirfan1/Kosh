@@ -1,0 +1,25 @@
+# Test for orm package
+import "../packages/orm/orm.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("ORM Suite")
+
+# Clean start
+write_file("users.json", "{}")
+
+let User = orm_model("users")
+User = orm_create(User, {"id": 1, "name": "Irfan"})
+User = orm_create(User, {"id": 2, "name": "Khan"})
+
+let all = orm_find_all(User)
+t = test_eq(t, "should find 2 users", len(all), 2)
+
+let irfan = orm_find_one(User, "name", "Irfan")
+t = test_not_nil(t, "should find Irfan", irfan)
+if irfan != nil:
+    t = test_eq(t, "id should be 1", irfan["id"], 1)
+
+let missing = orm_find_one(User, "name", "NoOne")
+t = test_nil(t, "should not find missing user", missing)
+
+test_run(t)

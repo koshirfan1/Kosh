@@ -1,0 +1,25 @@
+# Debug: Test create_todo with iteration
+let todos = []
+
+# Simulate first create
+let max_id = 0
+let new_id = max_id + 1
+let new_todo = {"id": new_id, "title": "First task", "done": false}
+todos = push(todos, new_todo)
+print "After first: " + str(len(todos))
+
+# Simulate second create (this iterates)
+max_id = 0
+for t in todos:
+    print "  iterating id=" + str(t["id"])
+    if t["id"] > max_id:
+        max_id = t["id"]
+print "max_id=" + str(max_id)
+new_id = max_id + 1
+print "new_id=" + str(new_id)
+new_todo = {"id": new_id, "title": "Second task", "done": false}
+print "created new todo"
+todos = push(todos, new_todo)
+print "After second: " + str(len(todos))
+
+print "Done!"

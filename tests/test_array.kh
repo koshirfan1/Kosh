@@ -1,0 +1,4 @@
+let x = []
+print "Array length: " + str(len(x))
+x = push(x, 1)
+print "Array length after push: " + str(len(x))

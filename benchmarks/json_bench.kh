@@ -1,0 +1,9 @@
+# benchmarks/json_bench.kh — encode+decode round-trip, 50,000 iterations,
+# on a small-but-representative nested object.
+let obj = {"name": "khan", "version": 1, "tags": ["a", "b", "c", "d", "e"], "nested": {"x": 1, "y": 2, "z": 3}}
+let i = 0
+while i < 50000:
+    let s = json_encode(obj)
+    let d = json_decode(s)
+    i = i + 1
+print "done"

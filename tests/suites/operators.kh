@@ -1,0 +1,79 @@
+# tests/suites/operators.kh — arithmetic, comparison, logical operators.
+import "test"
+
+fn suite_operators():
+    let t = test_suite("Operators")
+
+    # ── arithmetic ─────────────────────────────────────────────────────
+    t = test_eq(t, "addition", 2 + 3, 5)
+    t = test_eq(t, "subtraction", 5 - 3, 2)
+    t = test_eq(t, "multiplication", 4 * 5, 20)
+    t = test_eq(t, "division", 10 / 4, 2.5)
+    t = test_eq(t, "modulo", 10 % 3, 1)
+    t = test_eq(t, "unary minus", -5 + 10, 5)
+
+    # ── operator precedence ────────────────────────────────────────────
+    t = test_eq(t, "* binds tighter than +", 2 + 3 * 4, 14)
+    t = test_eq(t, "parentheses override precedence", (2 + 3) * 4, 20)
+    t = test_eq(t, "nested parentheses", (1 + 2) * (3 + 4), 21)
+
+    # ── comparison ─────────────────────────────────────────────────────
+    t = test_true(t, "greater than", 5 > 3)
+    t = test_true(t, "less than", 3 < 5)
+    t = test_true(t, "greater or equal (equal case)", 5 >= 5)
+    t = test_true(t, "less or equal (less case)", 3 <= 5)
+    t = test_true(t, "equality", 5 == 5)
+    t = test_true(t, "inequality", 5 != 6)
+    t = test_false(t, "equality across different values", 5 == 6)
+
+    # ── logical ────────────────────────────────────────────────────────
+    t = test_true(t, "and: both true", true and true)
+    t = test_false(t, "and: one false", true and false)
+    t = test_true(t, "or: one true", false or true)
+    t = test_false(t, "or: both false", false or false)
+    t = test_true(t, "not: negates false", not false)
+    t = test_false(t, "not: negates true", not true)
+
+    # ── short-circuit-sensitive combos ─────────────────────────────────
+    t = test_true(t, "compound: (a > b) or (c == d)", (1 > 2) or (3 == 3))
+    t = test_false(t, "compound: (a > b) and (c == d)", (1 > 2) and (3 == 3))
+
+    # ── string comparison ──────────────────────────────────────────────
+    t = test_true(t, "string equality", "abc" == "abc")
+    t = test_false(t, "string inequality", "abc" == "abd")
+
+    # ── constant folding ─────────────────────────────────────────────
+    # These evaluate at compile time now (see fold_constant_number /
+    # fold_constant_comparison in compiler.c) rather than at runtime —
+    # correctness must be identical either way, which is what these
+    # check. The interesting risk with constant folding isn't "does the
+    # simple case work", it's "does it ever fold something it
+    # shouldn't" (e.g. short-circuit and/or, or a divide/modulo by a
+    # folded-zero divisor) — covered below.
+    t = test_eq(t, "REGRESSION: constant-folds a pure literal chain", 60 * 60 * 24, 86400)
+    t = test_eq(t, "REGRESSION: constant folding respects precedence", 2 + 3 * 4, 14)
+    t = test_eq(t, "REGRESSION: constant-folded unary minus", -(5 + 10), -15)
+    t = test_true(t, "REGRESSION: constant-folded comparison", 1 + 2 == 3)
+    t = test_eq(t, "REGRESSION: folding still works mixed with a variable", 5 + (2 * 3), 11)
+
+    # a folded-zero divisor must NOT be silently folded — it has to
+    # still hit the normal runtime division-by-zero error path
+    fn div_by_folded_zero():
+        return 10 / (1 - 1)
+    let threw = false
+    let ok = true
+    # Khan doesn't have try/catch in this codebase as far as these
+    # tests go, so this is checked structurally instead: a script that
+    # actually divides by a folded-zero expression is exercised in
+    # tests/regression_mod_div_zero.kh (run separately, since it's
+    # expected to halt with a runtime error rather than return a value)
+    t = test_true(t, "REGRESSION: non-zero constant division still folds", (10 / (2 - 1)) == 10)
+
+    # ── REGRESSION: modulo by zero used to silently return NaN instead
+    # of raising a runtime error (OP_DIV already checked for this,
+    # OP_MOD didn't) — fixed in vm.c. Covered here for the non-zero
+    # case; the zero case is a deliberate-halt script, see
+    # tests/regression_mod_div_zero.kh ───────────────────────────────
+    t = test_eq(t, "REGRESSION: modulo still works normally", 10 % 3, 1)
+
+    return t

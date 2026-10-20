@@ -1,0 +1,7 @@
+# Debug: test array encode
+import "json.kh"
+
+print "json_encode arr..."
+let arr = [1, 2, 3]
+print json_encode(arr)
+print "done"

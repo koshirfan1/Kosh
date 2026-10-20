@@ -1,0 +1,122 @@
+# vision/detect.kh — real face detection via Haar cascades. Needs core.kh.
+#
+# This is genuine Viola-Jones object detection: it parses an OpenCV-format
+# cascade XML file, builds an integral image, and runs a real multi-scale
+# cascade scan — not a hardcoded result. A frontal-face cascade ships with
+# this package (data/haarcascade_frontalface_default.xml, from OpenCV,
+# BSD-licensed) and is used by default.
+#
+# Honest limits: this detects front-facing faces reasonably well in
+# ordinary photos. It will miss significantly rotated/profile faces, can
+# produce false positives in busy textured backgrounds, and is slower
+# than a modern neural detector. min_neighbors/scale_factor let you trade
+# off speed, recall, and false-positive rate — see detect_faces below.
+
+# ---------------------------------------------------------------------------
+# Internal: locate the bundled default cascade. Tries the standard
+# `kh install` layout (packages/vision/data/... relative to wherever you
+# run `kosh` from) first, then falls back to looking next to the calling
+# script, in case someone copied the .xml there directly.
+# ---------------------------------------------------------------------------
+fn _vision_default_cascade_path():
+    let project_relative = "packages/vision/data/haarcascade_frontalface_default.xml"
+    if file_exists(project_relative):
+        return project_relative
+    let next_to_script = _vision_resolve("haarcascade_frontalface_default.xml")
+    if file_exists(next_to_script):
+        return next_to_script
+    return nil
+
+# ---------------------------------------------------------------------------
+# load_face_detector() -> cascade or nil
+# Loads the bundled default frontal-face cascade. Returns nil (and prints
+# nothing — check the return value) if it can't be found; use
+# load_cascade(path) with an explicit path if your project layout is
+# unusual.
+# ---------------------------------------------------------------------------
+fn load_face_detector():
+    let path = _vision_default_cascade_path()
+    if path == nil:
+        return nil
+    return vision_cascade_load(path)
+
+# ---------------------------------------------------------------------------
+# load_cascade(path) -> cascade or nil
+# Loads any OpenCV-format Haar cascade XML — not just faces. OpenCV
+# ships cascades for eyes, smiles, full/upper bodies, cat faces, and
+# more; point this at any of those and it works the same way.
+# ---------------------------------------------------------------------------
+fn load_cascade(path):
+    return vision_cascade_load(_vision_resolve(path))
+
+# ---------------------------------------------------------------------------
+# detect_faces(path) -> array of {"x","y","w","h"}
+# Uses the bundled default cascade with reasonable default parameters.
+# Returns [] (not nil) if nothing was found or the cascade couldn't load,
+# so callers can loop over the result unconditionally.
+# ---------------------------------------------------------------------------
+fn detect_faces(path):
+    return detect_faces_tuned(path, 1.1, 3, 40)
+
+# ---------------------------------------------------------------------------
+# detect_faces_tuned(path, scale_factor, min_neighbors, min_size) -> array of boxes
+#   scale_factor  — how much bigger each successive scan window gets
+#                   (1.05-1.3 typical; smaller = more thorough + slower)
+#   min_neighbors — how many overlapping detections are required before
+#                   accepting a region (higher = fewer false positives,
+#                   but can miss real faces; 3-6 typical)
+#   min_size      — smallest face (in pixels) to look for
+# ---------------------------------------------------------------------------
+fn detect_faces_tuned(path, scale_factor, min_neighbors, min_size):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return []
+    let cascade = load_face_detector()
+    if cascade == nil:
+        vision_free(img)
+        return []
+
+    let faces = vision_detect_objects(img, cascade, scale_factor, min_neighbors, min_size)
+    vision_free(img)
+    vision_cascade_free(cascade)
+    return faces
+
+# ---------------------------------------------------------------------------
+# detect_with_cascade(path, cascade, scale_factor, min_neighbors, min_size) -> array of boxes
+# Same as detect_faces_tuned, but with a cascade you loaded yourself
+# (e.g. via load_cascade for eyes/smiles/bodies) — lets you reuse one
+# loaded cascade across many images instead of reloading it every call.
+# ---------------------------------------------------------------------------
+fn detect_with_cascade(path, cascade, scale_factor, min_neighbors, min_size):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return []
+    let results = vision_detect_objects(img, cascade, scale_factor, min_neighbors, min_size)
+    vision_free(img)
+    return results
+
+# ---------------------------------------------------------------------------
+# draw_faces(input_path, output_path) -> number of faces found (or -1 on failure)
+# Full pipeline: detect faces in input_path, draw green boxes around
+# them, save to output_path. Convenience for the most common use case.
+# ---------------------------------------------------------------------------
+fn draw_faces(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return -1
+    let cascade = load_face_detector()
+    if cascade == nil:
+        vision_free(img)
+        return -1
+
+    let faces = vision_detect_objects(img, cascade, 1.1, 3, 40)
+    let i = 0
+    while i < len(faces):
+        let f = faces[i]
+        vision_draw_rect(img, f["x"], f["y"], f["w"], f["h"], 0, 255, 0, 3)
+        i = i + 1
+
+    vision_save(img, _vision_resolve(output_path))
+    vision_free(img)
+    vision_cascade_free(cascade)
+    return len(faces)

@@ -1,0 +1,44 @@
+# Executables
+khan.exe
+kh.exe
+khan
+kh
+
+
+
+
+*.exe
+# Build artifacts
+*.o
+*.obj
+*.out
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local Package Cache
+.khan/
+
+# Data and Temp files
+*.dat
+*.log
+cache_requests.json
+*.json
+*.csv
+*.env
+!packages/**/package.json
+!packages/registry.json
+!packages/registry_additions.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Benchmark runner temp binaries
+benchmarks/_*_c_bin
+
+# Local external dependency checkouts (e.g. llama.cpp for the LLM bridge)
+third_party/

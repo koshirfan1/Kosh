@@ -1,0 +1,23 @@
+fn make_list():
+    return [100, 200, 300]
+
+let lst = make_list()
+print lst[1]
+
+let nested = [[1, 2], [3, 4]]
+print nested[0][1]
+print nested[1][0]
+
+fn sum_array(arr):
+    let total = 0
+    for x in arr:
+        total = total + x
+    return total
+
+print sum_array([1, 2, 3, 4, 5])
+
+let a = [1, 2, 3]
+let b = a
+b[0] = 999
+print a
+print b

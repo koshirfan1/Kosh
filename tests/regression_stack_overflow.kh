@@ -1,0 +1,30 @@
+# tests/regression_stack_overflow.kh
+#
+# Not part of tests/run_all.kh's suite framework — like
+# regression_mod_div_zero.kh, this is EXPECTED to halt the script, so
+# there's nothing to assert on in-language. Run manually or from CI:
+#
+#   .\khan tests/regression_stack_overflow.kh
+#     -> should print "Fatal: stack overflow (exceeded 16384 values)..."
+#        and exit non-zero (70) — NOT segfault (exit 139/SIGSEGV).
+#
+# What this protects against: push()/pop() in vm.c previously had zero
+# bounds checking on the VM's fixed-size value stack. A function with
+# many parameters/locals, recursing deeply, can exceed VM_STACK_MAX
+# (16384 values) well before frame_count reaches its own separate
+# VM_FRAMES_MAX (1024) limit — 1024 frames * 20 locals/frame = 20480 >
+# 16384. Before the fix, this was a raw SIGSEGV (memory corruption via
+# writing past the end of the stack array) with zero diagnostic. Now
+# it's a clean, safe abort with a clear message.
+#
+# (Plain deep recursion through a function with FEW locals hits the
+# existing, separate frame_count check first, and already produced a
+# proper catchable-style "Runtime error: Stack overflow" — that path
+# was not broken and isn't what this test is for.)
+
+fn deep(n, a, b, c, d, e, f, g, h, i, j, k, l, m, o, p, q, r, s, u):
+    if n <= 0:
+        return 0
+    return 1 + deep(n - 1, a, b, c, d, e, f, g, h, i, j, k, l, m, o, p, q, r, s, u)
+
+print deep(2000, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)

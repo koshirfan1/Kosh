@@ -1,0 +1,51 @@
+# Khan Validation Package
+# Usage: import "validation"
+
+fn is_email(s):
+    if type(s) != "string":
+        return false
+
+    let email = trim(s)
+    let parts = split(email, "@")
+    if len(parts) != 2:
+        return false
+
+    let domain_parts = split(parts[1], ".")
+    if len(domain_parts) < 2:
+        return false
+
+    return true
+
+fn is_min_length(s, min_len):
+    return len(str(s)) >= min_len
+
+fn is_max_length(s, max_len):
+    return len(str(s)) <= max_len
+
+fn is_numeric(s):
+    if type(s) == "number":
+        return true
+    if type(s) != "string":
+        return false
+    let n = num(s)
+    return n != nil
+
+fn trim(s):
+    if type(s) != "string":
+        return s
+    # Simplified trim: remove leading/trailing spaces
+    let start = 0
+    while start < len(s):
+        if substring(s, start, 1) == " ":
+            start = start + 1
+        else:
+            break
+
+    let end = len(s)
+    while end > start:
+        if substring(s, end - 1, 1) == " ":
+            end = end - 1
+        else:
+            break
+
+    return substring(s, start, end - start)

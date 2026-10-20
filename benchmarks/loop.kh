@@ -1,0 +1,7 @@
+# benchmarks/loop.kh — tight loop, 5,000,000 iterations of add + increment.
+let sum = 0
+let i = 0
+while i < 5000000:
+    sum = sum + i
+    i = i + 1
+print sum

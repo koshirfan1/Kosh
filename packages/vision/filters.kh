@@ -1,0 +1,70 @@
+# vision/filters.kh — convolution-based filters. Needs core.kh.
+
+# ---------------------------------------------------------------------------
+# blur_file(input_path, output_path, radius) -> bool
+# Box blur — fast, slightly blocky.
+# ---------------------------------------------------------------------------
+fn blur_file(input_path, output_path, radius):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let blurred = vision_blur_box(img, radius)
+    let ok = vision_save(blurred, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(blurred)
+    return ok
+
+# ---------------------------------------------------------------------------
+# blur_gaussian_file(input_path, output_path, radius) -> bool
+# Gaussian blur — smoother falloff than the box blur, costs a bit more.
+# ---------------------------------------------------------------------------
+fn blur_gaussian_file(input_path, output_path, radius):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let blurred = vision_blur_gaussian(img, radius)
+    let ok = vision_save(blurred, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(blurred)
+    return ok
+
+# ---------------------------------------------------------------------------
+# sharpen_file(input_path, output_path) -> bool
+# ---------------------------------------------------------------------------
+fn sharpen_file(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let sharpened = vision_sharpen(img)
+    let ok = vision_save(sharpened, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(sharpened)
+    return ok
+
+# ---------------------------------------------------------------------------
+# emboss_file(input_path, output_path) -> bool
+# ---------------------------------------------------------------------------
+fn emboss_file(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let embossed = vision_emboss(img)
+    let ok = vision_save(embossed, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(embossed)
+    return ok
+
+# ---------------------------------------------------------------------------
+# edges_file(input_path, output_path) -> bool
+# Sobel gradient-magnitude edge detection. Output is single-channel
+# (bright = strong edge).
+# ---------------------------------------------------------------------------
+fn edges_file(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let edges = vision_edges_sobel(img)
+    let ok = vision_save(edges, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(edges)
+    return ok

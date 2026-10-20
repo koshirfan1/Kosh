@@ -1,0 +1,129 @@
+# Khan events package v1.0.0
+# Author: Irfan Khan
+# Event emitter system — used by Khan Engine for game events, Khan Studio for UI events
+#
+# Usage:
+#   import "events"
+#   let bus = ev_bus()
+#   bus = ev_on(bus, "collision", my_handler)
+#   bus = ev_emit(bus, "collision", {"entity": "player", "other": "wall"})
+
+# ─────────────────────────────────────────────────────────────
+# EVENT BUS
+# ─────────────────────────────────────────────────────────────
+
+fn ev_bus():
+    return {
+        "listeners": {},
+        "history":   [],
+        "log":       false
+    }
+
+fn ev_bus_logged():
+    return {
+        "listeners": {},
+        "history":   [],
+        "log":       true
+    }
+
+# ─────────────────────────────────────────────────────────────
+# SUBSCRIBE
+# ─────────────────────────────────────────────────────────────
+
+fn ev_on(bus, event, handler):
+    if has(bus["listeners"], event):
+        bus["listeners"][event] = push(bus["listeners"][event], handler)
+    else:
+        bus["listeners"][event] = [handler]
+    return bus
+
+fn ev_once(bus, event, handler):
+    let wrapped_key = "__once__" + event
+    if has(bus["listeners"], wrapped_key):
+        bus["listeners"][wrapped_key] = push(bus["listeners"][wrapped_key], handler)
+    else:
+        bus["listeners"][wrapped_key] = [handler]
+    return bus
+
+fn ev_off(bus, event):
+    if has(bus["listeners"], event):
+        bus["listeners"][event] = []
+    return bus
+
+fn ev_off_all(bus):
+    bus["listeners"] = {}
+    return bus
+
+# ─────────────────────────────────────────────────────────────
+# EMIT
+# ─────────────────────────────────────────────────────────────
+
+fn ev_emit(bus, event, data):
+    let record = {"event": event, "data": data, "time": clock()}
+    bus["history"] = push(bus["history"], record)
+    if bus["log"]:
+        print "[event] " + event + " → " + str(data)
+    if has(bus["listeners"], event):
+        for handler in bus["listeners"][event]:
+            handler(data)
+    let once_key = "__once__" + event
+    if has(bus["listeners"], once_key):
+        for handler in bus["listeners"][once_key]:
+            handler(data)
+        bus["listeners"][once_key] = []
+    return bus
+
+fn ev_emit_many(bus, events):
+    for e in events:
+        bus = ev_emit(bus, e["event"], e["data"])
+    return bus
+
+# ─────────────────────────────────────────────────────────────
+# INSPECT
+# ─────────────────────────────────────────────────────────────
+
+fn ev_has_listeners(bus, event):
+    if has(bus["listeners"], event):
+        return len(bus["listeners"][event]) > 0
+    return false
+
+fn ev_history(bus):
+    return bus["history"]
+
+fn ev_history_for(bus, event):
+    let result = []
+    for record in bus["history"]:
+        if record["event"] == event:
+            result = push(result, record)
+    return result
+
+fn ev_count(bus, event):
+    return len(ev_history_for(bus, event))
+
+fn ev_last(bus, event):
+    let h = ev_history_for(bus, event)
+    if len(h) == 0:
+        return nil
+    return h[len(h) - 1]
+
+fn ev_clear_history(bus):
+    bus["history"] = []
+    return bus
+
+# ─────────────────────────────────────────────────────────────
+# GAME ENGINE PRESET EVENTS
+# (standard event names for Khan Engine — agents use these)
+# ─────────────────────────────────────────────────────────────
+
+let EV_UPDATE     = "update"
+let EV_START      = "start"
+let EV_DESTROY    = "destroy"
+let EV_COLLISION  = "collision"
+let EV_TRIGGER    = "trigger"
+let EV_INPUT      = "input"
+let EV_MOUSE      = "mouse"
+let EV_KEY        = "key"
+let EV_SCENE_LOAD = "scene_load"
+let EV_SCENE_EXIT = "scene_exit"
+let EV_ASSET_LOAD = "asset_load"
+let EV_AI_DONE    = "ai_done"

@@ -1,0 +1,59 @@
+# vision/threshold.kh — binarization. Needs core.kh.
+
+# ---------------------------------------------------------------------------
+# threshold_file(input_path, output_path, value) -> bool
+# Fixed threshold: pixels brighter than `value` become white, else black.
+# ---------------------------------------------------------------------------
+fn threshold_file(input_path, output_path, value):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_threshold(img, value)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok
+
+# ---------------------------------------------------------------------------
+# otsu_value(path) -> number or nil
+# Computes the optimal threshold automatically (Otsu's method) without
+# writing anything — useful if you just want the number.
+# ---------------------------------------------------------------------------
+fn otsu_value(path):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return nil
+    let v = vision_otsu_value(img)
+    vision_free(img)
+    return v
+
+# ---------------------------------------------------------------------------
+# threshold_otsu_file(input_path, output_path) -> bool
+# Auto-thresholds using Otsu's method — good default when you don't know
+# the right cutoff for a given image (e.g. scanned documents).
+# ---------------------------------------------------------------------------
+fn threshold_otsu_file(input_path, output_path):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_threshold_otsu(img)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok
+
+# ---------------------------------------------------------------------------
+# threshold_adaptive_file(input_path, output_path, block_size, c) -> bool
+# Thresholds each pixel against its own local neighborhood average minus
+# `c` — handles uneven lighting across an image (e.g. a photographed
+# page with a shadow across it) better than a single global threshold.
+# ---------------------------------------------------------------------------
+fn threshold_adaptive_file(input_path, output_path, block_size, c):
+    let img = vision_load(_vision_resolve(input_path))
+    if img == nil:
+        return false
+    let out = vision_threshold_adaptive(img, block_size, c)
+    let ok = vision_save(out, _vision_resolve(output_path))
+    vision_free(img)
+    vision_free(out)
+    return ok

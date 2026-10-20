@@ -1,0 +1,22 @@
+# vision/core.kh — path resolution + basic image metadata.
+# No dependencies on other vision/*.kh files.
+
+# ---------------------------------------------------------------------------
+# Internal: resolve a path relative to the CALLING script's directory (or
+# leave it unchanged if already absolute). Every vision.kh function that
+# takes a file path runs its arguments through this first — see the note
+# in vision.kh's header about why.
+# ---------------------------------------------------------------------------
+fn _vision_resolve(path):
+    return _webi_resolve_path(path)
+
+# ---------------------------------------------------------------------------
+# image_info(path) -> {"width","height","channels"} or nil
+# ---------------------------------------------------------------------------
+fn image_info(path):
+    let img = vision_load(_vision_resolve(path))
+    if img == nil:
+        return nil
+    let info = {"width": img["width"], "height": img["height"], "channels": img["channels"]}
+    vision_free(img)
+    return info

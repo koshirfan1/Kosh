@@ -1,0 +1,21 @@
+# webi_from_import_negative_private.kh
+# Run: kosh examples/webi_from_import_negative_private.kh ; echo "exit: $?"
+#
+# This is a NEGATIVE test: it is expected to fail with a runtime error
+# and a non-zero exit code. That's what proves the fix — flattening a
+# submodule (from webi import security) must skip "_"-prefixed internals
+# like _webi_strip_bearer_prefix, so they must NOT be reachable here.
+#
+# It's a separate file (rather than a case inside
+# webi_from_import_test.kh) because an undefined-variable reference is a
+# runtime error that halts the whole script — there's no way to assert
+# "this correctly stays undefined" and then keep running to report a
+# pass/fail summary in the same process.
+#
+# Expected output:
+#   [line N] Runtime error: Undefined function.
+# Expected exit code: 70 (non-zero)
+
+from webi import security
+
+print _webi_strip_bearer_prefix("Bearer abc123")

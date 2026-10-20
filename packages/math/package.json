@@ -1,0 +1,16 @@
+{
+  "name": "math",
+  "version": "2.0.1",
+  "description": "Full 3D math library: vec2, vec3, vec4, mat4, quaternion, trig, interpolation, geometry — built for Kosh Engine and Kosh Studio",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "math.kh",
+  "files": [
+    "math.kh"
+  ],
+  "changelog": {
+    "2.0.0": "Added trig, vec2, vec3, vec4, mat4, quaternion, interpolation, geometry helpers",
+    "1.0.0": "Initial release — sqrt, pow, gcd, primes, factorial, mean",
+    "2.0.1": "Fixed the same inline-block-body syntax issue, plus multi-line boolean expressions missing parentheses. Also: the compiler previously special-cased 'math' as a no-op import (assuming it meant only native math functions), so this package's code had never actually been compiled/tested until now."
+  }
+}

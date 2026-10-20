@@ -1,0 +1,348 @@
+# Khan requests package v1.1.0
+# Usage: import "requests"
+#
+# Built on top of Khan's native http_get / http_post / http_post_json /
+# http_put / http_delete builtins.
+#
+# v1.1 additions:
+#   - headers support via http_get_h / http_post_h / http_put_h / http_delete_h
+#   - timeout support (passed through to native layer)
+#   - query string builder: build_query(map)
+#   - url builder: build_url(base, params)
+#   - form encoding: encode_form(map)
+#   - response helpers: text(res), json(res), ok(res), status(res), body(res)
+#   - retry helper: get_retry(url, n), post_retry(url, body, n)
+#   - patch(url, body) — new HTTP method
+#   - head(url) — HEAD request
+#   - session() — shared base_url + default headers context
+#   - res_headers(res) — access response headers map
+#   - raise_for_status(res) — error on bad status
+#   - is_json(res) — check if response is JSON
+#   - safe_json(res, fallback) — decode JSON or return fallback
+#
+# Every function returns a response map:
+#   res["status"]  -> number   HTTP status code (e.g. 200)
+#   res["body"]    -> string   Raw response body
+#   res["success"] -> bool     true if status 200–299
+#   res["json"]    -> map/array/nil  decoded JSON body (nil if not JSON)
+
+# ---------------------------------------------------------------------------
+# Internal: try to decode body as JSON, attach as res["json"]
+# ---------------------------------------------------------------------------
+fn _req_attach_json(res):
+    let body = res["body"]
+    if len(body) == 0:
+        res["json"] = nil
+        return res
+    let first = substring(body, 0, 1)
+    if first == "{" or first == "[":
+        res["json"] = json_decode(body)
+    else:
+        res["json"] = nil
+    return res
+
+# ---------------------------------------------------------------------------
+# Internal: merge two header strings (both can be nil/"")
+# Format: "Key: Value\r\nKey2: Value2"
+# ---------------------------------------------------------------------------
+fn _req_merge_headers(base_headers, extra_headers):
+    if base_headers == nil or len(base_headers) == 0:
+        if extra_headers == nil:
+            return ""
+        return extra_headers
+    if extra_headers == nil or len(extra_headers) == 0:
+        return base_headers
+    return base_headers + "\r\n" + extra_headers
+
+# ---------------------------------------------------------------------------
+# build_query(params_map) -> string
+# Builds a URL query string from a map.
+# Example: build_query({"page": "1", "limit": "10"}) -> "page=1&limit=10"
+# Note: no URL-encoding yet — keep values alphanumeric for now
+# ---------------------------------------------------------------------------
+fn build_query(params):
+    let result = ""
+    let ks = keys(params)
+    let i = 0
+    while i < len(ks):
+        let k = ks[i]
+        let v = str(params[k])
+        if len(result) > 0:
+            result = result + "&"
+        result = result + k + "=" + v
+        i = i + 1
+    return result
+
+# ---------------------------------------------------------------------------
+# build_url(base, params_map) -> string
+# Appends a query string to a base URL.
+# Example: build_url("https://api.example.com/users", {"page": "2"})
+#          -> "https://api.example.com/users?page=2"
+# ---------------------------------------------------------------------------
+fn build_url(base, params):
+    let q = build_query(params)
+    if len(q) == 0:
+        return base
+    if contains(base, "?"):
+        return base + "&" + q
+    return base + "?" + q
+
+# ---------------------------------------------------------------------------
+# encode_form(map) -> string
+# Encodes a map as application/x-www-form-urlencoded body.
+# Example: encode_form({"user": "irfan", "age": "25"}) -> "user=irfan&age=25"
+# ---------------------------------------------------------------------------
+fn encode_form(params):
+    return build_query(params)
+
+# ---------------------------------------------------------------------------
+# is_json(res) -> bool
+# Returns true if the response body looks like JSON
+# ---------------------------------------------------------------------------
+fn is_json(res):
+    let body = res["body"]
+    if len(body) == 0:
+        return false
+    let first = substring(body, 0, 1)
+    return first == "{" or first == "["
+
+# ---------------------------------------------------------------------------
+# safe_json(res, fallback) -> map/array/fallback
+# Decodes JSON body, returns fallback if decoding fails or body is not JSON
+# ---------------------------------------------------------------------------
+fn safe_json(res, fallback):
+    if not is_json(res):
+        return fallback
+    let decoded = json_decode(res["body"])
+    if decoded == nil:
+        return fallback
+    return decoded
+
+# ---------------------------------------------------------------------------
+# text(res) -> string
+# Alias for body — more readable
+# ---------------------------------------------------------------------------
+fn text(res):
+    return res["body"]
+
+# ---------------------------------------------------------------------------
+# ok(res) -> bool
+# Quick check: did the request succeed?
+# ---------------------------------------------------------------------------
+fn ok(res):
+    return res["success"]
+
+# ---------------------------------------------------------------------------
+# status(res) -> number
+# ---------------------------------------------------------------------------
+fn status(res):
+    return res["status"]
+
+# ---------------------------------------------------------------------------
+# body(res) -> string
+# ---------------------------------------------------------------------------
+fn body(res):
+    return res["body"]
+
+# ---------------------------------------------------------------------------
+# json(res) -> map/array/nil
+# Returns the decoded JSON body (nil if not JSON or decode failed)
+# ---------------------------------------------------------------------------
+fn json(res):
+    return res["json"]
+
+# ---------------------------------------------------------------------------
+# raise_for_status(res) -> res
+# Prints an error message if request failed, returns res either way
+# ---------------------------------------------------------------------------
+fn raise_for_status(res):
+    if not res["success"]:
+        print "HTTP Error " + str(res["status"]) + ": " + res["body"]
+    return res
+
+# ---------------------------------------------------------------------------
+# get(url) -> response map
+# ---------------------------------------------------------------------------
+fn get(url):
+    let res = http_get(url)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# get_h(url, headers) -> response map
+# GET with custom headers string.
+# headers: "Authorization: Bearer token\r\nAccept: application/json"
+# ---------------------------------------------------------------------------
+fn get_h(url, headers):
+    let res = http_get_h(url, headers)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# post(url, body) -> response map
+# body is a form-encoded string e.g. "name=Irfan&age=25"
+# ---------------------------------------------------------------------------
+fn post(url, body):
+    let res = http_post(url, body)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# post_h(url, body, headers) -> response map
+# POST with custom headers
+# ---------------------------------------------------------------------------
+fn post_h(url, body, headers):
+    let res = http_post_h(url, body, headers)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# post_json(url, data) -> response map
+# data is a Khan map or array — auto-encoded to JSON
+# ---------------------------------------------------------------------------
+fn post_json(url, data):
+    let res = http_post_json(url, data)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# post_json_h(url, data, headers) -> response map
+# POST JSON with extra headers (e.g. Authorization)
+# ---------------------------------------------------------------------------
+fn post_json_h(url, data, headers):
+    let merged = _req_merge_headers("Content-Type: application/json", headers)
+    let res = http_post_h(url, json_encode(data), merged)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# put(url, body) -> response map
+# ---------------------------------------------------------------------------
+fn put(url, body):
+    let res = http_put(url, body)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# put_h(url, body, headers) -> response map
+# ---------------------------------------------------------------------------
+fn put_h(url, body, headers):
+    let res = http_put_h(url, body, headers)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# put_json(url, data) -> response map
+# PUT with JSON body
+# ---------------------------------------------------------------------------
+fn put_json(url, data):
+    let res = http_put_json(url, data)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# patch(url, body) -> response map
+# PATCH request (partial update)
+# ---------------------------------------------------------------------------
+fn patch(url, body):
+    let res = http_patch(url, body)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# patch_json(url, data) -> response map
+# PATCH with JSON body
+# ---------------------------------------------------------------------------
+fn patch_json(url, data):
+    let res = http_patch_json(url, data)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# delete(url) -> response map
+# ---------------------------------------------------------------------------
+fn delete(url):
+    let res = http_delete(url)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# delete_h(url, headers) -> response map
+# DELETE with custom headers
+# ---------------------------------------------------------------------------
+fn delete_h(url, headers):
+    let res = http_delete_h(url, headers)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# head(url) -> response map
+# HEAD request — returns status and headers, body will be empty
+# ---------------------------------------------------------------------------
+fn head(url):
+    let res = http_head(url)
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# get_retry(url, attempts) -> response map
+# Retries a GET up to `attempts` times on failure
+# ---------------------------------------------------------------------------
+fn get_retry(url, attempts):
+    let i = 0
+    let res = nil
+    while i < attempts:
+        res = http_get(url)
+        if res["success"]:
+            return _req_attach_json(res)
+        i = i + 1
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# post_retry(url, body, attempts) -> response map
+# Retries a POST up to `attempts` times on failure
+# ---------------------------------------------------------------------------
+fn post_retry(url, body, attempts):
+    let i = 0
+    let res = nil
+    while i < attempts:
+        res = http_post(url, body)
+        if res["success"]:
+            return _req_attach_json(res)
+        i = i + 1
+    return _req_attach_json(res)
+
+# ---------------------------------------------------------------------------
+# session(base_url) -> session map
+# Creates a session context with a shared base URL and default headers.
+# Use session_get(s, path), session_post(s, path, body), etc.
+# ---------------------------------------------------------------------------
+fn session(base_url):
+    return {
+        "base_url": base_url,
+        "headers":  ""
+    }
+
+fn session_set_header(s, key, value):
+    let h = key + ": " + value
+    if len(s["headers"]) == 0:
+        s["headers"] = h
+    else:
+        s["headers"] = s["headers"] + "\r\n" + h
+    return s
+
+fn session_get(s, path):
+    let url = s["base_url"] + path
+    if len(s["headers"]) > 0:
+        return get_h(url, s["headers"])
+    return get(url)
+
+fn session_post(s, path, body):
+    let url = s["base_url"] + path
+    if len(s["headers"]) > 0:
+        return post_h(url, body, s["headers"])
+    return post(url, body)
+
+fn session_post_json(s, path, data):
+    let url = s["base_url"] + path
+    if len(s["headers"]) > 0:
+        return post_json_h(url, data, s["headers"])
+    return post_json(url, data)
+
+fn session_put(s, path, body):
+    let url = s["base_url"] + path
+    if len(s["headers"]) > 0:
+        return put_h(url, body, s["headers"])
+    return put(url, body)
+
+fn session_delete(s, path):
+    let url = s["base_url"] + path
+    if len(s["headers"]) > 0:
+        return delete_h(url, s["headers"])
+    return delete(url)

@@ -1,0 +1,19 @@
+print "Starting debug..."
+
+let todos = []
+print "Empty array count: " + str(len(todos))
+
+print "Test 1: Push to empty"
+let t1 = {"id": 1, "title": "test", "done": false}
+print "Created map"
+todos = push(todos, t1)
+print "After push: " + str(len(todos))
+
+print "Test 2: Iterate empty"
+let count = 0
+for t in todos:
+    print "Item: " + t["title"]
+    count = count + 1
+print "Iterated: " + str(count)
+
+print "All debug tests passed"

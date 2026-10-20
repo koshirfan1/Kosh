@@ -1,0 +1,131 @@
+# webi_from_import_test.kh — test suite for the widened `from X import Y`
+# behaviour added in webi v1.1.1's package split.
+# Run: kosh examples/webi_from_import_test.kh
+#
+# Covers the three resolution paths `execute_from_import` now supports,
+# using webi as the real-world package that motivated the change:
+#
+#   1. plain symbol       from webi import webi_app, webi_version
+#   2. self-name flatten  from webi import webi
+#   3. submodule flatten  from webi import security / requests / json
+#
+# plus the actual goal statement all of this was built for:
+#   from webi import webi, security, requests, json
+#
+# and the privacy rule (only non "_"-prefixed names get flattened).
+# The "a private/missing name must NOT be reachable" side of that is
+# covered separately in webi_from_import_negative_test.kh, since an
+# undefined-variable reference is a runtime error that halts the script
+# it's in — it can't be asserted against inline in a suite like this one
+# that needs to keep running afterward to print a summary.
+
+fn test_eq(stats, label, actual, expected):
+    if actual == expected:
+        stats["pass"] = stats["pass"] + 1
+        print "  OK   " + label
+    else:
+        stats["fail"] = stats["fail"] + 1
+        print "  FAIL " + label + "  (got: " + str(actual) + ", want: " + str(expected) + ")"
+    return stats
+
+fn test_true(stats, label, actual):
+    return test_eq(stats, label, actual, true)
+
+let stats = {"pass": 0, "fail": 0}
+
+print "=========================================="
+print "webi from-import test suite"
+print "=========================================="
+
+# ---------------------------------------------------------------------------
+# 1. Plain symbol import — the original Phase 1 behaviour must be untouched.
+# ---------------------------------------------------------------------------
+print ""
+print "-- plain symbol import (from webi import webi_app, webi_version) --"
+
+from webi import webi_app, webi_version
+
+let app1 = webi_app()
+stats = test_true(stats, "webi_app() returns something", app1 != nil)
+stats = test_true(stats, "webi_version() returns a string", webi_version() != nil)
+
+# ---------------------------------------------------------------------------
+# 2. Self-name flatten — `from webi import webi` == `import "webi"`,
+#    just reached through the from-import mechanism.
+# ---------------------------------------------------------------------------
+print ""
+print "-- self-name flatten (from webi import webi) --"
+
+from webi import webi
+
+fn fn_dummy_index(req):
+    return res_text("ok")
+
+let app2 = webi_app()
+app2 = route(app2, "GET", "/", fn_dummy_index)
+stats = test_true(stats, "webi_app/route reachable after self-name flatten", app2 != nil)
+stats = test_true(stats, "res_text reachable after self-name flatten", res_text != nil)
+
+# ---------------------------------------------------------------------------
+# 3. Submodule flatten — `from webi import security`, a file, not a symbol.
+# ---------------------------------------------------------------------------
+print ""
+print "-- submodule flatten (from webi import security) --"
+
+from webi import security
+
+let token = csrf_new_token()
+stats = test_eq(stats, "csrf_new_token() from flattened security.kh is 32 hex chars", len(token), 32)
+stats = test_true(stats, "webi_set_cors_origins reachable from flattened security.kh", webi_set_cors_origins != nil)
+
+# ---------------------------------------------------------------------------
+# 4. Submodule flatten — the new requests.kh re-export.
+# ---------------------------------------------------------------------------
+print ""
+print "-- submodule flatten (from webi import requests) --"
+
+from webi import requests
+
+stats = test_true(stats, "get reachable from flattened requests.kh", get != nil)
+stats = test_true(stats, "post_json reachable from flattened requests.kh", post_json != nil)
+stats = test_true(stats, "delete reachable from flattened requests.kh", delete != nil)
+
+# ---------------------------------------------------------------------------
+# 5. Submodule flatten — the new json.kh re-export.
+# ---------------------------------------------------------------------------
+print ""
+print "-- submodule flatten (from webi import json) --"
+
+from webi import json
+
+let encoded = encode({"a": 1, "b": 2})
+let decoded = decode(encoded)
+stats = test_true(stats, "encode() produces a string", encoded != nil)
+stats = test_eq(stats, "decode(encode(x)) round-trips a", decoded["a"], 1)
+stats = test_eq(stats, "decode(encode(x)) round-trips b", decoded["b"], 2)
+
+# ---------------------------------------------------------------------------
+# 6. The actual goal: everything in one line.
+# ---------------------------------------------------------------------------
+print ""
+print "-- the actual goal: from webi import webi, security, requests, json --"
+
+from webi import webi, security, requests, json
+
+let app3 = webi_app()
+let token2 = csrf_new_token()
+let res = get
+let enc = encode({"ok": true})
+stats = test_true(stats, "webi_app reachable", app3 != nil)
+stats = test_true(stats, "csrf_new_token reachable", token2 != nil)
+stats = test_true(stats, "requests.get reachable", res != nil)
+stats = test_true(stats, "json.encode reachable", enc != nil)
+
+# ---------------------------------------------------------------------------
+print ""
+print "=========================================="
+print str(stats["pass"]) + " passed, " + str(stats["fail"]) + " failed"
+print "=========================================="
+
+if stats["fail"] > 0:
+    exit(1)

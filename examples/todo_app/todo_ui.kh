@@ -1,0 +1,46 @@
+# Todo UI Library
+# Renders the user interface and handles menu interactions
+
+# Print a divider line
+fn print_divider():
+    print "----------------------------------------"
+
+# Print the header
+fn print_header():
+    print_divider()
+    print "            TODO APP"
+    print_divider()
+
+# Print menu options
+fn print_menu():
+    print ""
+    print "  1. Add a new task"
+    print "  2. List all tasks"
+    print "  3. Mark task as done"
+    print "  4. Delete a task"
+    print "  5. Save & Exit"
+    print ""
+
+# Display a single todo item
+fn print_todo(t, index):
+    let status = "[ ]"
+    if t["done"]:
+        status = "[X]"
+    print str(index) + ". " + status + " " + t["title"]
+
+# List all todos with formatting
+fn list_todos(todos):
+    if len(todos) == 0:
+        print "No tasks yet! Add one."
+    else:
+        print ""
+        print " Tasks:"
+        print_divider()
+        let i = 1
+        for t in todos:
+            print_todo(t, i)
+            i = i + 1
+        print_divider()
+        let pending = count_pending(todos)
+        print str(pending) + " tasks remaining"
+        print ""

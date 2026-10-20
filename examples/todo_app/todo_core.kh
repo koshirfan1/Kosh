@@ -1,0 +1,51 @@
+# Todo Core Library
+# Provides the data model and CRUD operations for todo items
+
+# Create a new todo item
+fn create_todo(todos, title):
+    # Find the highest ID
+    let max_id = 0
+    for t in todos:
+        if t["id"] > max_id:
+            max_id = t["id"]
+    
+    let new_id = max_id + 1
+    let new_todo = {"id": new_id, "title": title, "done": false}
+    todos = push(todos, new_todo)
+    return todos
+
+# Mark a todo as done by ID
+fn mark_done(todos, id):
+    let result = []
+    for t in todos:
+        if t["id"] == id:
+            t["done"] = true
+        result = push(result, t)
+    return result
+
+# Delete a todo by ID
+fn delete_todo(todos, id):
+    let result = []
+    for t in todos:
+        if t["id"] != id:
+            result = push(result, t)
+    return result
+
+# Get a todo by ID
+fn get_todo(todos, id):
+    for t in todos:
+        if t["id"] == id:
+            return t
+    return nil
+
+# Count todos
+fn count_todos(todos):
+    return len(todos)
+
+# Count incomplete todos
+fn count_pending(todos):
+    let count = 0
+    for t in todos:
+        if not t["done"]:
+            count = count + 1
+    return count

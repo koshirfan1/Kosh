@@ -1,0 +1,173 @@
+# Khan postman package v1.0.0
+# Usage: import "postman"
+#
+# API testing toolkit. Uses a context map (pm) that you pass to each function.
+#
+# Quick start:
+#   import "postman"
+#   let pm = pm_new()
+#   pm = pm_get(pm, "GET todos", "https://jsonplaceholder.typicode.com/todos/1")
+#   pm = pm_assert(pm, "math works", 1 + 1 == 2)
+#   pm_run(pm)
+
+# ---------------------------------------------------------------------------
+# pm_new()        Create a new test context
+# pm_new(baseurl) Create context with a base URL
+# ---------------------------------------------------------------------------
+fn pm_new():
+    return {
+        "results":  [],
+        "passed":   0,
+        "failed":   0,
+        "base_url": ""
+    }
+
+fn pm_new_with_base(base_url):
+    return {
+        "results":  [],
+        "passed":   0,
+        "failed":   0,
+        "base_url": base_url
+    }
+
+# ---------------------------------------------------------------------------
+# Internal: resolve URL against base
+# ---------------------------------------------------------------------------
+fn _pm_resolve(pm, url):
+    if len(url) > 0 and substring(url, 0, 1) == "/":
+        return pm["base_url"] + url
+    return url
+
+# ---------------------------------------------------------------------------
+# Internal: record a result into the context, return updated context
+# ---------------------------------------------------------------------------
+fn _pm_record(pm, name, passed, status, body, note):
+    let result = {
+        "name":   name,
+        "passed": passed,
+        "status": status,
+        "note":   note
+    }
+    pm["results"] = push(pm["results"], result)
+    if passed:
+        pm["passed"] = pm["passed"] + 1
+    else:
+        pm["failed"] = pm["failed"] + 1
+    return pm
+
+# ---------------------------------------------------------------------------
+# HTTP request functions — each returns updated pm context
+# ---------------------------------------------------------------------------
+fn pm_get(pm, name, url):
+    let res = http_get(_pm_resolve(pm, url))
+    let note = ""
+    if not res["success"]:
+        note = "Expected 2xx, got " + str(res["status"])
+    return _pm_record(pm, name, res["success"], res["status"], res["body"], note)
+
+fn pm_post(pm, name, url, body):
+    let res = http_post(_pm_resolve(pm, url), body)
+    let note = ""
+    if not res["success"]:
+        note = "Expected 2xx, got " + str(res["status"])
+    return _pm_record(pm, name, res["success"], res["status"], res["body"], note)
+
+fn pm_post_json(pm, name, url, data):
+    let res = http_post_json(_pm_resolve(pm, url), data)
+    let note = ""
+    if not res["success"]:
+        note = "Expected 2xx, got " + str(res["status"])
+    return _pm_record(pm, name, res["success"], res["status"], res["body"], note)
+
+fn pm_put(pm, name, url, body):
+    let res = http_put(_pm_resolve(pm, url), body)
+    let note = ""
+    if not res["success"]:
+        note = "Expected 2xx, got " + str(res["status"])
+    return _pm_record(pm, name, res["success"], res["status"], res["body"], note)
+
+fn pm_delete(pm, name, url):
+    let res = http_delete(_pm_resolve(pm, url))
+    let note = ""
+    if not res["success"]:
+        note = "Expected 2xx, got " + str(res["status"])
+    return _pm_record(pm, name, res["success"], res["status"], res["body"], note)
+
+# ---------------------------------------------------------------------------
+# Assertion helpers — each returns updated pm context
+# ---------------------------------------------------------------------------
+
+# Assert a plain condition
+fn pm_assert(pm, name, condition):
+    let note = ""
+    if not condition:
+        note = "Assertion failed"
+    return _pm_record(pm, name, condition, 0, "", note)
+
+# Assert response status code
+fn pm_expect_status(pm, name, res, expected):
+    let got = res["status"]
+    let passed = got == expected
+    let note = ""
+    if not passed:
+        note = "Expected status " + str(expected) + ", got " + str(got)
+    return _pm_record(pm, name, passed, got, res["body"], note)
+
+# Assert response body contains a substring
+fn pm_expect_body_contains(pm, name, res, sub):
+    let body = res["body"]
+    let blen = len(body)
+    let sublen = len(sub)
+    let found = false
+    let i = 0
+    while i + sublen <= blen:
+        if substring(body, i, sublen) == sub:
+            found = true
+            break
+        i = i + 1
+    let note = ""
+    if not found:
+        note = "Body does not contain: " + sub
+    return _pm_record(pm, name, found, res["status"], body, note)
+
+# Assert JSON field equals expected value
+fn pm_expect_json_field(pm, name, res, field, expected):
+    let body = res["body"]
+    let data = json_decode(body)
+    if data == nil:
+        return _pm_record(pm, name, false, res["status"], body, "Body is not valid JSON")
+    let actual = data[field]
+    let passed = actual == expected
+    let note = ""
+    if not passed:
+        note = "Expected " + field + " = " + str(expected) + ", got " + str(actual)
+    return _pm_record(pm, name, passed, res["status"], body, note)
+
+# ---------------------------------------------------------------------------
+# pm_run(pm)  Print the full report
+# ---------------------------------------------------------------------------
+fn _pm_print_line(result):
+    if result["passed"]:
+        print "\x1b[32m  PASS\x1b[0m  " + result["name"] + "  \x1b[90m[" + str(result["status"]) + "]\x1b[0m"
+    else:
+        print "\x1b[31m  FAIL\x1b[0m  " + result["name"] + "  \x1b[90m[" + str(result["status"]) + "]\x1b[0m"
+        if len(result["note"]) > 0:
+            print "         \x1b[33m→ " + result["note"] + "\x1b[0m"
+
+fn pm_run(pm):
+    let total = pm["passed"] + pm["failed"]
+    print ""
+    print "\x1b[1m\x1b[36m  Khan Postman ─ Test Results\x1b[0m"
+    print "\x1b[36m  ══════════════════════════════════════\x1b[0m"
+    print ""
+    for result in pm["results"]:
+        _pm_print_line(result)
+    print ""
+    print "\x1b[36m  ══════════════════════════════════════\x1b[0m"
+    print "  \x1b[1mTotal:\x1b[0m " + str(total) + "   \x1b[32mPassed: " + str(pm["passed"]) + "\x1b[0m   \x1b[31mFailed: " + str(pm["failed"]) + "\x1b[0m"
+    print "\x1b[36m  ══════════════════════════════════════\x1b[0m"
+    if pm["failed"] == 0:
+        print "\x1b[1m\x1b[32m  ✓ All " + str(total) + " tests passed!\x1b[0m"
+    else:
+        print "\x1b[1m\x1b[31m  ✗ " + str(pm["failed"]) + " of " + str(total) + " tests failed.\x1b[0m"
+    print ""

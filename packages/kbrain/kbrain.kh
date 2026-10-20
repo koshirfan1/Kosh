@@ -1,0 +1,46 @@
+# Khan KBrain - Simple AI/ML Package
+# Usage: import "kbrain"
+
+fn linear_regression():
+    return {
+        "weights": 0.0,
+        "bias": 0.0,
+        "lr": 0.01,
+        "epochs": 1000
+    }
+
+fn train(model, x, y):
+    # Simple gradient descent for y = wx + b
+    let n = len(x)
+    if n == 0:
+        return model
+
+    let i = 0
+    while i < model["epochs"]:
+        let total_error_w = 0.0
+        let total_error_b = 0.0
+
+        let j = 0
+        while j < n:
+            let xi = x[j][0]
+            let yi = y[j]
+            let pred = model["weights"] * xi + model["bias"]
+            let error = pred - yi
+
+            total_error_w = total_error_w + (error * xi)
+            total_error_b = total_error_b + error
+            j = j + 1
+
+        model["weights"] = model["weights"] - model["lr"] * (total_error_w / n)
+        model["bias"] = model["bias"] - model["lr"] * (total_error_b / n)
+        i = i + 1
+    return model
+
+fn predict(model, x):
+    # x is [value]
+    return model["weights"] * x[0] + model["bias"]
+
+fn set_params(model, lr, epochs):
+    model["lr"] = lr
+    model["epochs"] = epochs
+    return model

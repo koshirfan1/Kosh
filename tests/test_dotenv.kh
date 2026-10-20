@@ -1,0 +1,18 @@
+# Test for dotenv package
+import "../packages/dotenv/dotenv.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Dotenv Suite")
+
+# Create a test .env file
+let env_content = "PORT=8080\n# comment\nHOST=\"localhost\"\nSECRET='abc-123'\n\nDEBUG=true"
+write_file("test.env", env_content)
+
+let my_env = load_env("test.env")
+t = test_eq(t, "PORT should be 8080", env_get(my_env, "PORT"), "8080")
+t = test_eq(t, "HOST should be localhost", env_get(my_env, "HOST"), "localhost")
+t = test_eq(t, "SECRET should be abc-123", env_get(my_env, "SECRET"), "abc-123")
+t = test_eq(t, "DEBUG should be true", env_get(my_env, "DEBUG"), "true")
+t = test_nil(t, "Unknown key should be nil", env_get(my_env, "UNKNOWN"))
+
+test_run(t)

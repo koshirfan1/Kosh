@@ -1,0 +1,26 @@
+# Khan SQLite Package
+# Usage: import "sqlite"
+#
+# Real bridge to libsqlite3 (was a mock that ignored the SQL and always
+# returned true - fixed this session, see chat/README for the discovery).
+#
+# Always pass user-derived values via `params` (bound with real
+# sqlite3_bind_*), never by concatenating them into the sql string -
+# that's a genuine SQL injection hole, not just a style issue.
+
+fn db_open(path):
+    return sqlite_open(path)
+
+fn db_exec(db, sql, params):
+    return sqlite_exec(db, sql, params)
+
+fn db_query(db, sql, params):
+    return sqlite_query(db, sql, params)
+
+fn db_close(db):
+    return sqlite_close(db)
+
+# Helper for migrations
+fn db_init(db):
+    print "[SQLITE] Initializing database at " + db["path"]
+    return true

@@ -1,0 +1,173 @@
+# collections.kh — functional array helpers for Khan
+#
+# Khan has no built-in sort/filter/map/reduce — this package fills that gap.
+# Higher-order functions here take a plain Khan function BY NAME (Khan has
+# no anonymous/lambda function syntax, so define a named function first,
+# then pass it):
+#
+#   fn is_even(n): return n % 2 == 0
+#   print filter([1,2,3,4], is_even)   # [2, 4]
+#
+# IMPORTANT ORDERING NOTE: in Khan, a function's closure snapshots the
+# enclosing scope at the moment it's DECLARED, not when it's called. That
+# means a helper function must be declared BEFORE any function that calls
+# it in this file — there's no forward-reference / hoisting. Every function
+# below is ordered with that in mind; keep that order if you edit this file.
+
+# ---------------------------------------------------------------------------
+# Basics (no dependencies on anything else in this file)
+# ---------------------------------------------------------------------------
+
+fn reverse_arr(arr):
+    let result = []
+    let i = len(arr) - 1
+    while i >= 0:
+        result = push(result, arr[i])
+        i = i - 1
+    return result
+
+fn arr_contains(arr, value):
+    for x in arr:
+        if x == value:
+            return true
+    return false
+
+fn filter(arr, pred):
+    let result = []
+    for x in arr:
+        if pred(x):
+            result = push(result, x)
+    return result
+
+fn map_each(arr, transform_fn):
+    let result = []
+    for x in arr:
+        result = push(result, transform_fn(x))
+    return result
+
+fn reduce(arr, reducer, initial):
+    let acc = initial
+    for x in arr:
+        acc = reducer(acc, x)
+    return acc
+
+fn find(arr, pred):
+    for x in arr:
+        if pred(x):
+            return x
+    return nil
+
+fn find_index(arr, pred):
+    let i = 0
+    for x in arr:
+        if pred(x):
+            return i
+        i = i + 1
+    return -1
+
+fn any_match(arr, pred):
+    for x in arr:
+        if pred(x):
+            return true
+    return false
+
+fn all_match(arr, pred):
+    for x in arr:
+        if not pred(x):
+            return false
+    return true
+
+fn count_matching(arr, pred):
+    let count = 0
+    for x in arr:
+        if pred(x):
+            count = count + 1
+    return count
+
+fn chunk(arr, size):
+    let result = []
+    let current = []
+    for x in arr:
+        current = push(current, x)
+        if len(current) == size:
+            result = push(result, current)
+            current = []
+    if len(current) > 0:
+        result = push(result, current)
+    return result
+
+fn zip(a, b):
+    let result = []
+    let n = len(a)
+    if len(b) < n:
+        n = len(b)
+    let i = 0
+    while i < n:
+        result = push(result, [a[i], b[i]])
+        i = i + 1
+    return result
+
+# Ascending sort for an array of NUMBERS (insertion sort — simple, stable,
+# fine for the array sizes Khan programs typically deal with). Note: Khan's
+# < and > operators don't support strings yet, so this works on numbers
+# only. To sort other things, use sort_by with a function that returns a
+# number (see below).
+fn sort(arr):
+    let result = []
+    for x in arr:
+        result = push(result, x)
+    let n = len(result)
+    let i = 1
+    while i < n:
+        let key = result[i]
+        let j = i - 1
+        while j >= 0:
+            if result[j] > key:
+                result[j + 1] = result[j]
+                j = j - 1
+            else:
+                break
+        result[j + 1] = key
+        i = i + 1
+    return result
+
+# Sort an array of ANYTHING by a numeric key extracted from each element —
+# e.g. sort a list of maps by one of their fields:
+#   fn get_age(person): return person["age"]
+#   sort_by(people, get_age)
+fn sort_by(arr, key_fn):
+    let result = []
+    for x in arr:
+        result = push(result, x)
+    let n = len(result)
+    let i = 1
+    while i < n:
+        let key_item = result[i]
+        let key_val = key_fn(key_item)
+        let j = i - 1
+        while j >= 0:
+            if key_fn(result[j]) > key_val:
+                result[j + 1] = result[j]
+                j = j - 1
+            else:
+                break
+        result[j + 1] = key_item
+        i = i + 1
+    return result
+
+# ---------------------------------------------------------------------------
+# Functions below depend on functions above — order matters here.
+# ---------------------------------------------------------------------------
+
+fn sort_desc(arr):
+    return reverse_arr(sort(arr))
+
+fn sort_by_desc(arr, key_fn):
+    return reverse_arr(sort_by(arr, key_fn))
+
+fn unique(arr):
+    let result = []
+    for x in arr:
+        if not arr_contains(result, x):
+            result = push(result, x)
+    return result

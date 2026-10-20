@@ -1,0 +1,15 @@
+# Test for dns package
+import "../packages/dns/dns.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("DNS Suite")
+
+print "Looking up google.com..."
+let ip = dns_lookup("google.com")
+print "Result: " + str(ip)
+
+t = test_not_nil(t, "IP should not be nil", ip)
+if ip != nil:
+    t = test_type(t, "IP should be string", ip, "string")
+
+test_run(t)

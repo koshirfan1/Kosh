@@ -1,0 +1,123 @@
+# Test for ocr package (v1.1.0) - real text recognition via Tesseract.
+#
+# examples/ocr_test.png is a checked-in synthetic image (rendered text,
+# not a screenshot) so this test is deterministic and doesn't depend on
+# a user supplying their own photo the way test_vision.kh's face
+# detection test does.
+import "../packages/ocr/ocr.kh"
+import "../packages/vision/vision.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("OCR Suite")
+
+let IMG = "../examples/ocr_test.png"
+
+# --- one-shot convenience path -----------------------------------------
+let text = read_text(IMG)
+t = test_not_nil(t, "read_text() recognizes the sample image", text)
+if text != nil:
+    t = test_contains_str(t, "recognized text matches what's in the image", text, "Khan OCR Test")
+
+# --- confidence path -----------------------------------------------------
+let result = read_text_with_confidence(IMG)
+t = test_not_nil(t, "read_text_with_confidence() returns a result", result)
+if result != nil:
+    t = test_contains_str(t, "result text matches what's in the image", result["text"], "Khan OCR Test")
+    t = test_gt(t, "confidence is above 0", result["confidence"], 0)
+
+# --- graceful failure ----------------------------------------------------
+let missing = read_text("../examples/does_not_exist.png")
+t = test_nil(t, "read_text() on a missing file returns nil", missing)
+
+let bad_engine = ocr_init("not_a_real_language_xyz")
+t = test_nil(t, "ocr_init() with an unknown language returns nil", bad_engine)
+
+# --- low-level path: one engine reused across two recognize() calls -----
+let engine = ocr_init("eng")
+t = test_not_nil(t, "ocr_init(\"eng\") succeeds", engine)
+if engine != nil:
+    let img = vision_load(_webi_resolve_path(IMG))
+    let text2 = ocr_recognize(engine, img)
+    t = test_contains_str(t, "low-level ocr_recognize() works", text2, "Khan OCR Test")
+
+    let conf = ocr_confidence(engine)
+    t = test_gt(t, "ocr_confidence() is above 0 after a recognize() call", conf, 0)
+
+    # same engine, second call - confirms an engine is reusable across
+    # multiple images rather than being one-shot only
+    let text3 = ocr_recognize(engine, img)
+    t = test_contains_str(t, "engine is reusable for a second recognize() call", text3, "Khan OCR Test")
+
+    ocr_free(engine)
+    vision_free(img)
+
+# --- word-level recognition with bounding boxes ---------------------------
+let engine2 = ocr_init("eng")
+let img2 = vision_load(_webi_resolve_path(IMG))
+let words = ocr_recognize_words(engine2, img2)
+t = test_len(t, "ocr_recognize_words() finds 4 words", words, 4)
+if len(words) > 0:
+    t = test_eq(t, "first word is 'Khan'", words[0]["text"], "Khan")
+    t = test_gt(t, "first word has a confidence above 0", words[0]["confidence"], 0)
+    t = test_gt(t, "first word has a positive width", words[0]["width"], 0)
+ocr_free(engine2)
+vision_free(img2)
+
+# --- orientation detection + correction -----------------------------------
+let para_img = vision_load(_webi_resolve_path("../examples/ocr_paragraph.png"))
+let rotated_img = vision_load(_webi_resolve_path("../examples/ocr_paragraph_rot90cw.png"))
+let engine3 = ocr_init("eng")
+
+let upright_orient = ocr_detect_orientation(engine3, para_img)
+t = test_not_nil(t, "ocr_detect_orientation() reads an upright page", upright_orient)
+if upright_orient != nil:
+    t = test_eq(t, "upright page reports 0 correction", upright_orient["correction_degrees"], 0)
+
+let rotated_orient = ocr_detect_orientation(engine3, rotated_img)
+t = test_not_nil(t, "ocr_detect_orientation() reads a rotated page", rotated_orient)
+if rotated_orient != nil:
+    t = test_eq(t, "rotated page reports -90 correction", rotated_orient["correction_degrees"], -90)
+    let fixed = vision_rotate(rotated_img, rotated_orient["correction_degrees"])
+    let recovered = ocr_recognize(engine3, fixed)
+    t = test_contains_str(t, "corrected image reads back the right text", recovered, "longer paragraph")
+    vision_free(fixed)
+
+# ocr_detect_orientation() must restore whatever PSM the engine had
+# before it, not permanently leave it in PSM_AUTO_OSD - a plain
+# recognize() right after should work exactly as it did before any
+# orientation call happened
+let plain_img = vision_load(_webi_resolve_path(IMG))
+let plain_text = ocr_recognize(engine3, plain_img)
+t = test_contains_str(t, "PSM is restored after ocr_detect_orientation() (no leftover AUTO_OSD)", plain_text, "Khan OCR Test")
+vision_free(plain_img)
+
+ocr_free(engine3)
+vision_free(para_img)
+vision_free(rotated_img)
+
+# --- character whitelist ---------------------------------------------------
+let engine4 = ocr_init("eng")
+ocr_set_char_whitelist(engine4, "0123456789")
+let img4 = vision_load(_webi_resolve_path(IMG))
+let digits = ocr_recognize(engine4, img4)
+t = test_contains_str(t, "char whitelist restricts recognition to digits", digits, "12345")
+ocr_free(engine4)
+vision_free(img4)
+
+# --- multi-language ----------------------------------------------------------
+let multi_engine = ocr_init("eng+fra")
+t = test_not_nil(t, "ocr_init() accepts a \"+\"-joined multi-language string", multi_engine)
+if multi_engine != nil:
+    let french_img = vision_load(_webi_resolve_path("../examples/ocr_french.png"))
+    let french_text = ocr_recognize(multi_engine, french_img)
+    t = test_contains_str(t, "multi-language engine reads French text", french_text, "Bonjour")
+    ocr_free(multi_engine)
+    vision_free(french_img)
+
+# --- searchable PDF export ----------------------------------------------------
+let pdf_engine = ocr_init("eng")
+let pdf_ok = ocr_save_pdf(pdf_engine, _webi_resolve_path(IMG), "/tmp/khan_test_ocr_pdf")
+t = test_true(t, "ocr_save_pdf() succeeds", pdf_ok)
+ocr_free(pdf_engine)
+
+test_run(t)

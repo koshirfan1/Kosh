@@ -1,0 +1,29 @@
+# Test for swagger package
+import "../packages/swagger/swagger.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("Swagger Suite")
+
+fn hello_handler(req):
+    return res_text("hi")
+
+let app = webi_app()
+app = get_route(app, "/hello", hello_handler)
+app = swagger_ui(app, "/docs")
+
+# Mock request parameters
+let method = "GET"
+let path = "/docs"
+let query = ""
+let headers = ""
+let body = ""
+let ip = "127.0.0.1"
+
+# Call the bridge function with 7 args
+let res = webi_handle(app, method, path, query, headers, body, ip)
+
+t = test_eq(t, "status should be 200", res["status"], 200)
+t = test_contains_str(t, "body should contain API Documentation", res["body"], "API Documentation")
+t = test_contains_str(t, "body should list /hello route", res["body"], "/hello")
+
+test_run(t)

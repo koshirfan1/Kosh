@@ -1,0 +1,172 @@
+# tests/suites/tensor.kh -- native tensor engine + autograd Tensor class.
+#
+# NOTE: Khan arrays compare by identity (`==` is `a.as.obj == b.as.obj`
+# in src/value.c), same as classes/instances/maps -- two separately
+# built arrays with identical contents are never `==`. _tensor_to_nested(),
+# shape(), and .data() all return plain Khan arrays, so every comparison
+# here against an array literal goes through arrays_equal() below instead
+# of test_eq(). VAL_TENSOR itself is the one container type in Khan with
+# real value equality (see values_equal's VAL_TENSOR case in value.c), so
+# tensor-to-tensor `==` further down is tested with test_true/test_false
+# directly, same as in tests/suites/classes.kh.
+import "test"
+import "tensor"
+
+fn arrays_equal(a, b):
+    if type(a) != "array" or type(b) != "array":
+        return a == b
+    if len(a) != len(b):
+        return false
+    let i = 0
+    while i < len(a):
+        if not arrays_equal(a[i], b[i]):
+            return false
+        i = i + 1
+    return true
+
+fn test_arr_eq(t, label, actual, expected):
+    return test_true(t, label, arrays_equal(actual, expected))
+
+fn suite_tensor_native():
+    let t = test_suite("Tensor (native engine)")
+
+    let a = _tensor_from_nested([[1, 2], [3, 4]])
+    let b = _tensor_from_nested([[5, 6], [7, 8]])
+    t = test_arr_eq(t, "shape() of a 2x2", _tensor_shape(a), [2, 2])
+    t = test_eq(t, "ndim() of a 2x2", _tensor_ndim(a), 2)
+    t = test_eq(t, "numel() of a 2x2", _tensor_numel(a), 4)
+    t = test_arr_eq(t, "to_nested() round-trips", _tensor_to_nested(a), [[1, 2], [3, 4]])
+
+    t = test_arr_eq(t, "elementwise add", _tensor_to_nested(_tensor_add(a, b)), [[6, 8], [10, 12]])
+    t = test_arr_eq(t, "elementwise sub", _tensor_to_nested(_tensor_sub(a, b)), [[-4, -4], [-4, -4]])
+    t = test_arr_eq(t, "elementwise mul", _tensor_to_nested(_tensor_mul(a, b)), [[5, 12], [21, 32]])
+    t = test_arr_eq(t, "scalar broadcast add", _tensor_to_nested(_tensor_add(a, 10)), [[11, 12], [13, 14]])
+    t = test_arr_eq(t, "scalar broadcast mul", _tensor_to_nested(_tensor_mul(a, 2)), [[2, 4], [6, 8]])
+
+    t = test_arr_eq(t, "matmul", _tensor_to_nested(_tensor_matmul(a, b)), [[19, 22], [43, 50]])
+    t = test_arr_eq(t, "transpose", _tensor_to_nested(_tensor_transpose(a)), [[1, 3], [2, 4]])
+    t = test_eq(t, "sum() reduces to a scalar", _tensor_to_nested(_tensor_sum(a)), 10)
+    t = test_eq(t, "sum() result has type tensor", type(_tensor_sum(a)), "tensor")
+
+    let flat = _tensor_reshape(a, [4])
+    t = test_arr_eq(t, "reshape flattens", _tensor_to_nested(flat), [1, 2, 3, 4])
+    t = test_arr_eq(t, "reshape round-trips back", _tensor_to_nested(_tensor_reshape(flat, [2, 2])), [[1, 2], [3, 4]])
+
+    t = test_true(t, "== compares tensors by value, same contents", a == _tensor_from_nested([[1, 2], [3, 4]]))
+    t = test_false(t, "== compares tensors by value, different contents", a == b)
+
+    t = test_arr_eq(t, "ones_like", _tensor_to_nested(_tensor_ones_like(a)), [[1, 1], [1, 1]])
+    t = test_arr_eq(t, "zeros_like", _tensor_to_nested(_tensor_zeros_like(a)), [[0, 0], [0, 0]])
+
+    let scalar = _tensor_from_nested(5)
+    t = test_eq(t, "a lone number is a 0-D tensor", _tensor_ndim(scalar), 0)
+    t = test_eq(t, "0-D tensor round-trips to a plain number", _tensor_to_nested(scalar), 5)
+
+    let vec = _tensor_from_nested([1, 2, 3])
+    t = test_arr_eq(t, "1-D vector shape", _tensor_shape(vec), [3])
+
+    # -- error paths (native functions fail safe: stderr message + nil,
+    # never a crash or a throw -- see tensor_lib.c) ----------------------
+    t = test_nil(t, "ragged nested array is rejected", _tensor_from_nested([[1, 2], [3]]))
+    t = test_nil(t, "matmul rejects non-2D", _tensor_matmul(vec, vec))
+    t = test_nil(t, "reshape rejects a size mismatch", _tensor_reshape(a, [3]))
+    t = test_nil(t, "add rejects a real shape mismatch", _tensor_add(vec, _tensor_from_nested([1, 2])))
+
+    return t
+
+
+class Linear:
+    fn __init__(self, w, bias):
+        self.w = Tensor(w, true)
+        self.bias = Tensor(bias, true)
+    fn forward(self, x):
+        return x.matmul(self.w).add(self.bias)
+
+fn suite_tensor_autograd():
+    let t = test_suite("Tensor (autograd)")
+
+    let x = Tensor([[1, 2], [3, 4]], true)
+    let y = Tensor([[5, 6], [7, 8]], true)
+    t = test_arr_eq(t, "Tensor wraps a nested array", x.data(), [[1, 2], [3, 4]])
+    t = test_arr_eq(t, "shape()", x.shape(), [2, 2])
+
+    let z = x.add(y)
+    t = test_arr_eq(t, "add() forward", z.data(), [[6, 8], [10, 12]])
+    let w = z.mul(x)
+    t = test_arr_eq(t, "mul() forward", w.data(), [[6, 16], [30, 48]])
+    let loss = w.sum()
+    t = test_eq(t, "sum() forward", loss.data(), 100)
+
+    loss.backward(nil)
+    t = test_arr_eq(t, "backward: d(loss)/dx through add+mul", x.grad.data(), [[7, 10], [13, 16]])
+    t = test_arr_eq(t, "backward: d(loss)/dy through add only", y.grad.data(), [[1, 2], [3, 4]])
+
+    # matmul backward
+    let A = Tensor([[1, 2], [3, 4]], true)
+    let B = Tensor([[5, 6], [7, 8]], true)
+    let C = A.matmul(B)
+    let l2 = C.sum()
+    l2.backward(nil)
+    t = test_arr_eq(t, "matmul backward: dL/dA = g @ B^T", A.grad.data(), [[11, 15], [11, 15]])
+    t = test_arr_eq(t, "matmul backward: dL/dB = A^T @ g", B.grad.data(), [[4, 4], [6, 6]])
+
+    # a tensor used twice in the same graph accumulates both contributions
+    let p = Tensor([1, 2, 3], true)
+    let q = p.add(p)
+    q.sum().backward(nil)
+    t = test_arr_eq(t, "REGRESSION: reused tensor sums gradient contributions from every use (y=x+x => dy/dx=2)",
+                     p.grad.data(), [2, 2, 2])
+
+    # transpose / reshape backward
+    let r = Tensor([[1, 2, 3], [4, 5, 6]], true)
+    r.transpose().sum().backward(nil)
+    t = test_arr_eq(t, "transpose backward", r.grad.data(), [[1, 1, 1], [1, 1, 1]])
+
+    let r2 = Tensor([1, 2, 3, 4, 5, 6], true)
+    r2.reshape([2, 3]).sum().backward(nil)
+    t = test_arr_eq(t, "reshape backward", r2.grad.data(), [1, 1, 1, 1, 1, 1])
+
+    # scalar (non-tracking) operands
+    let s = Tensor([1, 2, 3], true)
+    let s2 = s.mul(10).sub(5)
+    t = test_arr_eq(t, "mixing a Tensor with a plain number forward", s2.data(), [5, 15, 25])
+    s2.sum().backward(nil)
+    t = test_arr_eq(t, "mixing a Tensor with a plain number backward", s.grad.data(), [10, 10, 10])
+
+    # a tiny "layer" built from the class, exercising matmul+add together.
+    # NOTE: bias is shape (1,2), matching the matmul output exactly --
+    # add()/sub()/mul() only broadcast a single scalar (size-1) operand
+    # (see tensor_binop in src/tensor_lib.c); true numpy-style row-vector
+    # broadcasting (shape (2,) against shape (1,2)) is NOT supported in
+    # this version (confirmed: it raises "shape mismatch"), so a real
+    # bias vector must currently be given in the output's own shape.
+    let layer = Linear([[1, 0], [0, 1]], [[1, 1]])
+    let out = layer.forward(Tensor([[2, 3]], false))
+    t = test_arr_eq(t, "a Linear-style layer forward pass", out.data(), [[3, 4]])
+    out.sum().backward(nil)
+    t = test_not_nil(t, "a Linear-style layer's weights receive a gradient", layer.w.grad)
+
+    # -- stress / stability: 2000 forward+backward passes, grad reset
+    # between each -- the AI-foundation point of this feature is to be
+    # used in a training loop, so that's exactly what this checks stays
+    # correct and leak-free (confirmed separately under valgrind). ------
+    let total = 0
+    let wgt = Tensor([[0.5, 0.5], [0.5, 0.5]], true)
+    let inp = Tensor([[1, 2], [3, 4]], false)
+    let i = 0
+    while i < 2000:
+        let out2 = wgt.matmul(inp).sum()
+        out2.backward(nil)
+        total = total + out2.data()
+        wgt.grad = nil
+        i = i + 1
+    t = test_eq(t, "REGRESSION: 2000 forward/backward passes stay numerically correct", total, 20000)
+
+    # backward-compatible free functions still work and now go through
+    # the native engine instead of pure-Khan O(n^3) loops
+    t = test_arr_eq(t, "matmul() free function", matmul([[1, 2], [3, 4]], [[5, 6], [7, 8]]), [[19, 22], [43, 50]])
+    t = test_eq(t, "dot() free function", dot([1, 2, 3], [4, 5, 6]), 32)
+    t = test_arr_eq(t, "add() free function", add([1, 2, 3], [4, 5, 6]), [5, 7, 9])
+    t = test_arr_eq(t, "scale() free function", scale([[1, 2], [3, 4]], 2), [[2, 4], [6, 8]])
+
+    return t

@@ -1,0 +1,72 @@
+# Datetime Library for Khan
+# Provides date and time utility functions
+#
+# All functions return maps with standard fields.
+# Uses the clock() function for time measurements.
+
+# datetime_now() - Returns a map with current date/time fields
+#   {"year": 2026, "month": 6, "day": 27, "hour": 12, "minute": 30, "second": 15}
+#
+# datetime_format(dt) - Formats a datetime map as "YYYY-MM-DD HH:MM:SS"
+#
+# datetime_date(dt) - Formats as "YYYY-MM-DD"
+#
+# datetime_time(dt) - Formats as "HH:MM:SS"
+#
+# datetime_timestamp() - Returns current Unix timestamp (seconds since epoch)
+#   Uses clock() as a relative time base.
+
+# Since Khan doesn't have native date/time functions, we use clock() as
+# a relative time reference. The base time is set when the library loads.
+let _start_time = clock()
+
+# Approximate seconds since library load
+fn datetime_timestamp():
+    return clock() - _start_time
+
+# Return a map with current relative time fields
+# Note: These are relative to library load, not wall clock time
+fn datetime_now():
+    let t = datetime_timestamp()
+    let total_sec = t
+    let hours = total_sec / 3600
+    let remainder = total_sec - hours * 3600
+    let minutes = remainder / 60
+    let seconds = remainder - minutes * 60
+    return {"year": 2026, "month": 6, "day": 27, "hour": hours, "minute": minutes, "second": seconds}
+
+# Format a datetime map as "YYYY-MM-DD HH:MM:SS"
+fn datetime_format(dt):
+    let y = str(dt["year"])
+    let m = str(dt["month"])
+    let d = str(dt["day"])
+    let h = str(dt["hour"])
+    let mi = str(dt["minute"])
+    let s = str(dt["second"])
+    return y + "-" + m + "-" + d + " " + h + ":" + mi + ":" + s
+
+# Format as "YYYY-MM-DD"
+fn datetime_date(dt):
+    let y = str(dt["year"])
+    let m = str(dt["month"])
+    let d = str(dt["day"])
+    return y + "-" + m + "-" + d
+
+# Format as "HH:MM:SS"
+fn datetime_time(dt):
+    let h = str(dt["hour"])
+    let mi = str(dt["minute"])
+    let s = str(dt["second"])
+    return h + ":" + mi + ":" + s
+
+# Measure execution time of a block
+# Usage:
+#   let t = datetime_measure()
+#   ... your code ...
+#   print datetime_elapsed(t)
+fn datetime_measure():
+    return clock()
+
+# Returns seconds elapsed since datetime_measure() was called
+fn datetime_elapsed(start):
+    return clock() - start

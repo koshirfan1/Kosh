@@ -1,0 +1,36 @@
+# Khan JSON Database
+# Usage: import "json_db"
+
+fn db_open(path):
+    let content = read_file(path)
+    let data = {}
+    if content != nil:
+        if len(content) > 0:
+            data = json_decode(content)
+            if data == nil:
+                data = {}
+
+    return {
+        "path": path,
+        "data": data
+    }
+
+fn db_get(db, key, default_val):
+    if has(db["data"], key):
+        return db["data"][key]
+    return default_val
+
+fn db_set(db, key, val):
+    db["data"][key] = val
+    return db
+
+fn db_has(db, key):
+    return has(db["data"], key)
+
+fn db_delete(db, key):
+    db["data"][key] = nil
+    return db
+
+fn db_save(db):
+    let content = json_encode(db["data"])
+    return write_file(db["path"], content)

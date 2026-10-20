@@ -1,0 +1,26 @@
+# Test for csv_io package
+import "../packages/csv_io/csv_io.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("CSV IO Suite")
+
+let csv_content = "Name,Age,City\nIrfan,25,Dubai\nKhan,30,London"
+write_file("test.csv", csv_content)
+
+let rows = csv_read("test.csv")
+t = test_eq(t, "should have 2 rows", len(rows), 2)
+t = test_eq(t, "first row name should be Irfan", rows[0]["Name"], "Irfan")
+t = test_eq(t, "second row age should be 30", rows[1]["Age"], "30")
+
+# Test write
+let new_rows = [
+    {"ID": "1", "Status": "OK"},
+    {"ID": "2", "Status": "Error"}
+]
+csv_write("output.csv", new_rows)
+
+let read_back = csv_read("output.csv")
+t = test_eq(t, "read back len should be 2", len(read_back), 2)
+t = test_eq(t, "first status should be OK", read_back[0]["Status"], "OK")
+
+test_run(t)

@@ -1,0 +1,28 @@
+# Test all features
+let x = 10
+let y = 20
+let z = x + y * 2
+print z
+
+if z > 40:
+    print "z is large"
+else:
+    print "z is small"
+
+let i = 0
+while i < 3:
+    print i
+    i = i + 1
+
+fn greet(name):
+    print name
+    print "Hello!"
+
+greet("Irfan")
+greet("Khan")
+
+print true and false
+print not true
+print 10 == 10
+print 10 != 20
+print "Hello " + "World"

@@ -1,0 +1,102 @@
+# webi_phase3_test.kh — test suite for render_file() and serve_static()
+# (webi v1.1.2). Run: kosh examples/webi_phase3_test.kh
+#
+# Fixtures live in examples/phase3_fixtures/ next to this file:
+#   templates/index.html   a real template, for the happy path
+#   public/css/style.css   a real static asset, for the happy path
+#   secret.txt             sits *outside* both of the above — every
+#                           traversal case below tries to reach this file
+#                           and must fail to.
+#
+# Covers:
+#   - render_file() happy path + template substitution
+#   - render_file() containment (.., encoded .., absolute path)
+#   - render_file() extension allow-list
+#   - serve_static() happy path + correct Content-Type from the MIME table
+#   - serve_static() containment (literal .., percent-encoded .., missing
+#     file, bare mount with no file) — all through the real webi_handle()
+#     bridge, the same entry point the native server actually calls per
+#     request, not by reaching into routing.kh's private internals.
+
+from webi import webi
+
+fn test_eq(stats, label, actual, expected):
+    if actual == expected:
+        stats["pass"] = stats["pass"] + 1
+        print "  OK   " + label
+    else:
+        stats["fail"] = stats["fail"] + 1
+        print "  FAIL " + label + "  (got: " + str(actual) + ", want: " + str(expected) + ")"
+    return stats
+
+fn test_true(stats, label, actual):
+    return test_eq(stats, label, actual, true)
+
+let stats = {"pass": 0, "fail": 0}
+
+print "=========================================="
+print "webi Phase 3 test suite (render_file / serve_static)"
+print "=========================================="
+
+let app = webi_app()
+app = serve_static(app, "/static", "phase3_fixtures/public")
+
+# ---------------------------------------------------------------------------
+print ""
+print "-- render_file(): happy path --"
+let html = render_file("phase3_fixtures/templates/index.html", {"name": "Irfan"})
+stats = test_eq(stats, "renders and substitutes {{name}}", html, "<h1>Hello, Irfan!</h1>\n")
+
+# ---------------------------------------------------------------------------
+print ""
+print "-- render_file(): containment --"
+stats = test_eq(stats, "literal '..' traversal is rejected",
+    render_file("phase3_fixtures/templates/../../secret.txt", {}), nil)
+stats = test_eq(stats, "'../secret.txt' traversal is rejected",
+    render_file("../secret.txt", {}), nil)
+stats = test_eq(stats, "absolute path is rejected",
+    render_file("/etc/passwd", {}), nil)
+stats = test_eq(stats, "missing file returns nil, not a crash",
+    render_file("phase3_fixtures/templates/does_not_exist.html", {}), nil)
+
+# ---------------------------------------------------------------------------
+print ""
+print "-- render_file(): extension allow-list --"
+stats = test_eq(stats, "existing file with disallowed extension is rejected",
+    render_file("phase3_fixtures/templates/config.ini", {}), nil)
+
+# ---------------------------------------------------------------------------
+print ""
+print "-- serve_static(): happy path --"
+let res1 = webi_handle(app, "GET", "/static/css/style.css", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "status 200", res1["status"], 200)
+stats = test_eq(stats, "Content-Type from MIME table", res1["content_type"], "text/css; charset=utf-8")
+stats = test_eq(stats, "body matches the file on disk", res1["body"], "body { color: red; }\n")
+
+# ---------------------------------------------------------------------------
+print ""
+print "-- serve_static(): containment + edge cases (via webi_handle, the real dispatch path) --"
+
+let res2 = webi_handle(app, "GET", "/static/../../secret.txt", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "literal '..' traversal -> 404, not the secret file", res2["status"], 404)
+
+let res3 = webi_handle(app, "GET", "/static/%2e%2e%2f%2e%2e%2fsecret.txt", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "percent-encoded '..' traversal -> 404", res3["status"], 404)
+
+let res4 = webi_handle(app, "GET", "/static/does/not/exist.css", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "missing file -> 404", res4["status"], 404)
+
+let res5 = webi_handle(app, "GET", "/static", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "bare mount with no file -> 404", res5["status"], 404)
+
+let res6 = webi_handle(app, "GET", "/nowhere", "", "", "", "127.0.0.1")
+stats = test_eq(stats, "path outside the mount entirely -> 404", res6["status"], 404)
+
+# ---------------------------------------------------------------------------
+print ""
+print "=========================================="
+print str(stats["pass"]) + " passed, " + str(stats["fail"]) + " failed"
+print "=========================================="
+
+if stats["fail"] > 0:
+    exit(1)

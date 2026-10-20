@@ -1,0 +1,9 @@
+{
+  "name": "strings",
+  "version": "1.0.0",
+  "description": "String utilities: split, trim, replace, pad, repeat, contains, join",
+  "author": "khandev1211-cpu",
+  "developer": "Irfan Khan",
+  "main": "strings.kh",
+  "files": ["strings.kh"]
+}

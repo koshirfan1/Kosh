@@ -1,0 +1,26 @@
+# Test for openai package
+import "../packages/openai/openai.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("OpenAI Suite")
+
+let client = openai_client("sk-fake-key")
+t = test_eq(t, "base url check", client["base_url"], "https://api.openai.com/v1")
+
+# Simulation of chat (since we can't call real API in a unit test easily)
+fn mock_openai_chat(client, role, content):
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "I am a helpful assistant."
+                }
+            }
+        ]
+    }
+
+let res = mock_openai_chat(client, "user", "Who are you?")
+t = test_eq(t, "role check", res["choices"][0]["message"]["role"], "assistant")
+
+test_run(t)

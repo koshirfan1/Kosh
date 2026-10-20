@@ -1,0 +1,80 @@
+# Khan vision package v3.0.0
+# Usage: import "vision"
+#
+# A real classical computer-vision toolkit, not a simulation: genuine
+# image decode/encode, convolution filters, thresholding, morphology,
+# connected-component blob detection, histograms, drawing, template
+# matching, and real Haar-cascade face detection (Viola-Jones, the same
+# algorithm and cascade format OpenCV uses).
+#
+# v1.0 of this package faked everything (detect_faces() returned two
+# hardcoded boxes regardless of input). v2.0 replaced that with real
+# pixel I/O and processing but no detection at all. v3.0 adds the rest of
+# a classical CV toolkit, including actual object detection — no ML
+# framework, no GPU, just the same well-established algorithms OpenCV
+# built its reputation on, implemented directly in Khan's native layer.
+#
+# ---------------------------------------------------------------------------
+# Quick start
+# ---------------------------------------------------------------------------
+#
+#   import "vision"
+#
+#   # basic I/O + info
+#   let info = image_info("photo.png")
+#   print info["width"]
+#
+#   # face detection
+#   let faces = detect_faces("photo.png")
+#   print len(faces)
+#   draw_faces("photo.png", "photo_annotated.png")
+#
+#   # classical pipeline: threshold -> clean up -> find shapes
+#   threshold_otsu_file("scan.png", "scan_bw.png")
+#   morph_open_file("scan_bw.png", "scan_clean.png", 3)
+#   let blobs = find_blobs("scan_clean.png", 50)
+#
+#   # color-based detection (no cascade needed)
+#   let red_things = find_color_regions("photo.png", 350, 10, 40, 100, 30, 100, 100)
+#
+# ---------------------------------------------------------------------------
+# File layout (each file's header documents its own functions in detail)
+# ---------------------------------------------------------------------------
+#
+#   core.kh        path resolution, image_info
+#   color.kh       grayscale, invert, HSV color-range masking/detection
+#   transform.kh   crop, resize, thumbnail, rotate, flip
+#   filters.kh     box/gaussian blur, sharpen, emboss, Sobel edges
+#   threshold.kh   fixed/Otsu/adaptive thresholding
+#   morphology.kh  erode, dilate, open, close
+#   contours.kh    connected-component blob/shape detection
+#   histogram.kh   brightness histogram + equalization
+#   draw.kh        rectangles/lines/circles/text + a draw-boxes pipeline
+#   match.kh       template matching (find a reference image inside another)
+#   detect.kh      real Haar-cascade face/object detection
+#
+# All heavy per-pixel work (filters, thresholding, morphology, blob
+# detection, cascade scanning) runs natively in C — none of it is a slow
+# per-pixel Khan loop, so it stays practical on real photo resolutions.
+#
+# What's still NOT here: no neural-network-based detection or
+# classification of any kind. Haar cascades (detect.kh) are real object
+# detection but a much older, less accurate technique than a modern
+# trained model — good for frontal faces in reasonable lighting, not a
+# general-purpose vision model.
+#
+# IMPORT ORDER MATTERS (as in `webi`): each file below only calls things
+# defined in a file that already came before it in this list.
+# ---------------------------------------------------------------------------
+
+import "core.kh"
+import "color.kh"
+import "transform.kh"
+import "filters.kh"
+import "threshold.kh"
+import "morphology.kh"
+import "contours.kh"
+import "histogram.kh"
+import "draw.kh"
+import "match.kh"
+import "detect.kh"

@@ -1,0 +1,256 @@
+# Khan ocr package v1.1.0
+# Usage: import "ocr"
+#
+# Real text recognition via Tesseract (libtesseract) — the same OCR engine
+# behind the `tesseract` CLI and countless production scanners. This is a
+# genuine native bridge, not a mock and not a subprocess shell-out: it
+# links against libtesseract directly and feeds it pixel data already
+# decoded by vision_load(), so any format vision.kh can open (PNG, JPEG,
+# BMP, GIF, TGA, ...) works here too.
+#
+# Requires libtesseract (+ trained language data) on the machine Khan is
+# BUILT on — see docs/ocr.md for install notes per platform. If the build
+# can't find it, `make` fails outright rather than silently shipping
+# something that pretends to work.
+#
+# ---------------------------------------------------------------------------
+# Quick start
+# ---------------------------------------------------------------------------
+#
+#   import "ocr"
+#
+#   let text = read_text("scan.png")
+#   if text != nil:
+#       print text
+#
+#   # Need the confidence score too?
+#   let result = read_text_with_confidence("receipt.png")
+#   print result["text"]
+#   print result["confidence"]
+#
+#   # Messy real-world photo (tilted, uneven lighting)? Auto-corrects
+#   # orientation and improves contrast before recognizing:
+#   let cleaned = read_text_auto("photo_from_my_phone.jpg")
+#
+#   # Where's the text, not just what does it say:
+#   let words = read_text_words("form.png")
+#   for w in words:
+#       print w["text"] + " at (" + str(w["x"]) + "," + str(w["y"]) + ")"
+#
+#   # Turn a scan into a searchable PDF (same image, invisible text layer):
+#   save_searchable_pdf("scan.png", "scan_searchable")
+#
+#   # Only expect digits (serial numbers, IDs, codes)?
+#   let engine = ocr_init("eng")
+#   ocr_set_char_whitelist(engine, "0123456789")
+#   let digits = ocr_recognize(engine, vision_load("code.png"))
+#
+#   # Multiple languages in one pass — Tesseract takes "+"-joined codes
+#   # directly, no separate API for this:
+#   let bilingual = read_text_lang("menu.png", "eng+fra")
+#
+#   # A different single language (Khan has no default/optional params,
+#   # so this is a separate function rather than an optional argument):
+#   let french = read_text_lang("menu.png", "fra")
+#
+# ---------------------------------------------------------------------------
+# Recognizing many images? Reuse one engine.
+# ---------------------------------------------------------------------------
+#
+# Every function above calls ocr_init()/ocr_free() around a single call,
+# and ocr_init() reloads Tesseract's language model from disk each time —
+# fine for one or two images, wasteful in a loop. For a batch, call the
+# lower-level native functions directly (registered globally, no import
+# needed) and keep one engine alive across the whole batch:
+#
+#   let engine = ocr_init("eng")
+#   for path in paths:
+#       let img = vision_load(path)
+#       if img != nil:
+#           print ocr_recognize(engine, img)
+#           vision_free(img)
+#   ocr_free(engine)
+#
+# Native functions available this way:
+#   ocr_init([lang], [datapath])       -> engine or nil (lang defaults "eng")
+#   ocr_recognize(engine, image)       -> string or nil
+#   ocr_recognize_words(engine, image) -> array of {"text","confidence",
+#       "x","y","width","height"} maps, one per word
+#   ocr_confidence(engine)             -> number (0-100) or nil, mean
+#       confidence of the last ocr_recognize()/ocr_recognize_words() call
+#   ocr_detect_orientation(engine, image) -> {"orientation",
+#       "correction_degrees"} or nil (nil if there isn't enough text on
+#       the page to tell confidently — needs a real block, not a couple
+#       of words). correction_degrees is in vision_rotate()'s clockwise-
+#       positive convention - pass it straight through: vision_rotate(
+#       image, result["correction_degrees"]) straightens it.
+#   ocr_set_page_seg_mode(engine, mode) -> nil  (0-13; see Tesseract's PSM
+#       modes — e.g. 7 = treat the image as a single text line, useful for
+#       cropped fields like a serial number or ID)
+#   ocr_set_char_whitelist(engine, chars) -> nil (e.g. "0123456789"; pass
+#       "" to clear a previously-set whitelist)
+#   ocr_save_pdf(engine, image_path, output_base_path) -> bool (note: a
+#       file PATH, not a vision_load()-ed image — see below)
+#   ocr_free(engine)                    -> nil
+#
+# ocr_save_pdf() is the one exception to "pass a vision_load()-ed image":
+# Tesseract's PDF renderer loads the file itself, so it takes a path
+# string directly, resolved the same way read_text() resolves its own
+# path argument if you're calling it yourself rather than through
+# save_searchable_pdf() below.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# read_text(path) -> string or nil
+#
+# One-shot OCR in English: load the image, recognize, clean up. Returns
+# nil if the image can't be opened or the OCR engine can't be started.
+# ---------------------------------------------------------------------------
+fn read_text(path):
+    return read_text_lang(path, "eng")
+
+# ---------------------------------------------------------------------------
+# read_text_lang(path, lang) -> string or nil
+#
+# Same as read_text(), with an explicit Tesseract language code — a
+# single one ("fra", "deu", "ara", ...) or several "+"-joined ("eng+fra")
+# for mixed-language pages. Whatever *.traineddata you have installed.
+# ---------------------------------------------------------------------------
+fn read_text_lang(path, lang):
+    let resolved = _webi_resolve_path(path)
+    let img = vision_load(resolved)
+    if img == nil:
+        return nil
+    let engine = ocr_init(lang)
+    if engine == nil:
+        vision_free(img)
+        return nil
+    let text = ocr_recognize(engine, img)
+    ocr_free(engine)
+    vision_free(img)
+    return text
+
+# ---------------------------------------------------------------------------
+# read_text_with_confidence(path) -> {"text","confidence"} or nil
+#
+# Same as read_text(), but also returns Tesseract's mean confidence
+# (0-100) for the recognition.
+# ---------------------------------------------------------------------------
+fn read_text_with_confidence(path):
+    return read_text_with_confidence_lang(path, "eng")
+
+# ---------------------------------------------------------------------------
+# read_text_with_confidence_lang(path, lang) -> {"text","confidence"} or nil
+# ---------------------------------------------------------------------------
+fn read_text_with_confidence_lang(path, lang):
+    let resolved = _webi_resolve_path(path)
+    let img = vision_load(resolved)
+    if img == nil:
+        return nil
+    let engine = ocr_init(lang)
+    if engine == nil:
+        vision_free(img)
+        return nil
+    let text = ocr_recognize(engine, img)
+    let conf = ocr_confidence(engine)
+    ocr_free(engine)
+    vision_free(img)
+    return {"text": text, "confidence": conf}
+
+# ---------------------------------------------------------------------------
+# read_text_words(path) -> array of {"text","confidence","x","y","width",
+# "height"} maps, or nil
+#
+# Like read_text(), but word-by-word with a bounding box and confidence
+# for each — for when you need to know WHERE text is, or which specific
+# words Tesseract was unsure about, not just the full blob.
+# ---------------------------------------------------------------------------
+fn read_text_words(path):
+    return read_text_words_lang(path, "eng")
+
+# ---------------------------------------------------------------------------
+# read_text_words_lang(path, lang) -> array or nil
+# ---------------------------------------------------------------------------
+fn read_text_words_lang(path, lang):
+    let resolved = _webi_resolve_path(path)
+    let img = vision_load(resolved)
+    if img == nil:
+        return nil
+    let engine = ocr_init(lang)
+    if engine == nil:
+        vision_free(img)
+        return nil
+    let words = ocr_recognize_words(engine, img)
+    ocr_free(engine)
+    vision_free(img)
+    return words
+
+# ---------------------------------------------------------------------------
+# read_text_auto(path) -> string or nil
+#
+# For messy real-world photos rather than clean scans: converts to
+# grayscale, evens out contrast (vision_equalize), detects whether the
+# page is sideways/upside-down and straightens it before recognizing.
+#
+# The orientation check needs a real block of text to be confident about
+# which way is up — on a short, cropped, or sparse image it's skipped
+# (falls back to reading the image as-is) rather than guessing.
+# ---------------------------------------------------------------------------
+fn read_text_auto(path):
+    return read_text_auto_lang(path, "eng")
+
+# ---------------------------------------------------------------------------
+# read_text_auto_lang(path, lang) -> string or nil
+# ---------------------------------------------------------------------------
+fn read_text_auto_lang(path, lang):
+    let resolved = _webi_resolve_path(path)
+    let img = vision_load(resolved)
+    if img == nil:
+        return nil
+    let engine = ocr_init(lang)
+    if engine == nil:
+        vision_free(img)
+        return nil
+
+    let gray = vision_grayscale(img)
+    vision_free(img)
+    let enhanced = vision_equalize(gray)
+    vision_free(gray)
+
+    let working = enhanced
+    let rotated = false
+    let orient = ocr_detect_orientation(engine, enhanced)
+    if orient != nil:
+        if orient["correction_degrees"] != 0:
+            working = vision_rotate(enhanced, orient["correction_degrees"])
+            rotated = true
+
+    let text = ocr_recognize(engine, working)
+    ocr_free(engine)
+    if rotated:
+        vision_free(working)
+    vision_free(enhanced)
+    return text
+
+# ---------------------------------------------------------------------------
+# save_searchable_pdf(image_path, output_path) -> bool
+#
+# Renders output_path + ".pdf": the original image, unchanged, with an
+# invisible text layer over it — looks the same, but the text is
+# selectable, copyable, and searchable. output_path should NOT include
+# ".pdf" yourself; Tesseract appends it.
+# ---------------------------------------------------------------------------
+fn save_searchable_pdf(image_path, output_path):
+    return save_searchable_pdf_lang(image_path, output_path, "eng")
+
+# ---------------------------------------------------------------------------
+# save_searchable_pdf_lang(image_path, output_path, lang) -> bool
+# ---------------------------------------------------------------------------
+fn save_searchable_pdf_lang(image_path, output_path, lang):
+    let resolved = _webi_resolve_path(image_path)
+    let engine = ocr_init(lang)
+    if engine == nil:
+        return false
+    let ok = ocr_save_pdf(engine, resolved, output_path)
+    ocr_free(engine)
+    return ok

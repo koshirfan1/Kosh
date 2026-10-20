@@ -1,0 +1,12 @@
+fn strip_quotes(s):
+    if len(s) < 2:
+        return s
+    let first = substring(s, 0, 1)
+    let last = substring(s, len(s) - 1, len(s))
+    print "First: [" + first + "]"
+    print "Last: [" + last + "]"
+    if (first == "\"" and last == "\"") or (first == "'" and last == "'"):
+        return substring(s, 1, len(s) - 1)
+    return s
+
+print "Result: [" + strip_quotes("\"localhost\"") + "]"

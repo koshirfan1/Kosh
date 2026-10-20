@@ -1,0 +1,94 @@
+# JSON Library Tests
+import "json.kh"
+
+let pass = 0
+let fail = 0
+
+fn test(name, got, expected):
+    if got == expected:
+        pass = pass + 1
+        print "PASS: " + name
+    else:
+        fail = fail + 1
+        print "FAIL: " + name
+        print "  expected: " + str(expected)
+        print "  got:      " + str(got)
+
+# -----------------------------------------------------------------------
+# json_encode tests
+# -----------------------------------------------------------------------
+
+test("encode number", json_encode(42), "42")
+test("encode negative", json_encode(-3.14), "-3.14")
+test("encode string", json_encode("hello"), "\"hello\"")
+test("encode string with quotes", json_encode("say \"hi\""), "\"say \\\"hi\\\"\"")
+test("encode string with newline", json_encode("a\nb"), "\"a\\nb\"")
+test("encode true", json_encode(true), "true")
+test("encode false", json_encode(false), "false")
+test("encode nil", json_encode(nil), "null")
+
+let arr = [1, 2, 3]
+test("encode array", json_encode(arr), "[1, 2, 3]")
+
+let arr2 = ["a", "b"]
+test("encode string array", json_encode(arr2), "[\"a\", \"b\"]")
+
+let empty_arr = []
+test("encode empty array", json_encode(empty_arr), "[]")
+
+let map1 = {"name": "Khan"}
+test("encode map", json_encode(map1), "{\"name\": \"Khan\"}")
+
+# -----------------------------------------------------------------------
+# json_decode tests
+# -----------------------------------------------------------------------
+
+let r1 = json_decode("42")
+test("decode number", r1, 42)
+
+let r2 = json_decode("-3.14")
+test("decode negative", r2, -3.14)
+
+let r3 = json_decode("\"hello\"")
+test("decode string", r3, "hello")
+
+let r4 = json_decode("true")
+test("decode true", r4, true)
+
+let r5 = json_decode("false")
+test("decode false", r5, false)
+
+let r6 = json_decode("null")
+test("decode null", r6, nil)
+
+let r7 = json_decode("[1, 2, 3]")
+test("decode array", r7, [1, 2, 3])
+
+let r8 = json_decode("[[1,2],[3,4]]")
+test("decode nested array 1", r8[0][0], 1)
+test("decode nested array 2", r8[1][1], 4)
+
+let r9 = json_decode("{\"name\": \"Khan\", \"ver\": 1}")
+test("decode map key", r9["name"], "Khan")
+test("decode map val", r9["ver"], 1)
+
+# -----------------------------------------------------------------------
+# Round-trip test
+# -----------------------------------------------------------------------
+
+let original = {"name": "JSON Test", "values": [1, true, nil, "end"], "count": 4}
+let encoded = json_encode(original)
+let decoded = json_decode(encoded)
+test("round-trip string", decoded["name"], "JSON Test")
+test("round-trip number", decoded["count"], 4)
+test("round-trip array elem", decoded["values"][0], 1)
+test("round-trip bool", decoded["values"][1], true)
+test("round-trip nil", decoded["values"][2], nil)
+test("round-trip string array", decoded["values"][3], "end")
+
+# -----------------------------------------------------------------------
+# Summary
+# -----------------------------------------------------------------------
+
+print "----"
+print "Results: " + str(pass) + " passed, " + str(fail) + " failed"

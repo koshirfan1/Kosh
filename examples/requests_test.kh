@@ -1,0 +1,22 @@
+# HTTP Requests library test
+# Requires internet access.  Run: kosh examples/requests_test.kh
+
+let res = http_get("https://jsonplaceholder.typicode.com/todos/1")
+print "Status: " + str(res["status"])
+print "Success: " + str(res["success"])
+
+if res["success"]:
+    let todo = json_decode(res["body"])
+    print "ID:    " + str(todo["id"])
+    print "Title: " + todo["title"]
+    print "Done:  " + str(todo["completed"])
+else:
+    print "Request failed"
+
+# POST JSON example
+let payload = {"title": "Learn Khan", "completed": false, "userId": 1}
+let post_res = http_post_json("https://jsonplaceholder.typicode.com/todos", payload)
+print "POST status: " + str(post_res["status"])
+if post_res["success"]:
+    let created = json_decode(post_res["body"])
+    print "Created ID: " + str(created["id"])

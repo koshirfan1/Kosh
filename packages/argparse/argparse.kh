@@ -1,0 +1,89 @@
+# Khan Argparse Package
+# Usage: import "argparse"
+
+# Internal helpers first (Khan captures scope at declaration time)
+fn _strip_flag(f):
+    if len(f) >= 2:
+        if substring(f, 0, 2) == "--":
+            return substring(f, 2, len(f))
+    if len(f) >= 1:
+        if substring(f, 0, 1) == "-":
+            return substring(f, 1, len(f))
+    return f
+
+fn _is_flag(f):
+    if len(f) == 0:
+        return false
+    return substring(f, 0, 1) == "-"
+
+fn _is_in_list(l, val):
+    for x in l:
+        if x == val:
+            return true
+    return false
+
+# Public API
+fn arg_parser(description):
+    return {
+        "description": description,
+        "defaults": {},
+        "help_text": {},
+        "flags": []
+    }
+
+fn add_arg(parser, flag, default_val, help):
+    let key = _strip_flag(flag)
+    parser["defaults"][key] = default_val
+    parser["help_text"][key] = help
+    return parser
+
+fn add_flag(parser, flag, help):
+    let key = _strip_flag(flag)
+    parser["defaults"][key] = false
+    parser["help_text"][key] = help
+    parser["flags"] = push(parser["flags"], key)
+    return parser
+
+fn parse_args(parser, args_list):
+    let result = {}
+    let ks = keys(parser["defaults"])
+    for k in ks:
+        result[k] = parser["defaults"][k]
+
+    result["help"] = false
+
+    let i = 0
+    while i < len(args_list):
+        let arg = args_list[i]
+
+        if arg == "--help" or arg == "-h":
+            result["help"] = true
+        elif _is_flag(arg):
+            let key = _strip_flag(arg)
+
+            if _is_in_list(parser["flags"], key):
+                result[key] = true
+            else:
+                if i + 1 < len(args_list):
+                    result[key] = args_list[i+1]
+                    i = i + 1
+                else:
+                    print "Warning: flag " + arg + " expects a value."
+        i = i + 1
+
+    return result
+
+fn arg_help(parser):
+    print "Usage: kosh script.kh [options]"
+    print ""
+    print parser["description"]
+    print ""
+    print "Options:"
+    let ks = keys(parser["defaults"])
+    for k in ks:
+        let def = parser["defaults"][k]
+        let h = parser["help_text"][k]
+        print "  --" + k + " (default: " + str(def) + ")"
+        print "      " + h
+    print "  --help, -h"
+    print "      Show this help message"

@@ -1,0 +1,173 @@
+# webi/server.kh — dispatch + the native-server bridge + startup.
+
+# ---------------------------------------------------------------------------
+# Internal: build a default 404 response
+# ---------------------------------------------------------------------------
+fn _webi_default_404(req):
+    let msg = "404 Not Found: " + req["path"]
+    return res_not_found(msg)
+
+# ---------------------------------------------------------------------------
+# Internal: build a default 500 response
+# ---------------------------------------------------------------------------
+fn _webi_default_500(req):
+    return res_server_error("500 Internal Server Error")
+
+# ---------------------------------------------------------------------------
+# Internal: dispatch a parsed request through the app
+# Returns a response map
+# ---------------------------------------------------------------------------
+fn _webi_dispatch(app, req):
+    req = _webi_run_middlewares(app, req)
+
+    # v1.1.1 — a middleware can reject a request outright (bad CSRF token,
+    # rate limit exceeded, missing API key, CORS preflight, ...) by setting
+    # req["_webi_short_circuit"] to a response map. When that's set we
+    # return it immediately instead of ever reaching a route handler —
+    # this replaces the old pattern (mw_json_only) of just setting a flag
+    # and hoping every handler remembers to check it.
+    if has(req, "_webi_short_circuit") and req["_webi_short_circuit"] != nil:
+        return req["_webi_short_circuit"]
+
+    let match = _webi_find_route(app, req["method"], req["path"])
+    if match == nil:
+        if app["not_found"] != nil:
+            return app["not_found"](req)
+        return _webi_default_404(req)
+
+    req["params"] = match["params"]
+    return match["handler"](req)
+
+# ---------------------------------------------------------------------------
+# Internal: ANSI-color a status code string by its class, Morgan-style —
+# green 2xx, cyan 3xx, yellow 4xx, red 5xx. Self-contained (no dependency
+# on the separate `colors` package) since this is core framework output,
+# not optional app-level styling.
+# ---------------------------------------------------------------------------
+fn _webi_color_status(status, text):
+    if status >= 500:
+        return "\x1b[31m" + text + "\x1b[0m"
+    if status >= 400:
+        return "\x1b[33m" + text + "\x1b[0m"
+    if status >= 300:
+        return "\x1b[36m" + text + "\x1b[0m"
+    return "\x1b[32m" + text + "\x1b[0m"
+
+# ---------------------------------------------------------------------------
+# Internal: log a request (only in debug mode).
+#
+# Morgan-style dev-format line — method, path, colored status, elapsed
+# time, response size:
+#   [webi] GET /users/42 200 12.48 ms - 1024
+#
+# `start_clock` is a clock() reading taken at the very start of
+# webi_handle(), before middleware/dispatch run, so the elapsed time
+# covers the full request — middleware, route matching, and the handler
+# itself — not just the handler in isolation.
+# ---------------------------------------------------------------------------
+fn _webi_log(app, req, res, start_clock):
+    if app["debug"]:
+        let elapsed_ms = round((clock() - start_clock) * 100000) / 100
+        let status_str = _webi_color_status(res["status"], str(res["status"]))
+        let size = len(res["body"])
+        print "[webi] " + req["method"] + " " + req["path"] + " " + status_str + " " + str(elapsed_ms) + " ms - " + str(size)
+
+# ---------------------------------------------------------------------------
+# webi_handle(app, method, path, query, headers, body, ip) -> response map
+#
+# This is the BRIDGE FUNCTION — called by the native C server loop.
+# It accepts a raw request as individual strings and returns a response map.
+#
+# The native webi server calls this once per incoming HTTP request.
+# You normally don't call this directly — use webi_run() instead.
+# ---------------------------------------------------------------------------
+fn webi_handle(app, method, path, query_str, headers_str, body, ip):
+    let start_clock = clock()
+    # Build query params map from "key=val&key2=val2"
+    let query = {}
+    if len(query_str) > 0:
+        let pairs = split(query_str, "&")
+        let i = 0
+        while i < len(pairs):
+            let pair = pairs[i]
+            let kv = split(pair, "=")
+            if len(kv) >= 2:
+                query[kv[0]] = kv[1]
+            i = i + 1
+
+    # Build headers map from "Key: Value\r\nKey2: Value2"
+    let headers = {}
+    if len(headers_str) > 0:
+        let lines = split(headers_str, "\n")
+        let j = 0
+        while j < len(lines):
+            let line = trim(lines[j])
+            if contains(line, ":"):
+                let colon_pos = 0
+                let k = 0
+                while k < len(line):
+                    if substring(line, k, 1) == ":":
+                        colon_pos = k
+                        k = len(line)
+                    k = k + 1
+                if colon_pos > 0:
+                    let hk = trim(substring(line, 0, colon_pos))
+                    let hv = trim(substring(line, colon_pos + 1, len(line) - colon_pos - 1))
+                    headers[hk] = hv
+            j = j + 1
+
+    # Decode JSON body if content-type is JSON
+    let body_json = nil
+    if len(body) > 0:
+        let first = substring(body, 0, 1)
+        if first == "{" or first == "[":
+            body_json = json_decode(body)
+
+    let req = {
+        "method":      method,
+        "path":        path,
+        "query":       query,
+        "headers":     headers,
+        "body":        body,
+        "body_json":   body_json,
+        "params":      {},
+        "ip":          ip,
+        "_app":        app,
+        "_start_clock": start_clock
+    }
+
+    let res = _webi_dispatch(app, req)
+    res = _webi_run_after_hooks(app, req, res)
+    _webi_log(app, req, res, start_clock)
+    return res
+
+# ---------------------------------------------------------------------------
+# webi_run(app, port) -> never (starts the server)
+#
+# Starts the HTTP server on the given port.
+# Calls the native http_serve(port, app, webi_handle) builtin.
+#
+# The native C implementation accepts connections in a loop, parses each
+# HTTP request, calls webi_handle(app, method, path, ...) and writes
+# the returned response map back to the socket.
+# ---------------------------------------------------------------------------
+fn webi_run(app, port):
+    app["port"] = port
+    print "[webi] " + app["name"] + " starting on http://" + app["host"] + ":" + str(port)
+    if app["debug"]:
+        print "[webi] Debug mode ON"
+        let routes = app["routes"]
+        let i = 0
+        while i < len(routes):
+            let r = routes[i]
+            print "  " + r["method"] + " " + r["path"]
+            i = i + 1
+    http_serve(port, app)
+
+# ---------------------------------------------------------------------------
+# webi_run_host(app, host, port) -> never
+# Start on a specific host:port
+# ---------------------------------------------------------------------------
+fn webi_run_host(app, host, port):
+    app["host"] = host
+    webi_run(app, port)

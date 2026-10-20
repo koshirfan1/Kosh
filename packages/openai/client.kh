@@ -1,0 +1,62 @@
+# openai/client.kh — client construction & configuration.
+#
+# A "client" is just a map. Every openai_* call takes one as its first
+# argument, the same convention `webi` uses for `app`.
+
+# ---------------------------------------------------------------------------
+# openai_client(api_key) -> client
+# Create a client pointed at the real OpenAI API with sane defaults:
+#   model:       "gpt-4o-mini"
+#   base_url:    "https://api.openai.com/v1"
+#   max_retries: 3   (only for 429 / 5xx responses)
+#   organization: "" (unset)
+#
+# Note: `timeout` is stored on the client for API forward-compatibility,
+# but Khan's native HTTP layer (requests_lib.c) doesn't currently expose a
+# per-request timeout knob, so it isn't enforced yet — a slow request will
+# block for as long as the underlying WinHTTP/curl call takes.
+# ---------------------------------------------------------------------------
+fn openai_client(api_key):
+    return {
+        "api_key":      api_key,
+        "base_url":     "https://api.openai.com/v1",
+        "model":        "gpt-4o-mini",
+        "organization": "",
+        "timeout":      30000,
+        "max_retries":  3,
+        "last_error":   nil
+    }
+
+# ---------------------------------------------------------------------------
+# openai_client_ex(api_key, base_url) -> client
+# Same as openai_client, but pointed at a custom OpenAI-compatible endpoint
+# (Azure OpenAI, OpenRouter, a local vLLM/Ollama server, etc).
+# ---------------------------------------------------------------------------
+fn openai_client_ex(api_key, base_url):
+    let c = openai_client(api_key)
+    c["base_url"] = base_url
+    return c
+
+# ---------------------------------------------------------------------------
+# Setters — all return the client so calls can be chained:
+#   let client = openai_set_model(openai_client(key), "gpt-4o")
+# ---------------------------------------------------------------------------
+fn openai_set_model(client, model):
+    client["model"] = model
+    return client
+
+fn openai_set_organization(client, org):
+    client["organization"] = org
+    return client
+
+fn openai_set_timeout(client, timeout_ms):
+    client["timeout"] = timeout_ms
+    return client
+
+fn openai_set_max_retries(client, n):
+    client["max_retries"] = n
+    return client
+
+fn openai_set_base_url(client, base_url):
+    client["base_url"] = base_url
+    return client
