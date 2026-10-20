@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0  
 **Package:** `quant`  
-**Author:** khandev1211-cpu  
+**Author:** koshirfan1  
 **Developer:** Irfan Khan
 
 ## Overview

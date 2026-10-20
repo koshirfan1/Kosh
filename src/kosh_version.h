@@ -1,7 +1,7 @@
-#ifndef KHAN_VERSION_H
-#define KHAN_VERSION_H
+#ifndef KOSH_VERSION_H
+#define KOSH_VERSION_H
 
-/* Single source of truth for Khan's version string. Bump this by hand
+/* Single source of truth for Kosh's version string. Bump this by hand
  * when it actually matters (a real release, a breaking change worth
  * flagging) — nothing in the build auto-increments it.
  *
@@ -11,6 +11,6 @@
  * the kind of inconsistency this project's docs otherwise go out of
  * their way to avoid. Bump to 1.0.0 when the roadmap says so, not
  * before. */
-#define KHAN_VERSION "0.015.0"
+#define KOSH_VERSION "0.015.0"
 
 #endif

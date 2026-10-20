@@ -373,10 +373,10 @@ jobs:
   #       gcc -std=c11 -g -O0 -Isrc -D_POSIX_C_SOURCE=200809L \
   #         -Wno-implicit-function-declaration -Wno-builtin-declaration-mismatch -Wno-cast-function-type \
   #         src/lexer.c src/parser.c src/ast.c src/chunk.c src/value.c src/compiler.c src/vm.c \
-  #         src/vm_libs.c src/interpreter.c src/khan_stdlib.c src/json_lib.c src/datetime_lib.c \
+  #         src/vm_libs.c src/interpreter.c src/kosh_stdlib.c src/json_lib.c src/datetime_lib.c \
   #         src/requests_lib.c src/webi_lib.c src/sqlite_lib.c src/vision_lib.c src/vision_cv.c \
-  #         src/vision_cascade.c src/main.c -o khan_dbg -lm -lsqlite3
+  #         src/vision_cascade.c src/main.c -o kosh_dbg -lm -lsqlite3
   #
   #   - name: Run valgrind against the test suite
   #     run: |
-  #       valgrind --leak-check=full --error-exitcode=99 ./khan_dbg tests/run_all.kh
+  #       valgrind --leak-check=full --error-exitcode=99 ./kosh_dbg tests/run_all.kh

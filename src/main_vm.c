@@ -7,7 +7,7 @@
 #include "ast.h"
 #include "compiler.h"
 #include "vm.h"
-#include "khan_stdlib.h"
+#include "kosh_stdlib.h"
 #include "json_lib.h"
 #include "datetime_lib.h"
 #include "requests_lib.h"
@@ -33,7 +33,7 @@ static char *read_file(const char *path) {
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fprintf(stderr, "Usage: khan_vm <script.kh>\n");
+        fprintf(stderr, "Usage: kosh_vm <script.kh>\n");
         return 64;
     }
 

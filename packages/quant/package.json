@@ -2,7 +2,7 @@
   "name": "quant",
   "version": "1.0.0",
   "description": "Accuracy-preserving quantization in pure Kosh — per-channel calibration, bias correction, outlier-aware sparse decomposition, and mixed-precision strategies for measuring and improving quantization accuracy",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "quant.kh",
   "files": [

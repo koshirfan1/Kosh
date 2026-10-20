@@ -332,9 +332,9 @@ static void compile_import(const char *path, int line) {
                 if (!home) home = getenv("HOME");
                 if (home) {
 #ifdef _WIN32
-                    snprintf(full_path, sizeof(full_path), "%s\\.khan\\packages\\%s\\%s.kh", home, path, path);
+                    snprintf(full_path, sizeof(full_path), "%s\\.kosh\\packages\\%s\\%s.kh", home, path, path);
 #else
-                    snprintf(full_path, sizeof(full_path), "%s/.khan/packages/%s/%s.kh", home, path, path);
+                    snprintf(full_path, sizeof(full_path), "%s/.kosh/packages/%s/%s.kh", home, path, path);
 #endif
                     file = fopen(full_path, "rb");
                 }
@@ -430,9 +430,9 @@ static int compile_submodule_import(const char *pkg, const char *sub, int line) 
         if (!home) home = getenv("HOME");
         if (home) {
 #ifdef _WIN32
-            snprintf(full_path, sizeof(full_path), "%s\\.khan\\packages\\%s\\%s.kh", home, pkg, sub);
+            snprintf(full_path, sizeof(full_path), "%s\\.kosh\\packages\\%s\\%s.kh", home, pkg, sub);
 #else
-            snprintf(full_path, sizeof(full_path), "%s/.khan/packages/%s/%s.kh", home, pkg, sub);
+            snprintf(full_path, sizeof(full_path), "%s/.kosh/packages/%s/%s.kh", home, pkg, sub);
 #endif
             file = fopen(full_path, "rb");
         }

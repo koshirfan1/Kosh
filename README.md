@@ -1,6 +1,6 @@
 # Kosh Programming Language
 
-<p align="center"><img src="assets/khan-icon-256.png" width="128" height="128" alt="Kosh logo"></p>
+<p align="center"><img src="assets/kosh-icon-256.png" width="128" height="128" alt="Kosh logo"></p>
 
 ![Language](https://img.shields.io/badge/language-C11-blue)
  ![Build](https://img.shields.io/badge/build-make-green)
@@ -12,9 +12,9 @@
 
 Honest framing, since this README makes a point of not overstating things: Kosh is **pre-1.0** by its own [roadmap](#roadmap)'s criteria. It's a real, working, multi-session-hardened language and runtime, not a toy — but if you're picking a language to ship something in tomorrow, this isn't that. If you want to see how a real bytecode VM and a real package ecosystem get built from nothing, read on.
 
-> **Repository**: [github.com/khandev1211-cpu/Khan](https://github.com/khandev1211-cpu/Khan)
+> **Repository**: [github.com/koshirfan1/Kosh](https://github.com/koshirfan1/Kosh)
 
-> **Naming note:** the language is called **Kosh** (project name `kosh-lang`). The interpreter command is `kosh`, the package manager is `kh`, and source files keep the `.kh` extension. The GitHub repository path (`khandev1211-cpu/Khan`) and the `~/.khan` install directory still use the old name for now.
+> **Naming note:** the language is called **Kosh** (project name `kosh-lang`). The interpreter command is `kosh`, the package manager is `kh`, and source files keep the `.kh` extension. The GitHub repository lives at [`koshirfan1/Kosh`](https://github.com/koshirfan1/Kosh), and packages install to `~/.kosh`.
 
 ---
 
@@ -81,7 +81,7 @@ Most from-scratch language projects are tempted to round up. This one tries hard
   "counter closure" pattern that mutates captured state doesn't work
   the way it does in Python/JS.
 
-If a claim in this README turns out to not match reality, that's a bug in the README — [open an issue](https://github.com/khandev1211-cpu/Khan/issues).
+If a claim in this README turns out to not match reality, that's a bug in the README — [open an issue](https://github.com/koshirfan1/Kosh/issues).
 
 **On performance, specifically**: Kosh is generally slower than Python and Node right now, not faster — roughly 2-8x slower on tight loops, competitive only on JSON round-trips (where it's actually ~2.4x faster than Python). Computed-goto dispatch was tried as the obvious next lever and **measured slower, not faster**, than the existing switch-based dispatch (5-15% depending on benchmark) — reverted; full measurement and why in [docs/dispatch-perf.md](docs/dispatch-perf.md). The next real lead is a `value_copy()` call on every basic operation (even a plain number) — not yet profiled, flagged as the most promising thing to actually measure next. Full numbers and methodology in [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
 
@@ -89,24 +89,24 @@ If a claim in this README turns out to not match reality, that's a bug in the RE
 
 ## Quick Start
 
-**Want to try it before installing anything?** [Try Kosh in your browser](https://khandev1211-cpu.github.io/Kosh/) — the real compiler and VM, compiled to WebAssembly with Emscripten, running client-side with no server involved. (Deployed via GitHub Pages from `playground/` — see [.github/workflows/deploy-playground.yml](.github/workflows/deploy-playground.yml). If that link 404s, GitHub Pages needs a one-time manual enable that a workflow file can't do on its own — confirmed by an actual failed deploy, not just a guess: repo Settings → Pages → Source → "GitHub Actions", then re-run the workflow from the Actions tab.) See [playground/README.md](playground/README.md) for what's and isn't included in that build.
+**Want to try it before installing anything?** [Try Kosh in your browser](https://koshirfan1.github.io/Kosh/) — the real compiler and VM, compiled to WebAssembly with Emscripten, running client-side with no server involved. (Deployed via GitHub Pages from `playground/` — see [.github/workflows/deploy-playground.yml](.github/workflows/deploy-playground.yml). If that link 404s, GitHub Pages needs a one-time manual enable that a workflow file can't do on its own — confirmed by an actual failed deploy, not just a guess: repo Settings → Pages → Source → "GitHub Actions", then re-run the workflow from the Actions tab.) See [playground/README.md](playground/README.md) for what's and isn't included in that build.
 
 ### Install
 
 **Linux / macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/koshirfan1/Kosh/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/koshirfan1/Kosh/main/install.ps1 | iex
 ```
 Needs a GCC toolchain on `PATH` already (MSYS2/MinGW-w64) — the script checks for one and tells you exactly what to install if it's missing, rather than silently installing a toolchain for you. **Caveat, stated plainly**: this script was written and reviewed carefully but has not been run on an actual Windows machine in the environment it was authored in (no such access there) — same class of caveat this project's CI workflow already carries for its own Windows steps. If something in it doesn't work as described, that's a bug — please open an issue with what happened.
 
-**Windows (GUI installer, alternative to the PowerShell script above):** [khan-installer.iss](khan-installer.iss) is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that produces a proper double-click `khan-setup.exe` — a setup wizard with an **"Add Kosh to PATH" checkbox** (checked by default), a Start Menu entry, and a normal Add/Remove Programs uninstaller, closer to Python's own official Windows installer experience than a terminal one-liner is. It packages already-built `kosh.exe`/`kh.exe` rather than compiling them itself (see the comment at the top of that file for the exact build-then-compile steps). [.github/workflows/release.yml](.github/workflows/release.yml) automates exactly that build-then-compile sequence and can publish the result to Releases (see just below) — until a tagged release actually exists there, building `khan-setup.exe` yourself via the free Inno Setup Compiler is the only way to get one. Same not-yet-verified-on-real-Windows caveat as `install.ps1` above applies here too.
+**Windows (GUI installer, alternative to the PowerShell script above):** [kosh-installer.iss](kosh-installer.iss) is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that produces a proper double-click `kosh-setup.exe` — a setup wizard with an **"Add Kosh to PATH" checkbox** (checked by default), a Start Menu entry, and a normal Add/Remove Programs uninstaller, closer to Python's own official Windows installer experience than a terminal one-liner is. It packages already-built `kosh.exe`/`kh.exe` rather than compiling them itself (see the comment at the top of that file for the exact build-then-compile steps). [.github/workflows/release.yml](.github/workflows/release.yml) automates exactly that build-then-compile sequence and can publish the result to Releases (see just below) — until a tagged release actually exists there, building `kosh-setup.exe` yourself via the free Inno Setup Compiler is the only way to get one. Same not-yet-verified-on-real-Windows caveat as `install.ps1` above applies here too.
 
-There's no *published* pre-built binary release yet (see the [roadmap](#roadmap) — v1.0 hasn't shipped) — [.github/workflows/release.yml](.github/workflows/release.yml) can build one (`kosh.exe`, `kh.exe`, and a compiled `khan-setup.exe` from the Inno Setup script above) and publish it to this repo's [Releases page](https://github.com/khandev1211-cpu/Khan/releases) automatically whenever a version tag (`v0.010.0`-style) is pushed, but that hasn't been done yet either. Once it has, downloading a release asset from there is the fastest path on Windows — no compiler needed. Until then, both scripted installers below build from source rather than downloading a binary, the way `rustup`/`deno`'s installers do when there's nothing prebuilt for your platform yet. Neither one runs `sudo`/an elevated prompt on your behalf — they check for what they need and tell you the exact command for your platform if something's missing. Read [install.sh](install.sh) / [install.ps1](install.ps1) before piping either into a shell, same as you should for any curl-pipe installer — that's not Kosh-specific advice.
+There's no *published* pre-built binary release yet (see the [roadmap](#roadmap) — v1.0 hasn't shipped) — [.github/workflows/release.yml](.github/workflows/release.yml) can build one (`kosh.exe`, `kh.exe`, and a compiled `kosh-setup.exe` from the Inno Setup script above) and publish it to this repo's [Releases page](https://github.com/koshirfan1/Kosh/releases) automatically whenever a version tag (`v0.010.0`-style) is pushed, but that hasn't been done yet either. Once it has, downloading a release asset from there is the fastest path on Windows — no compiler needed. Until then, both scripted installers below build from source rather than downloading a binary, the way `rustup`/`deno`'s installers do when there's nothing prebuilt for your platform yet. Neither one runs `sudo`/an elevated prompt on your behalf — they check for what they need and tell you the exact command for your platform if something's missing. Read [install.sh](install.sh) / [install.ps1](install.ps1) before piping either into a shell, same as you should for any curl-pipe installer — that's not Kosh-specific advice.
 
 After it finishes — restart your shell on Linux/macOS (or `source` the rc file it mentions); on Windows, `kosh` is already on `PATH` in the same PowerShell window, new windows get it automatically too:
 
@@ -127,17 +127,17 @@ kh install postman
 import "math"
 import "colors"
 
-print green("Khan is ready!")
+print green("Kosh is ready!")
 print math_sqrt(144)
 ```
 
 **Prefer to build it yourself, or the installer doesn't fit your setup?**
 
 ```bash
-git clone https://github.com/khandev1211-cpu/Khan.git
-cd Khan
+git clone https://github.com/koshirfan1/Kosh.git
+cd Kosh
 make                    # builds kosh(.exe) and kh(.exe) in the current directory
-make install            # Linux/macOS only — installs both to ~/.khan/bin, same as install.sh's last step.
+make install            # Linux/macOS only — installs both to ~/.kosh/bin, same as install.sh's last step.
                         # On Windows, use install.ps1 instead (`make install` prints why and stops).
 ```
 
@@ -161,7 +161,7 @@ Kosh ships with `kh.exe` — a package manager that downloads packages from the 
 
 ### How it works
 
-- Packages are installed to `C:\Users\<you>\.khan\packages\<name>\` on Windows, or `~/.khan/packages/<name>/` on Linux/macOS
+- Packages are installed to `C:\Users\<you>\.kosh\packages\<name>\` on Windows, or `~/.kosh/packages/<name>/` on Linux/macOS
 - The registry lives at `packages/registry.json` in this repo
 - `import "<name>"` in any `.kh` file automatically resolves installed packages
 
@@ -280,7 +280,7 @@ print str_replace("foo bar foo", "foo", "baz")  # baz bar baz
 print str_split("a,b,c", ",")            # ["a", "b", "c"]
 print str_join(["x", "y", "z"], " | ")   # x | y | z
 print str_starts_with("hello", "hel")    # true
-print str_reverse("Khan")                # nahK
+print str_reverse("Kosh")                # hsoK
 print str_pad_left("5", 3, "0")          # 005
 ```
 
@@ -312,7 +312,7 @@ else:
     raise_for_status(res)
 
 # POST JSON
-let data = {"name": "Irfan", "lang": "Khan"}
+let data = {"name": "Irfan", "lang": "Kosh"}
 let res2 = post_json("https://api.example.com/users", data)
 print status(res2)
 ```
@@ -325,7 +325,7 @@ import "postman"
 let pm = pm_new_with_base("https://jsonplaceholder.typicode.com")
 
 pm = pm_get(pm,      "GET todo",   "/todos/1")
-pm = pm_post_json(pm, "POST todo", "/todos", {"title": "Learn Khan", "completed": false})
+pm = pm_post_json(pm, "POST todo", "/todos", {"title": "Learn Kosh", "completed": false})
 pm = pm_assert(pm,   "math works",  1 + 1 == 2)
 
 let fake = {"status": 200, "body": "{\"id\": 1}", "success": true}
@@ -337,7 +337,7 @@ pm_run(pm)
 
 Output:
 ```
-  Khan Postman ─ Test Results
+  Kosh Postman ─ Test Results
   ══════════════════════════════════════
 
   PASS  GET todo  [200]
@@ -507,12 +507,12 @@ print "\x1b[31mRed\x1b[0m"  # ANSI color (hex escape)
 ### JSON (built-in)
 
 ```kosh
-let data = {"name": "Khan", "version": 2, "ready": true}
+let data = {"name": "Kosh", "version": 2, "ready": true}
 let s = json_encode(data)
-print s   # {"name": "Khan", "version": 2, "ready": true}
+print s   # {"name": "Kosh", "version": 2, "ready": true}
 
 let decoded = json_decode(s)
-print decoded["name"]   # Khan
+print decoded["name"]   # Kosh
 ```
 
 ### Datetime (built-in)
@@ -535,7 +535,7 @@ print res["success"]   # true
 print res["body"]      # raw response body
 
 let post_res = http_post_json("https://api.example.com/users",
-                               {"name": "Irfan", "lang": "Khan"})
+                               {"name": "Irfan", "lang": "Kosh"})
 print post_res["status"]
 ```
 
@@ -657,7 +657,7 @@ All HTTP functions return `{"status": 200, "body": "...", "success": true}`.
 ## Project Structure
 
 ```
-Khan/
+Kosh/
 ├── kosh.exe                  # Kosh runtime (Windows) — compiler + VM
 ├── kh.exe                    # Kosh package manager (Windows)
 ├── makefile                  # Build configuration
@@ -706,7 +706,7 @@ Khan/
     ├── chunk.h / chunk.c              # Bytecode chunk (constants + instructions)
     ├── vm.h / vm.c / vm_libs.c        # The stack-based bytecode VM — the real runtime
     ├── interpreter.h / interpreter.c  # Legacy tree-walk interpreter (one import-parsing path only — not what runs your program)
-    ├── khan_stdlib.c                  # 30+ built-in functions
+    ├── kosh_stdlib.c                  # 30+ built-in functions
     ├── json_lib.h / json_lib.c        # Native JSON encode/decode
     ├── datetime_lib.h / datetime_lib.c    # Native datetime functions
     ├── requests_lib.h / requests_lib.c    # Native HTTP client
@@ -737,8 +737,8 @@ Khan/
 ### Build
 
 ```bash
-git clone https://github.com/khandev1211-cpu/Khan.git
-cd Khan
+git clone https://github.com/koshirfan1/Kosh.git
+cd Kosh
 make
 ```
 
@@ -746,7 +746,7 @@ Produces `kosh.exe` (the compiler+VM runtime) and `kh.exe` (package manager) on 
 
 ```bash
 make clean   # remove build artifacts
-make install # Linux/macOS: install kosh and kh to ~/.khan/bin (override with PREFIX=/your/path)
+make install # Linux/macOS: install kosh and kh to ~/.kosh/bin (override with PREFIX=/your/path)
 make uninstall # remove them again
 ```
 
@@ -779,7 +779,7 @@ Running `kosh` with no arguments — the same trigger `python` uses — starts a
 
 ```
 $ kosh
-Kosh 0.014.0 — interactive mode. Type 'exit' or press Ctrl+D to quit.
+Kosh 0.015.0 — interactive mode. Type 'exit' or press Ctrl+D to quit.
 kosh> let x = 10
 kosh> x * 5
 50
@@ -838,7 +838,7 @@ A tree-walk interpreter (`interpreter.c`) exists in the source tree from an earl
 `import "name"` resolves in this order:
 1. Relative to current script directory (e.g. `./name`)
 2. Relative path as-is
-3. `~/.khan/packages/name/name.kh` (installed packages)
+3. `~/.kosh/packages/name/name.kh` (installed packages)
 
 `from "name" import A, B, C` resolves each requested name against a
 plain symbol, the package's own name (flattens the whole module), or a
@@ -904,8 +904,8 @@ MIT License — open source, free to use.
 
 **Irfan Khan** — Creator and maintainer of the Kosh programming language.
 
-- GitHub: [@khandev1211-cpu](https://github.com/khandev1211-cpu)
-- Repository: [github.com/khandev1211-cpu/Khan](https://github.com/khandev1211-cpu/Khan)
+- GitHub: [@koshirfan1](https://github.com/koshirfan1)
+- Repository: [github.com/koshirfan1/Kosh](https://github.com/koshirfan1/Kosh)
 
 ---
 

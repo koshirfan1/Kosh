@@ -2,7 +2,7 @@
   "name": "events",
   "version": "1.0.1",
   "description": "Event emitter system: on, emit, once, off, history — built for Kosh Engine game events",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "events.kh",
   "files": [

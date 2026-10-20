@@ -2,7 +2,7 @@
   "name": "logger",
   "version": "1.0.1",
   "description": "Structured logger: debug/info/warn/error levels, file output, silent mode",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "logger.kh",
   "files": [

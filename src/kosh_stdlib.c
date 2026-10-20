@@ -5,7 +5,7 @@
 #include <math.h>
 #include <time.h>
 #include <ctype.h>
-#include "khan_stdlib.h"
+#include "kosh_stdlib.h"
 
 // ===========================================================================
 // Helper: check argument count and types
@@ -551,7 +551,7 @@ void fn_file_exists(Value *result, Interpreter *interp, int argc, Value *args) {
 }
 
 /* remove_file(path) -> bool. Rounds out read_file/write_file/file_exists
- * with the one file operation Khan didn't have at all before: deleting
+ * with the one file operation Kosh didn't have at all before: deleting
  * one. Added alongside base64_decode_to_file, which writes temp files a
  * webi handler will usually want to clean up afterward. */
 void fn_remove_file(Value *result, Interpreter *interp, int argc, Value *args) {
@@ -656,14 +656,14 @@ static int b64_char_value(char c) {
 /* base64_decode_to_file(b64_string, output_path) -> bool
  *
  * Decodes straight to a file rather than returning the raw bytes as a
- * Khan string, deliberately: Khan strings are NUL-terminated (see the
+ * Kosh string, deliberately: Kosh strings are NUL-terminated (see the
  * "binary-safe string type" roadmap item), so decoded binary data -
  * which routinely contains embedded NUL bytes, e.g. almost any real
  * PNG/JPEG - can't safely round-trip through one. This exists mainly so
  * a webi handler can take a base64 image (posted as JSON, since webi
  * has no multipart/file-upload support yet) and hand vision_load() a
  * real file directly, without ever needing the raw bytes to exist as a
- * Khan value at all. */
+ * Kosh value at all. */
 void fn_base64_decode_to_file(Value *result, Interpreter *interp, int argc, Value *args) {
     if (!check_arg_count(interp, "base64_decode_to_file", 2, argc)) { *result = value_bool(0); return; }
     const char *b64, *path;

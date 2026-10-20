@@ -1,7 +1,7 @@
 name: Release (Windows)
 
 # Builds kosh.exe/kh.exe, runs the core test suite as a gate, compiles
-# the Inno Setup GUI installer (khan-installer.iss), and publishes all
+# the Inno Setup GUI installer (kosh-installer.iss), and publishes all
 # three as assets on a GitHub Release. Triggered by pushing a version
 # tag (e.g. `git tag v0.010.0 && git push origin v0.010.0`), or
 # manually from the Actions tab via workflow_dispatch for a test run
@@ -88,8 +88,8 @@ jobs:
         # the two Python-invoking steps in c-cpp.yml that also use
         # pwsh instead of msys2 {0}.
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" khan-installer.iss
-          # khan-installer.iss's own [Files] section expects kosh.exe/
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" kosh-installer.iss
+          # kosh-installer.iss's own [Files] section expects kosh.exe/
           # kh.exe sitting next to it — true here since the Build step
           # above just produced them in the checkout root, and this
           # .iss file lives in the checkout root too.

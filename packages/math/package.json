@@ -2,7 +2,7 @@
   "name": "math",
   "version": "2.0.1",
   "description": "Full 3D math library: vec2, vec3, vec4, mat4, quaternion, trig, interpolation, geometry — built for Kosh Engine and Kosh Studio",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "math.kh",
   "files": [

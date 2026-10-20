@@ -509,7 +509,7 @@ static void gc_collect_white(Obj *o) {
  * (a program with no cycles simply keeps behaving exactly as pure
  * refcounting always did; nothing in this section changes normal
  * free() timing for acyclic data). Exposed to Khan scripts as the
- * native `gc_collect()` (see khan_stdlib.c) and also called
+ * native `gc_collect()` (see kosh_stdlib.c) and also called
  * automatically every GC_AUTO_INTERVAL array/map allocations — see
  * obj_new()'s counter — so long-running programs (a `webi` server
  * handling many requests, each building and discarding request-scoped

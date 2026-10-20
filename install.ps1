@@ -16,7 +16,7 @@
 # script deciding for you.
 #
 # Usage (PowerShell):
-#   irm https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/koshirfan1/Kosh/main/install.ps1 | iex
 #   # or, from an existing local checkout:
 #   .\install.ps1
 #
@@ -25,9 +25,9 @@
 #   2. Checks for sqlite3.h reachability the same way install.sh does
 #      (a header-only compile check, not a full build).
 #   3. Uses the current directory if it looks like a Kosh checkout,
-#      otherwise clones the repo into $env:USERPROFILE\.khan\src.
+#      otherwise clones the repo into $env:USERPROFILE\.kosh\src.
 #   4. Runs `make`.
-#   5. Copies kosh.exe/kh.exe into $env:USERPROFILE\.khan\bin.
+#   5. Copies kosh.exe/kh.exe into $env:USERPROFILE\.kosh\bin.
 #   6. Adds that folder to the CURRENT USER's PATH (persisted via the
 #      registry, survives closing this window) — the same mechanism
 #      Python's "Add to PATH" installer checkbox uses under the hood.
@@ -37,10 +37,10 @@
 
 $ErrorActionPreference = "Stop"
 
-$KhanHome = if ($env:KHAN_HOME) { $env:KHAN_HOME } else { Join-Path $env:USERPROFILE ".khan" }
-$KhanSrc  = Join-Path $KhanHome "src"
-$KhanBin  = Join-Path $KhanHome "bin"
-$KhanRepo = "https://github.com/khandev1211-cpu/Khan.git"
+$KoshHome = if ($env:KOSH_HOME) { $env:KOSH_HOME } else { Join-Path $env:USERPROFILE ".kosh" }
+$KoshSrc  = Join-Path $KoshHome "src"
+$KoshBin  = Join-Path $KoshHome "bin"
+$KoshRepo = "https://github.com/koshirfan1/Kosh.git"
 
 function Info($msg) { Write-Host "  $msg" }
 function Warn($msg) { Write-Host "  $msg" -ForegroundColor Yellow }
@@ -59,7 +59,7 @@ if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
 Info "Found gcc and make on PATH."
 
 # -- 2. sqlite3 dev headers ----------------------------------------------
-$sqliteCheckDir = Join-Path $env:TEMP "khan_sqlite_check_$PID"
+$sqliteCheckDir = Join-Path $env:TEMP "kosh_sqlite_check_$PID"
 New-Item -ItemType Directory -Path $sqliteCheckDir -Force | Out-Null
 $checkFile = Join-Path $sqliteCheckDir "check.c"
 Set-Content -Path $checkFile -Value "#include <sqlite3.h>`nint main(void){return 0;}"
@@ -80,18 +80,18 @@ Info "Found sqlite3 dev headers."
 if ((Test-Path ".\makefile") -and (Test-Path ".\src\main.c")) {
     Info "Running from an existing Kosh checkout -- building in place."
     $BuildDir = "."
-} elseif (Test-Path (Join-Path $KhanSrc ".git")) {
-    Info "Reusing existing checkout at $KhanSrc -- pulling latest."
-    git -C $KhanSrc pull --ff-only
-    $BuildDir = $KhanSrc
+} elseif (Test-Path (Join-Path $KoshSrc ".git")) {
+    Info "Reusing existing checkout at $KoshSrc -- pulling latest."
+    git -C $KoshSrc pull --ff-only
+    $BuildDir = $KoshSrc
 } else {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Fail "git not found and no local checkout detected -- install git or run this script from inside a Kosh checkout."
     }
-    Info "Cloning Kosh into $KhanSrc ..."
-    New-Item -ItemType Directory -Path $KhanHome -Force | Out-Null
-    git clone --depth 1 $KhanRepo $KhanSrc
-    $BuildDir = $KhanSrc
+    Info "Cloning Kosh into $KoshSrc ..."
+    New-Item -ItemType Directory -Path $KoshHome -Force | Out-Null
+    git clone --depth 1 $KoshRepo $KoshSrc
+    $BuildDir = $KoshSrc
 }
 
 # -- 4 & 5. Build and install ----------------------------------------------
@@ -104,10 +104,10 @@ try {
     Pop-Location
 }
 
-Info "Installing to $KhanBin ..."
-New-Item -ItemType Directory -Path $KhanBin -Force | Out-Null
-Copy-Item (Join-Path $BuildDir "kosh.exe") (Join-Path $KhanBin "kosh.exe") -Force
-Copy-Item (Join-Path $BuildDir "kh.exe")   (Join-Path $KhanBin "kh.exe")   -Force
+Info "Installing to $KoshBin ..."
+New-Item -ItemType Directory -Path $KoshBin -Force | Out-Null
+Copy-Item (Join-Path $BuildDir "kosh.exe") (Join-Path $KoshBin "kosh.exe") -Force
+Copy-Item (Join-Path $BuildDir "kh.exe")   (Join-Path $KoshBin "kh.exe")   -Force
 
 # -- 6. Persist PATH for the CURRENT USER ----------------------------------
 # This is the actual "installs like other languages" part: writing to
@@ -123,30 +123,30 @@ $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($null -eq $currentUserPath) { $currentUserPath = "" }
 $pathEntries = $currentUserPath -split ";" | Where-Object { $_ -ne "" }
 
-if ($pathEntries -contains $KhanBin) {
-    Info "$KhanBin is already on your User PATH."
+if ($pathEntries -contains $KoshBin) {
+    Info "$KoshBin is already on your User PATH."
 } else {
-    $newPath = if ($currentUserPath.Trim() -eq "") { $KhanBin } else { "$currentUserPath;$KhanBin" }
+    $newPath = if ($currentUserPath.Trim() -eq "") { $KoshBin } else { "$currentUserPath;$KoshBin" }
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
     # Also update the current session's PATH so `kosh --version` below
     # (and any use of `kosh` for the rest of THIS terminal session)
     # works immediately, without waiting for a new window.
-    $env:Path = "$env:Path;$KhanBin"
-    Info "Added $KhanBin to your User PATH (persisted -- new terminal windows will have it automatically)."
+    $env:Path = "$env:Path;$KoshBin"
+    Info "Added $KoshBin to your User PATH (persisted -- new terminal windows will have it automatically)."
 }
 
 # -- 7. Verify --------------------------------------------------------------
 Write-Host ""
-$khanExe = Join-Path $KhanBin "kosh.exe"
+$koshExe = Join-Path $KoshBin "kosh.exe"
 try {
-    $version = & $khanExe --version
+    $version = & $koshExe --version
     Write-Host "Installed: $version" -ForegroundColor Green
     Write-Host ""
     Write-Host "This terminal window already has kosh on PATH. New windows will too."
     Write-Host "    kosh --version"
     Write-Host "    kosh path\to\script.kh"
 } catch {
-    Warn "Build finished but $khanExe --version didn't run cleanly -- something's off."
-    Warn "Try running it directly to see the error: $khanExe --version"
+    Warn "Build finished but $koshExe --version didn't run cleanly -- something's off."
+    Warn "Try running it directly to see the error: $koshExe --version"
     exit 1
 }

@@ -33,7 +33,7 @@
   </g>
 
   <!-- Small terminal-cursor accent beneath the K, nodding to the CLI/
-       REPL experience (`khan>` prompt) without adding real detail that
+       REPL experience (`kosh>` prompt) without adding real detail that
        would disappear at favicon size. -->
   <rect x="168" y="404" width="80" height="20" rx="4" fill="url(#k)" opacity="0.85"/>
 </svg>

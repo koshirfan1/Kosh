@@ -1,9 +1,9 @@
 /*
- * main_wasm.c — browser/WASM entry point for the Khan playground.
+ * main_wasm.c — browser/WASM entry point for the Kosh playground.
  *
  * Adapts the exact same lexer -> parser -> compiler -> VM pipeline
  * main.c uses for the real CLI, but:
- *   - takes Khan source as an in-memory string (no file to read — there's
+ *   - takes Kosh source as an in-memory string (no file to read — there's
  *     no real filesystem in a bare browser playground)
  *   - registers only the native libraries that make sense with no real
  *     filesystem, no real network socket access, and no libtesseract

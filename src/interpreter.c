@@ -50,7 +50,7 @@ void env_free(Environment *env) {
 
 void env_define(Environment *env, const char *name, Value value) {
     // If `name` already exists in THIS exact scope, overwrite it instead of
-    // appending a duplicate entry. This matters a lot in practice: Khan
+    // appending a duplicate entry. This matters a lot in practice: Kosh
     // doesn't create a new scope per loop iteration, so `let x = ...`
     // re-declared inside a while/for body would otherwise pile up duplicate
     // entries every iteration — and env_get() scans from index 0 upward, so
@@ -764,7 +764,7 @@ Value interpreter_execute(Interpreter *interp, AstNode *node, Environment *env) 
 // ---------------------------------------------------------------------------
 // Shared import-path resolution: given a raw `import`/`from` module
 // reference, find the file on disk (relative path, path as-is, or an
-// installed package under ~/.khan/packages/<name>/<name>.kh), open it,
+// installed package under ~/.kosh/packages/<name>/<name>.kh), open it,
 // and return the parsed AST + full path used.
 //
 // On failure, sets interp->had_runtime_error and returns NULL (out_program
@@ -857,7 +857,7 @@ static AstNode *resolve_and_parse_import(Interpreter *interp, const char *path,
         }
     }
     if (!file) {
-        // Try as a package name: ~/.khan/packages/<name>/<name>.kh
+        // Try as a package name: ~/.kosh/packages/<name>/<name>.kh
         // Bare package name: no path separators, no .kh extension
         int is_pkg_name = 1;
         for (const char *p = path; *p; p++) {
@@ -870,12 +870,12 @@ static AstNode *resolve_and_parse_import(Interpreter *interp, const char *path,
             home = getenv("USERPROFILE");
             if (!home) home = "C:\\Users\\Default";
             snprintf(pkg_path, sizeof(pkg_path),
-                     "%s\\.khan\\packages\\%s\\%s.kh", home, path, path);
+                     "%s\\.kosh\\packages\\%s\\%s.kh", home, path, path);
 #else
             home = getenv("HOME");
             if (!home) home = "/tmp";
             snprintf(pkg_path, sizeof(pkg_path),
-                     "%s/.khan/packages/%s/%s.kh", home, path, path);
+                     "%s/.kosh/packages/%s/%s.kh", home, path, path);
 #endif
             file = fopen(pkg_path, "rb");
             if (file) {
@@ -1013,7 +1013,7 @@ static Value execute_from_import(Interpreter *interp, const char *path,
     if (interp->had_runtime_error) return value_nil();
 
     // Directory the module we just imported from actually lives in (e.g.
-    // ~/.khan/packages/webi), so sibling submodule files can still be
+    // ~/.kosh/packages/webi), so sibling submodule files can still be
     // found below even though current_import_dir has already been
     // restored to whatever it was before this import.
     char module_dir[1024];

@@ -1,5 +1,5 @@
 // ===========================================================================
-// kh — Khan Package Manager
+// kh — Kosh Package Manager
 // ===========================================================================
 
 // Windows headers FIRST to avoid TokenType conflict with our token.h
@@ -34,13 +34,13 @@ static void enable_ansi(void) {}
 // Constants
 // ---------------------------------------------------------------------------
 #define REGISTRY_URL \
-  "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/registry.json"
+  "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/registry.json"
 
 #define RAW_BASE \
-  "https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages"
+  "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages"
 
 // ---------------------------------------------------------------------------
-// Get the Khan packages directory: ~/.khan/packages/
+// Get the Kosh packages directory: ~/.kosh/packages/
 // Returns a heap-allocated path.  Caller must free.
 // ---------------------------------------------------------------------------
 static char *get_packages_dir(void) {
@@ -61,13 +61,13 @@ static char *get_packages_dir(void) {
     }
     size_t len = strlen(base) + 32;
     char *dir = malloc(len);
-    snprintf(dir, len, "%s\\.khan\\packages", base);
+    snprintf(dir, len, "%s\\.kosh\\packages", base);
 #else
     base = getenv("HOME");
     if (!base) base = "/tmp";
     size_t len = strlen(base) + 32;
     char *dir = malloc(len);
-    snprintf(dir, len, "%s/.khan/packages", base);
+    snprintf(dir, len, "%s/.kosh/packages", base);
 #endif
     return dir;
 }
@@ -336,7 +336,7 @@ static int cmd_install(const char *name) {
         return 1;
     }
 
-    // Build install path: ~/.khan/packages/<name>/<name>.kh
+    // Build install path: ~/.kosh/packages/<name>/<name>.kh
     char *pkgs_dir = get_packages_dir();
     char pkg_dir[1024], pkg_file[1024];
     snprintf(pkg_dir,  sizeof(pkg_dir),  "%s/%s", pkgs_dir, name);

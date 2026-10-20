@@ -2,7 +2,7 @@
   "name": "vision",
   "version": "3.0.0",
   "description": "Full classical computer-vision toolkit: image I/O, filters (blur/sharpen/emboss/edges), thresholding (fixed/Otsu/adaptive), morphology, connected-component blob detection, histograms, drawing, template matching, HSV color-range detection, and real Haar-cascade face detection (Viola-Jones). All native/fast, no ML framework required.",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "vision.kh",
   "files": [

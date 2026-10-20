@@ -1,8 +1,6 @@
 # Executables
-khan.exe
 kosh.exe
 kh.exe
-khan
 kosh
 kh
 
@@ -22,7 +20,7 @@ kh
 *.swo
 
 # Local Package Cache
-.khan/
+.kosh/
 
 # Data and Temp files
 *.dat

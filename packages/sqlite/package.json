@@ -2,7 +2,7 @@
   "name": "sqlite",
   "version": "1.0.0",
   "description": "SQL Database bridge for Kosh. High-speed SQL operations on local files.",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "sqlite.kh",
   "files": [

@@ -1,5 +1,5 @@
 #include "vm.h"
-#include "khan_stdlib.h"
+#include "kosh_stdlib.h"
 #include "json_lib.h"
 #include "datetime_lib.h"
 #include "requests_lib.h"

@@ -2,7 +2,7 @@
   "name": "kbrain",
   "version": "1.0.0",
   "description": "Minimalist Machine Learning library for Kosh. Implements Linear Regression with Gradient Descent.",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "kbrain.kh",
   "files": [

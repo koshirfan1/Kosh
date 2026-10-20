@@ -2,7 +2,7 @@
   "name": "fs",
   "version": "1.0.1",
   "description": "File system utilities: read, write, append, copy, path helpers, JSON config",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "fs.kh",
   "files": [

@@ -13,7 +13,7 @@
 ; HOW TO BUILD THE ACTUAL INSTALLER .exe FROM THIS FILE
 ; ------------------------------------------------------
 ; This .iss file is a SOURCE script for Inno Setup, not the installer
-; itself. To produce khan-setup.exe:
+; itself. To produce kosh-setup.exe:
 ;   1. Install Inno Setup (free): https://jrsoftware.org/isinfo.php
 ;   2. Build kosh.exe and kh.exe first — this script packages ALREADY-
 ;      BUILT binaries, it does not compile Kosh itself (bundling a full
@@ -24,12 +24,12 @@
 ;          make
 ;      This produces kosh.exe and kh.exe in the project root.
 ;   3. Open this file in Inno Setup (or run it via the command line:
-;      "ISCC.exe khan-installer.iss"), with kosh.exe/kh.exe/packages/
-;      AND assets/khan-icon.ico (the project's icon — see that folder,
-;      generated from assets/khan-icon.svg) sitting in the SAME
+;      "ISCC.exe kosh-installer.iss"), with kosh.exe/kh.exe/packages/
+;      AND assets/kosh-icon.ico (the project's icon — see that folder,
+;      generated from assets/kosh-icon.svg) sitting in the SAME
 ;      directory as this .iss file (adjust the
 ;      [Files] Source paths below if your layout differs).
-;   4. Inno Setup produces khan-setup.exe in an Output\ subfolder —
+;   4. Inno Setup produces kosh-setup.exe in an Output\ subfolder —
 ;      THAT file is what gets distributed/attached to a GitHub Release
 ;      for people to download and double-click.
 ;
@@ -42,10 +42,10 @@
 ; compiling or running this doesn't work as described, that's a bug —
 ; please open an issue with what happened.
 
-#define KhanVersion "0.011.0"
-#define KhanAppName "Kosh"
-#define KhanPublisher "Kosh Language Project"
-#define KhanURL "https://github.com/khandev1211-cpu/Khan"
+#define KoshVersion "0.015.0"
+#define KoshAppName "Kosh"
+#define KoshPublisher "Kosh Language Project"
+#define KoshURL "https://github.com/koshirfan1/Kosh"
 
 [Setup]
 ; A fixed AppId (any valid GUID, generated once and never changed after
@@ -56,12 +56,12 @@
 ; — this placeholder is fine for testing, but should be replaced once
 ; and then never touched again.
 AppId={{B4A1E9C2-6F3D-4A8B-9E7C-2D5F8A9B1C3E}
-AppName={#KhanAppName}
-AppVersion={#KhanVersion}
-AppPublisher={#KhanPublisher}
-AppPublisherURL={#KhanURL}
-AppSupportURL={#KhanURL}/issues
-AppUpdatesURL={#KhanURL}/releases
+AppName={#KoshAppName}
+AppVersion={#KoshVersion}
+AppPublisher={#KoshPublisher}
+AppPublisherURL={#KoshURL}
+AppSupportURL={#KoshURL}/issues
+AppUpdatesURL={#KoshURL}/releases
 
 ; Per-user install by default (no admin prompt, installs under the
 ; current user's AppData) — matches the "just works, no elevation
@@ -81,11 +81,11 @@ DisableProgramGroupPage=yes
 WizardStyle=modern
 
 OutputDir=Output
-OutputBaseFilename=kosh-setup-{#KhanVersion}
+OutputBaseFilename=kosh-setup-{#KoshVersion}
 ; Both the installer .exe itself AND the shortcuts Inno Setup creates
-; use this — without it, khan-setup.exe and its Start Menu/Desktop
+; use this — without it, kosh-setup.exe and its Start Menu/Desktop
 ; shortcuts all show Windows' generic blank-program icon.
-SetupIconFile=assets\khan-icon.ico
+SetupIconFile=assets\kosh-icon.ico
 Compression=lzma2
 SolidCompression=yes
 
@@ -114,15 +114,15 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 ; "HOW TO BUILD" comment at the top.
 Source: "kosh.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "kh.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "assets\khan-icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "assets\kosh-icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "packages\*"; DestDir: "{app}\packages"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "\.git\*"
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion; DestName: "README.txt"
 
 [Icons]
-Name: "{group}\Kosh Interpreter"; Filename: "{app}\kosh.exe"; IconFilename: "{app}\khan-icon.ico"; Comment: "Start the Kosh interactive REPL"
-Name: "{group}\Kosh Documentation"; Filename: "{#KhanURL}"; IconFilename: "{app}\khan-icon.ico"
+Name: "{group}\Kosh Interpreter"; Filename: "{app}\kosh.exe"; IconFilename: "{app}\kosh-icon.ico"; Comment: "Start the Kosh interactive REPL"
+Name: "{group}\Kosh Documentation"; Filename: "{#KoshURL}"; IconFilename: "{app}\kosh-icon.ico"
 Name: "{group}\Uninstall Kosh"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Kosh"; Filename: "{app}\kosh.exe"; IconFilename: "{app}\khan-icon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\Kosh"; Filename: "{app}\kosh.exe"; IconFilename: "{app}\kosh-icon.ico"; Tasks: desktopicon
 
 [Run]
 ; Offers to open a REPL right when setup finishes — the installer
@@ -156,7 +156,7 @@ begin
   end;
   // Look for an exact, delimiter-bounded match rather than a plain
   // substring search — a substring check would wrongly treat
-  // "C:\Khan2\bin" as already covering "C:\Kosh\bin", or miss a
+  // "C:\Kosh2\bin" as already covering "C:\Kosh\bin", or miss a
   // legitimate match sitting at the very start/end of the PATH string
   // (which has no leading/trailing semicolon to anchor against).
   Result := Pos(';' + ExpandConstant('{app}') + ';', ';' + OrigPath + ';') = 0;

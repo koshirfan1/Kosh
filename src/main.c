@@ -35,7 +35,7 @@ static void enable_ansi(void) {}
 #include "vision_cv.h"
 #include "vision_cascade.h"
 #include "tensor_lib.h"
-#include "khan_version.h"
+#include "kosh_version.h"
 #ifdef LLM_SUPPORT
 #include "llm_lib.h"
 #endif
@@ -61,7 +61,7 @@ static char *read_file(const char *path) {
 
 static void print_usage(FILE *out) {
     fprintf(out,
-        "Kosh " KHAN_VERSION "\n"
+        "Kosh " KOSH_VERSION "\n"
         "Usage: kosh <script.kh> [args...]\n"
         "       kosh                    (starts an interactive REPL)\n"
         "       kosh --version | -v\n"
@@ -98,7 +98,7 @@ static void register_all_libraries(VM *vm) {
 /* Reads one logical unit of REPL input: a single line, or — if that
  * line's content (trimmed) ends with ':' — that line plus every
  * following line up to and including the next blank line, all
- * concatenated together as one multi-line block. Khan is indentation-
+ * concatenated together as one multi-line block. Kosh is indentation-
  * based like Python, so a `fn foo():`/`if x:`/`while x:`/`try:` header
  * needs its indented body typed on subsequent lines before it forms a
  * complete, compilable unit — a single-line-at-a-time REPL would never
@@ -186,7 +186,7 @@ static char *read_repl_input(void) {
  * matching how a real interactive interpreter should behave when
  * given bad input, rather than being one-mistake-and-you're-out. */
 static int run_repl(void) {
-    printf("Kosh " KHAN_VERSION " — interactive mode. Type 'exit' or press Ctrl+D to quit.\n");
+    printf("Kosh " KOSH_VERSION " — interactive mode. Type 'exit' or press Ctrl+D to quit.\n");
 
     VM vm;
     vm_init(&vm);
@@ -265,12 +265,12 @@ int main(int argc, char *argv[]) {
        otherwise be read as the script path (argv[1]) — matching how
        most CLI tools special-case these two regardless of position
        among the first argument. Anything after a real script path is
-       left alone and passed through to the script as-is (a Khan
+       left alone and passed through to the script as-is (a Kosh
        script named "--version.kh" would still need to be run some
        other way; this is a deliberate, minor trade-off in favor of
        the common case working without ceremony). */
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-        printf("Kosh " KHAN_VERSION "\n");
+        printf("Kosh " KOSH_VERSION "\n");
         return 0;
     }
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {

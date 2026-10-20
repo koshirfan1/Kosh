@@ -38,7 +38,7 @@ ifeq ($(OS),Windows_NT)
     # not silently produce another DLL-dependent binary — if that
     # happens, the fallback is bundling libsqlite3-0.dll (found under
     # MSYS2's mingw64\bin) alongside kosh.exe/kh.exe in
-    # khan-installer.iss's [Files] section instead of relying on static
+    # kosh-installer.iss's [Files] section instead of relying on static
     # linking for that one library specifically.
     LDFLAGS  = -static -static-libgcc -static-libstdc++ -lm -lwinhttp -lshell32 -lws2_32 -ladvapi32 -lsqlite3
     EXT      = .exe
@@ -58,7 +58,7 @@ SRCS = \
     src/vm.c            \
     src/vm_libs.c       \
     src/interpreter.c   \
-    src/khan_stdlib.c   \
+    src/kosh_stdlib.c   \
     src/json_lib.c      \
     src/datetime_lib.c  \
     src/requests_lib.c  \
@@ -106,12 +106,12 @@ endif
 # Installs the two built binaries somewhere on PATH. Unix-only (Windows
 # users: copy kosh.exe/kh.exe wherever you like and add that folder to
 # PATH yourself — no installer for that platform yet). Defaults to
-# ~/.khan/bin specifically so this never needs sudo/root: a curl-piped
+# ~/.kosh/bin specifically so this never needs sudo/root: a curl-piped
 # install script (see install.sh) running as a normal user should
 # never need to ask for elevated permissions to put a couple of
 # binaries somewhere. Override with `make install PREFIX=/usr/local`
 # if you'd rather have it on the system-wide PATH already.
-PREFIX ?= $(HOME)/.khan
+PREFIX ?= $(HOME)/.kosh
 BINDIR  = $(PREFIX)/bin
 
 install: kosh kh
@@ -122,7 +122,7 @@ ifeq ($(OS),Windows_NT)
 	@echo ""
 	@echo "    powershell -ExecutionPolicy Bypass -File install.ps1"
 	@echo ""
-	@echo "(or: irm https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/install.ps1 | iex)"
+	@echo "(or: irm https://raw.githubusercontent.com/koshirfan1/Kosh/main/install.ps1 | iex)"
 	@exit 1
 else
 	mkdir -p "$(BINDIR)"
@@ -147,9 +147,9 @@ endif
 uninstall:
 ifeq ($(OS),Windows_NT)
 	@echo "No makefile-driven uninstall on Windows -- delete the folder"
-	@echo "install.ps1 installed to (default: %USERPROFILE%\.khan) and remove"
+	@echo "install.ps1 installed to (default: %USERPROFILE%\.kosh) and remove"
 	@echo "it from your User PATH via System Properties, or:"
-	@echo "    [Environment]::SetEnvironmentVariable('Path', (([Environment]::GetEnvironmentVariable('Path','User') -split ';') -notmatch '\.khan\\bin' -join ';'), 'User')"
+	@echo "    [Environment]::SetEnvironmentVariable('Path', (([Environment]::GetEnvironmentVariable('Path','User') -split ';') -notmatch '\.kosh\\bin' -join ';'), 'User')"
 else
 	rm -f "$(BINDIR)/kosh" "$(BINDIR)/khan" "$(BINDIR)/kh"
 	@echo "Removed kosh (and any old khan) and kh from $(BINDIR)."

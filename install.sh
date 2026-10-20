@@ -8,7 +8,7 @@
 # pretending to be a binary-release installer it isn't.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/koshirfan1/Kosh/main/install.sh | bash
 #   # or, from an existing local checkout:
 #   ./install.sh
 #
@@ -22,10 +22,10 @@
 #      your platform and stops.
 #   3. Uses the current directory if it looks like a Kosh checkout
 #      (has makefile + src/main.c), otherwise clones the repo into
-#      ~/.khan/src.
+#      ~/.kosh/src.
 #   4. Runs `make`.
-#   5. Runs `make install` (installs to ~/.khan/bin — no sudo needed).
-#   6. Adds ~/.khan/bin to PATH in whichever shell rc file matches
+#   5. Runs `make install` (installs to ~/.kosh/bin — no sudo needed).
+#   6. Adds ~/.kosh/bin to PATH in whichever shell rc file matches
 #      your current shell, if it isn't there already.
 #   7. Verifies with `kosh --version`.
 #
@@ -34,9 +34,9 @@
 
 set -euo pipefail
 
-KHAN_HOME="${KHAN_HOME:-$HOME/.khan}"
-KHAN_SRC="$KHAN_HOME/src"
-KHAN_REPO="https://github.com/khandev1211-cpu/Khan.git"
+KOSH_HOME="${KOSH_HOME:-$HOME/.kosh}"
+KOSH_SRC="$KOSH_HOME/src"
+KOSH_REPO="https://github.com/koshirfan1/Kosh.git"
 
 info()  { printf '  %s\n' "$1"; }
 warn()  { printf '  \033[33m%s\033[0m\n' "$1" >&2; }
@@ -73,28 +73,28 @@ info "Found sqlite3 dev headers."
 if [ -f "./makefile" ] && [ -f "./src/main.c" ]; then
     info "Running from an existing Kosh checkout — building in place."
     BUILD_DIR="."
-elif [ -d "$KHAN_SRC/.git" ]; then
-    info "Reusing existing checkout at $KHAN_SRC — pulling latest."
-    git -C "$KHAN_SRC" pull --ff-only
-    BUILD_DIR="$KHAN_SRC"
+elif [ -d "$KOSH_SRC/.git" ]; then
+    info "Reusing existing checkout at $KOSH_SRC — pulling latest."
+    git -C "$KOSH_SRC" pull --ff-only
+    BUILD_DIR="$KOSH_SRC"
 else
     if ! command -v git >/dev/null 2>&1; then
         fail "git not found and no local checkout detected — install git or run this script from inside a Kosh checkout."
     fi
-    info "Cloning Kosh into $KHAN_SRC ..."
-    mkdir -p "$KHAN_HOME"
-    git clone --depth 1 "$KHAN_REPO" "$KHAN_SRC"
-    BUILD_DIR="$KHAN_SRC"
+    info "Cloning Kosh into $KOSH_SRC ..."
+    mkdir -p "$KOSH_HOME"
+    git clone --depth 1 "$KOSH_REPO" "$KOSH_SRC"
+    BUILD_DIR="$KOSH_SRC"
 fi
 
 # ── 4 & 5. Build and install ────────────────────────────────────────
 info "Building (make) ..."
 ( cd "$BUILD_DIR" && make )
-info "Installing to $KHAN_HOME/bin (no sudo needed) ..."
-( cd "$BUILD_DIR" && make install PREFIX="$KHAN_HOME" )
+info "Installing to $KOSH_HOME/bin (no sudo needed) ..."
+( cd "$BUILD_DIR" && make install PREFIX="$KOSH_HOME" )
 
 # ── 6. PATH setup ────────────────────────────────────────────────────
-BIN_DIR="$KHAN_HOME/bin"
+BIN_DIR="$KOSH_HOME/bin"
 PATH_LINE="export PATH=\"$BIN_DIR:\$PATH\""
 
 # Pick the rc file matching the current interactive shell, falling

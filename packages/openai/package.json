@@ -2,7 +2,7 @@
   "name": "openai",
   "version": "2.0.0",
   "description": "Production-grade OpenAI API client: chat completions, multi-turn conversations, embeddings, moderation, and model listing — with structured error handling and automatic retry/backoff on rate limits and server errors.",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "openai.kh",
   "files": [

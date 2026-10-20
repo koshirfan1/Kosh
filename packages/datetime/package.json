@@ -2,7 +2,7 @@
   "name": "datetime",
   "version": "1.0.1",
   "description": "Date and time utilities: timer, elapsed, human-readable duration, sleep helpers",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "datetime.kh",
   "files": [

@@ -2,7 +2,7 @@
   "name": "validation",
   "version": "1.0.0",
   "description": "Robust data validation library. Includes email, numeric, and length checks for web forms.",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "validation.kh",
   "files": [

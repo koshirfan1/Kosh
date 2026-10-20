@@ -2,7 +2,7 @@
   "name": "strings",
   "version": "1.0.0",
   "description": "String utilities: split, trim, replace, pad, repeat, contains, join",
-  "author": "khandev1211-cpu",
+  "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "strings.kh",
   "files": ["strings.kh"]
