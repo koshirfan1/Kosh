@@ -62,6 +62,10 @@ static Obj *obj_new(ValueType type) {
     obj->class_name = NULL;
     obj->class_ref = NULL;
     obj->super_ref = NULL;
+    obj->as.tensor.data = NULL;
+    obj->as.tensor.shape = NULL;
+    obj->as.tensor.ndim = 0;
+    obj->as.tensor.size = 0;
     if (++gc_alloc_counter >= GC_AUTO_INTERVAL) {
         gc_alloc_counter = 0;
         gc_collect_cycles();
@@ -150,6 +154,30 @@ Value value_instance_new(Value klass) {
     return v;
 }
 
+Value value_tensor(const double *data, const int *shape, int ndim) {
+    Value v;
+    v.type = VAL_TENSOR;
+    v.as.obj = obj_new(VAL_TENSOR);
+    int size = 1;
+    for (int i = 0; i < ndim; i++) size *= shape[i];
+    if (ndim == 0) size = 1;   /* a 0-dim tensor is a single scalar */
+    v.as.obj->as.tensor.ndim = ndim;
+    v.as.obj->as.tensor.size = size;
+    if (ndim > 0) {
+        v.as.obj->as.tensor.shape = malloc(sizeof(int) * ndim);
+        memcpy(v.as.obj->as.tensor.shape, shape, sizeof(int) * ndim);
+    } else {
+        v.as.obj->as.tensor.shape = NULL;
+    }
+    v.as.obj->as.tensor.data = malloc(sizeof(double) * (size > 0 ? (size_t)size : 1));
+    if (data) {
+        memcpy(v.as.obj->as.tensor.data, data, sizeof(double) * (size_t)size);
+    } else {
+        for (int i = 0; i < size; i++) v.as.obj->as.tensor.data[i] = 0.0;
+    }
+    return v;
+}
+
 Value value_native(const char *name, NativeFn fn) {
     Value v;
     v.type = VAL_NATIVE;
@@ -170,7 +198,7 @@ Value value_function(const char *name, Environment *closure,
 }
 
 Value value_copy(Value v) {
-    if (v.type == VAL_ARRAY || v.type == VAL_MAP ||
+    if (v.type == VAL_ARRAY || v.type == VAL_MAP || v.type == VAL_TENSOR ||
         v.type == VAL_CLASS || v.type == VAL_INSTANCE) {
         if (v.as.obj) v.as.obj->ref_count++;
         return v;
@@ -536,6 +564,14 @@ void value_free(Value v) {
                right now (see the cycle-collector section above). */
             gc_possible_root(v.as.obj);
         }
+    } else if (v.type == VAL_TENSOR) {
+        if (!v.as.obj) return;
+        v.as.obj->ref_count--;
+        if (v.as.obj->ref_count <= 0) {
+            free(v.as.obj->as.tensor.data);
+            free(v.as.obj->as.tensor.shape);
+            free(v.as.obj);
+        }
     } else if (v.type == VAL_CLASS || v.type == VAL_INSTANCE) {
         /* Plain refcounting only — deliberately NOT registered with the
            cycle collector (no gc_possible_root), same documented gap as
@@ -691,6 +727,28 @@ Value *map_get(Value *map, const char *key) {
     return o->as.map.entries[slot].value;
 }
 
+static void print_tensor_recursive(const double *data, const int *shape, int ndim, int *offset) {
+    if (ndim == 0) {
+        /* a lone scalar tensor */
+        double d = data[*offset];
+        (*offset)++;
+        if (d == (long)d) printf("%ld", (long)d); else printf("%g", d);
+        return;
+    }
+    printf("[");
+    for (int i = 0; i < shape[0]; i++) {
+        if (ndim == 1) {
+            double d = data[*offset];
+            (*offset)++;
+            if (d == (long)d) printf("%ld", (long)d); else printf("%g", d);
+        } else {
+            print_tensor_recursive(data, shape + 1, ndim - 1, offset);
+        }
+        if (i < shape[0] - 1) printf(", ");
+    }
+    printf("]");
+}
+
 void value_print(Value v) {
     switch (v.type) {
         case VAL_NUMBER: {
@@ -727,6 +785,13 @@ void value_print(Value v) {
         }
         case VAL_FUNCTION: printf("<fn %s>", v.as.function.name); break;
         case VAL_NATIVE:   printf("<native %s>", v.as.native.name); break;
+        case VAL_TENSOR: {
+            if (!v.as.obj) { printf("<tensor>"); break; }
+            int off = 0;
+            print_tensor_recursive(v.as.obj->as.tensor.data, v.as.obj->as.tensor.shape,
+                                    v.as.obj->as.tensor.ndim, &off);
+            break;
+        }
         case VAL_CLASS:
             printf("<class %s>", (v.as.obj && v.as.obj->class_name) ? v.as.obj->class_name : "?");
             break;
@@ -755,6 +820,20 @@ int vm_values_equal(Value a, Value b) {
         case VAL_NIL:    return 1;
         case VAL_ARRAY:  return a.as.obj == b.as.obj;
         case VAL_MAP:    return a.as.obj == b.as.obj;
+        case VAL_TENSOR: {
+            /* value equality (same shape and data), not identity — a
+               tensor behaves like a number here, matching the fact that
+               tensor arithmetic always produces a brand-new VAL_TENSOR
+               rather than mutating one in place. */
+            if (a.as.obj == b.as.obj) return 1;
+            if (!a.as.obj || !b.as.obj) return 0;
+            if (a.as.obj->as.tensor.ndim != b.as.obj->as.tensor.ndim) return 0;
+            for (int i = 0; i < a.as.obj->as.tensor.ndim; i++)
+                if (a.as.obj->as.tensor.shape[i] != b.as.obj->as.tensor.shape[i]) return 0;
+            for (int i = 0; i < a.as.obj->as.tensor.size; i++)
+                if (a.as.obj->as.tensor.data[i] != b.as.obj->as.tensor.data[i]) return 0;
+            return 1;
+        }
         case VAL_CLASS:
         case VAL_INSTANCE: return a.as.obj == b.as.obj;   /* identity */
         default: return 0;

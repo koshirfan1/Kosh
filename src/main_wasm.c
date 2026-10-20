@@ -10,7 +10,7 @@
  *     compiled to WASM: stdlib, json, datetime, the (mock) sqlite bridge,
  *     and vision's pixel-math functions. webi/requests (real sockets)
  *     and ocr (needs libtesseract) are deliberately left out here — this
- *     is a reduced build for trying the LANGUAGE, not a full khan.exe.
+ *     is a reduced build for trying the LANGUAGE, not a full kosh.exe.
  *
  * print()/stdout flow through Emscripten's normal stdout handling, which
  * the surrounding HTML hooks via Module.print.

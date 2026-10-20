@@ -332,7 +332,7 @@ static int cmd_list(void) {
         return 1;
     }
 
-    print_header("\nKhan Package Registry");
+    print_header("\nKosh Package Registry");
     printf("%-16s %-8s  %s\n", "NAME", "VERSION", "DESCRIPTION");
     printf("%-16s %-8s  %s\n", "────────────────", "───────", "───────────────────────────────────");
 
@@ -366,7 +366,7 @@ static int cmd_list(void) {
 static int cmd_installed(void) {
     char *pkgs_dir = get_packages_dir();
 
-    print_header("\nInstalled Khan Packages");
+    print_header("\nInstalled Kosh Packages");
     printf("Location: %s\n\n", pkgs_dir);
 
 #ifdef _WIN32
@@ -489,7 +489,7 @@ static int cmd_info(const char *name) {
 // ---------------------------------------------------------------------------
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        print_header("kh — Khan Package Manager");
+        print_header("kh — Kosh Package Manager");
         printf("\nUsage:\n");
         printf("  kh install <name>    Install a package\n");
         printf("  kh remove  <name>    Remove a package\n");

@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ─────────────────────────────────────────────────────────────
-echo  Khan Language — Windows Build Script
+echo  Kosh Language — Windows Build Script
 echo ─────────────────────────────────────────────────────────────
 
 :: Check for GCC
@@ -21,12 +21,12 @@ set LDFLAGS=-lm -lwinhttp -lshell32 -lws2_32 -ladvapi32
 set SRCS=src/lexer.c src/parser.c src/ast.c src/chunk.c src/value.c src/compiler.c src/vm.c src/vm_libs.c src/interpreter.c src/khan_stdlib.c src/json_lib.c src/datetime_lib.c src/requests_lib.c src/webi_lib.c src/sqlite_lib.c src/vision_lib.c src/vision_cv.c src/vision_cascade.c src/main.c
 set KH_SRCS=src/kh.c
 
-echo [1/2] Building khan.exe (Interpreter)...
-gcc %CFLAGS% %SRCS% -o khan.exe %LDFLAGS%
+echo [1/2] Building kosh.exe (Interpreter)...
+gcc %CFLAGS% %SRCS% -o kosh.exe %LDFLAGS%
 if %ERRORLEVEL% EQU 0 (
-    echo [SUCCESS] Built khan.exe
+    echo [SUCCESS] Built kosh.exe
 ) else (
-    echo [ERROR] Failed to build khan.exe
+    echo [ERROR] Failed to build kosh.exe
     pause
     exit /b %ERRORLEVEL%
 )
@@ -43,6 +43,6 @@ if %ERRORLEVEL% EQU 0 (
 
 echo ─────────────────────────────────────────────────────────────
 echo  Build Complete!
-echo  Run 'khan examples/hello.kh' to get started.
+echo  Run 'kosh examples/hello.kh' to get started.
 echo ─────────────────────────────────────────────────────────────
 pause

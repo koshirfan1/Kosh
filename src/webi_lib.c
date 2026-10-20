@@ -1164,7 +1164,7 @@ void fn_webi_script_dir(Value *result, Interpreter *interp, int argc, Value *arg
 // `import`: an absolute path is left alone; otherwise resolve relative
 // to whatever file is currently executing (current_import_dir) if we're
 // inside one, else relative to the top-level script's own directory
-// (base_path), so it works the same regardless of what directory `khan`
+// (base_path), so it works the same regardless of what directory `kosh`
 // happens to be invoked from. Falls back to the path unchanged (resolved
 // relative to the process's current directory) if neither is set.
 void fn_webi_resolve_path(Value *result, Interpreter *interp, int argc, Value *args) {

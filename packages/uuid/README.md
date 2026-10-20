@@ -1,4 +1,4 @@
-# Khan UUID Package — v1.0.0
+# Kosh UUID Package — v1.0.0
 
 **Author**: Irfan Khan  
 **Package**: `uuid`  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `uuid` package provides unique identifier generation for Khan. It supports standard UUID v4 format, short IDs, readable named IDs, and sequential counters. Designed for entity IDs, asset IDs, and event IDs in games and applications.
+The `uuid` package provides unique identifier generation for Kosh. It supports standard UUID v4 format, short IDs, readable named IDs, and sequential counters. Designed for entity IDs, asset IDs, and event IDs in games and applications.
 
 ## Installation
 
@@ -14,7 +14,7 @@ The `uuid` package provides unique identifier generation for Khan. It supports s
 kh install uuid
 ```
 
-```khan
+```kosh
 import "uuid"
 ```
 
@@ -22,7 +22,7 @@ import "uuid"
 
 ## UUID Generation
 
-```khan
+```kosh
 uuid_v4()               # Generate a standard UUID v4 string
 uuid_short()            # Generate an 8-character hex short ID
 uuid_named(prefix)      # Generate a readable ID with prefix
@@ -30,7 +30,7 @@ uuid_named(prefix)      # Generate a readable ID with prefix
 
 #### Examples
 
-```khan
+```kosh
 # Standard UUID v4 (36 chars)
 let id = uuid_v4()
 print id  # "3f9a1c2b-4e5d-4a8f-9b7c-1d2e3f4a5b6c"
@@ -53,7 +53,7 @@ print asset_id  # "asset_b7c8d9e0"
 
 For deterministic, sequential IDs:
 
-```khan
+```kosh
 uuid_counter()          # Create a new counter
 uuid_next(counter)      # Increment counter
 uuid_id(counter)        # Get current counter value
@@ -61,7 +61,7 @@ uuid_id(counter)        # Get current counter value
 
 #### Example
 
-```khan
+```kosh
 let counter = uuid_counter()
 
 let id1 = uuid_id(uuid_next(counter))  # 1
@@ -75,13 +75,13 @@ print id3  # 3
 
 ## Validation
 
-```khan
+```kosh
 uuid_is_valid(s)        # Check if string is valid UUID v4 format → bool
 ```
 
 #### Example
 
-```khan
+```kosh
 let id = uuid_v4()
 print uuid_is_valid(id)          # true
 print uuid_is_valid("invalid")   # false
@@ -91,7 +91,7 @@ print uuid_is_valid("invalid")   # false
 
 ## Complete Example
 
-```khan
+```kosh
 import "uuid"
 
 # Different ID types for different purposes

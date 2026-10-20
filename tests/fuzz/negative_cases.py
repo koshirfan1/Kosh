@@ -19,7 +19,7 @@ success criteria:
   isn't checked strictly since some legitimately succeed and some
   legitimately fail depending on what they contain.
 
-Usage: python3 tests/fuzz/negative_cases.py [path-to-khan-binary]
+Usage: python3 tests/fuzz/negative_cases.py [path-to-kosh-binary]
 Exits 0 if nothing crashes/hangs and every NEGATIVE_CASE fails cleanly;
 exits 1 with details otherwise.
 """
@@ -28,7 +28,7 @@ import sys
 import os
 import tempfile
 
-KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./khan"
+KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
 TIMEOUT_SECS = 5
 
 NEGATIVE_CASES = [

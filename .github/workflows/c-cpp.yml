@@ -1,0 +1,382 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows-only for now, at the maintainer's request — the
+        # Linux/macOS steps below are left in place (guarded by
+        # `if: matrix.os != 'windows-latest'`, which now never
+        # matches) rather than deleted, so re-adding
+        # `ubuntu-latest, macos-latest` here is a one-line change
+        # to restore full multi-OS coverage later, not a rewrite.
+        os: [windows-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # ── sqlite3 dev headers/libs ──────────────────────────────────────
+    # None of the three platforms had this installed explicitly before —
+    # the build was relying entirely on whatever each runner image
+    # happened to ship with. That's a real, demonstrated risk, not a
+    # hypothetical one: GitHub's own Ubuntu 24.04 runner image lost
+    # libsqlite3-dev for a period (actions/runner-images#11279, opened
+    # Jan 2025, fixed in #11341) and broke real projects' CI that relied
+    # on it being there implicitly, exactly like this workflow was doing.
+    # Reproduced the resulting failure locally in this Linux sandbox
+    # (`sqlite3.h: No such file or directory`) before adding this step.
+    - name: Install sqlite3 dev headers (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+    # macOS ships sqlite3 as part of the system SDK (used internally by
+    # Core Data and other frameworks) — `-lsqlite3` has long worked out
+    # of the box against the Xcode Command Line Tools SDK without an
+    # explicit brew install. This step is a defensive no-op most of the
+    # time, kept for the same reason as the Linux step above: relying on
+    # "probably already there" implicitly is exactly the assumption that
+    # broke on Ubuntu 24.04. `|| true` so it doesn't fail the job if
+    # Homebrew's sqlite3 formula is already satisfied or keg-only.
+    - name: Install sqlite3 (macOS)
+      if: matrix.os == 'macos-latest'
+      run: brew install sqlite3 || true
+
+    # windows-latest ships MSYS2 preinstalled, but this project's FIRST
+    # attempt at using it (hand-rolling `pacman -S ...` then appending
+    # to GITHUB_PATH from a `cmd` step) failed on a real run: the build
+    # step still couldn't find sqlite3.h even though pacman reported it
+    # installed successfully. The most likely cause, based on how
+    # GitHub's windows-latest image is documented to be laid out: other
+    # gcc/mingw toolchains (e.g. one bundled with Strawberry Perl, which
+    # that image also ships) can sit earlier on the default PATH than
+    # whatever a plain `echo >> %GITHUB_PATH%` appends, so a LATER
+    # `cmd`-shell step's `make`/`gcc` can silently resolve to a
+    # DIFFERENT toolchain than the one pacman just installed sqlite3
+    # into — explaining both failures in that run at once (the missing
+    # header, and a `strndup` type error consistent with a different
+    # libc than MSYS2 mingw64's).
+    #
+    # Fixed by switching to the official `msys2/setup-msys2` action
+    # instead of hand-rolling this: it installs an isolated MINGW64
+    # environment and gives every subsequent step using `shell: msys2
+    # {0}` that environment's own PATH, with its own gcc/make/sqlite3
+    # all resolved consistently from the same place pacman just
+    # installed them — removing the whole "which gcc does PATH actually
+    # resolve to" question this hand-rolled version depended on getting
+    # right by luck. `pathtype: inherit` keeps the runner's own Python
+    # reachable too (needed by the fuzzing steps further down).
+    #
+    # `make` (the base MSYS package, not `mingw-w64-x86_64-make`) is
+    # installed alongside the mingw64-prefixed packages specifically
+    # because MSYS2's mingw64-prefixed make package has historically
+    # shipped as `mingw32-make.exe`, not a binary literally named
+    # `make` — installing the base package sidesteps that naming
+    # detail entirely; it drives the mingw64 gcc just fine, since make
+    # itself doesn't need to be a mingw64-native binary, only the
+    # compiler it invokes does.
+    #
+    # STILL NOT VERIFIED end-to-end against a real Windows runner in
+    # the environment this was authored in (no such access there) —
+    # same standing caveat as before (ROADMAP_STATUS_UPDATED.md #17),
+    # now carried by a more standard, more likely to be first-try-
+    # correct mechanism than the hand-rolled version that was actually
+    # proven wrong by a real run.
+    - name: Set up MSYS2 (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        pathtype: inherit
+        install: >-
+          make
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-sqlite3
+
+    - name: Build (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        chmod +x configure
+        ./configure
+        make
+
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: make
+
+    # ── Tests ──────────────────────────────────────────────────────────
+    # This is the step that was missing before: the build previously
+    # succeeded and uploaded artifacts even when the standard library was
+    # broken (see: 6 packages that failed to compile, and a 137-assertion
+    # webi test file that was silently failing partway through — neither
+    # would have been caught by "does `make` succeed" alone). Every step
+    # below fails the job (non-zero exit) if its assertions don't pass.
+
+    - name: Run core language + stdlib test suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/run_all.kh
+
+    - name: Run core language + stdlib test suite (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/run_all.kh
+
+    - name: Run webi test suite — 137 assertions (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh examples/webi_test.kh
+
+    - name: Run webi test suite — 137 assertions (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe examples/webi_test.kh
+
+    - name: Run webi from-import regression tests (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh examples/webi_from_import_test.kh
+
+    - name: Run webi from-import regression tests (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe examples/webi_from_import_test.kh
+
+    - name: Run vision test suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_vision.kh
+
+    - name: Run vision test suite (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_vision.kh
+
+    - name: Verify every package still imports cleanly (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        fail=0
+        for d in packages/*/; do
+          pkg=$(basename "$d")
+          [ -f "packages/$pkg/package.json" ] || continue
+          echo "import \"$pkg\"" > /tmp/pkgtest.kh
+          echo "print \"ok\"" >> /tmp/pkgtest.kh
+          out=$(./kosh /tmp/pkgtest.kh 2>&1)
+          if [ "$out" != "ok" ]; then
+            echo "::error::Package '$pkg' failed to import cleanly: $out"
+            fail=1
+          fi
+        done
+        exit $fail
+
+    - name: Verify every package still imports cleanly (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: |
+        fail=0
+        for d in packages/*/; do
+          pkg=$(basename "$d")
+          [ -f "packages/$pkg/package.json" ] || continue
+          echo "import \"$pkg\"" > /tmp/pkgtest.kh
+          echo "print \"ok\"" >> /tmp/pkgtest.kh
+          out=$(./kosh.exe /tmp/pkgtest.kh 2>&1)
+          if [ "$out" != "ok" ]; then
+            echo "::error::Package '$pkg' failed to import cleanly: $out"
+            fail=1
+          fi
+        done
+        exit $fail
+
+    # These two scripts are EXPECTED to halt with a runtime error (exit
+    # 70) — they exist to prove a real bug stays fixed: division/modulo
+    # by a folded-zero constant must still raise a runtime error rather
+    # than being silently constant-folded, and a stack-overflowing
+    # program must fail cleanly rather than segfault (exit 139). A
+    # segfault, a zero exit code, or any other exit code here means one
+    # of those protections regressed.
+    #
+    # `set +e` / `set -e` around each kosh invocation below is load-
+    # bearing, not decoration: GitHub Actions runs every `run:` block
+    # (bash on Linux/macOS, and msys2/setup-msys2's `msys2 {0}` shell
+    # on Windows) with errexit enabled by default, meaning the script
+    # aborts immediately the instant any command exits non-zero —
+    # including the kosh invocations here, whose whole POINT is to
+    # exit non-zero (70). Without `set +e` first, the script never
+    # reaches the `code=$?`/`if` check that's supposed to validate
+    # that exit code — it just dies right there, and GitHub reports
+    # the step as failed with whatever kosh's own exit code was,
+    # which happens to look exactly like a real failure even on a
+    # totally correct run. Found via an actual CI run failing on
+    # exactly this (kosh printed the right error and exited 70 — the
+    # correct behavior — and the step still went red), not by
+    # inspection.
+    - name: Verify div/mod-by-zero still raises a clean error (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        set +e
+        ./kosh tests/regression_mod_div_zero.kh div
+        code=$?
+        set -e
+        if [ "$code" != "70" ]; then echo "::error::div-by-zero exited $code, expected 70"; exit 1; fi
+        set +e
+        ./kosh tests/regression_mod_div_zero.kh mod
+        code=$?
+        set -e
+        if [ "$code" != "70" ]; then echo "::error::mod-by-zero exited $code, expected 70"; exit 1; fi
+
+    - name: Verify div/mod-by-zero still raises a clean error (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: |
+        set +e
+        ./kosh.exe tests/regression_mod_div_zero.kh div
+        code=$?
+        set -e
+        if [ "$code" != "70" ]; then echo "::error::div-by-zero exited $code, expected 70"; exit 1; fi
+        set +e
+        ./kosh.exe tests/regression_mod_div_zero.kh mod
+        code=$?
+        set -e
+        if [ "$code" != "70" ]; then echo "::error::mod-by-zero exited $code, expected 70"; exit 1; fi
+
+    - name: Verify stack overflow fails cleanly, not with a segfault (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        set +e
+        ./kosh tests/regression_stack_overflow.kh
+        code=$?
+        set -e
+        if [ "$code" == "139" ]; then echo "::error::Segfaulted (exit 139) — stack bounds checking regressed"; exit 1; fi
+        if [ "$code" != "70" ]; then echo "::error::Unexpected exit code $code, expected 70"; exit 1; fi
+
+    - name: Verify stack overflow fails cleanly, not with a segfault (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: |
+        set +e
+        ./kosh.exe tests/regression_stack_overflow.kh
+        code=$?
+        set -e
+        # Windows has no POSIX signal/exit-code convention for a crash
+        # the way exit 139 (128+SIGSEGV) means on Linux/macOS — a crash
+        # here would more likely surface as a large/unusual exit code
+        # or the shell reporting the process was terminated. Checking
+        # specifically for the expected clean exit (70) and flagging
+        # anything else, rather than trying to enumerate every possible
+        # Windows crash-exit-code representation.
+        if [ "$code" != "70" ]; then echo "::error::Unexpected exit code $code, expected 70 (may indicate a crash)"; exit 1; fi
+
+    # Parser robustness: curated malformed-input cases (must all fail
+    # cleanly, never crash) plus mutation-based fuzzing of the repo's
+    # own real .kh files (must never crash or genuinely hang — a
+    # mutated program that creates its own legitimate infinite loop is
+    # correctly excluded, see tests/fuzz/random_fuzz.py's ACTIVE_LOOP
+    # classification). Python is available on all three GitHub-hosted
+    # runner images by default.
+    - name: Parser negative-case + robustness suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: python3 tests/fuzz/negative_cases.py ./kosh
+
+    - name: Parser negative-case + robustness suite (Windows)
+      if: matrix.os == 'windows-latest'
+      # NOT msys2 {0} here, unlike the build/other test steps above —
+      # MSYS2's shell environment (even with `pathtype: inherit` on the
+      # setup step above) doesn't expose the runner's own Windows
+      # Python on PATH, which this step needs (`python: command not
+      # found` on an actual run — found the same way as the earlier
+      # bugs in this file: an actual CI failure, not inspection). Using
+      # `pwsh` instead sidesteps that: it's windows-latest's default
+      # shell and has the runner's Python on PATH already. Safe here
+      # specifically because this step only needs to *invoke*
+      # already-built kosh.exe as a subprocess argument — no bash-
+      # specific syntax needed (unlike the div/mod-by-zero and stack-
+      # overflow checks elsewhere, which genuinely need bash for
+      # `set +e`/`$?`/`[ ]` and do need msys2 {0}).
+      shell: pwsh
+      run: python tests/fuzz/negative_cases.py ./kosh.exe
+
+    - name: Random mutation fuzzing, 1000 iterations (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: python3 tests/fuzz/random_fuzz.py ./kosh 1000 42
+
+    - name: Random mutation fuzzing, 1000 iterations (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: python tests/fuzz/random_fuzz.py ./kosh.exe 1000 42
+
+    - name: Upload Artifacts (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: kosh-linux
+        path: |
+          kosh
+          kh
+
+    - name: Upload Artifacts (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: kosh-windows
+        path: |
+          kosh.exe
+          kh.exe
+
+    - name: Upload Artifacts (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: kosh-macos
+        path: |
+          kosh
+          kh
+
+  # ── memory-check job temporarily disabled ────────────────────────────
+  # This job only ever ran on ubuntu-latest (valgrind isn't a Windows
+  # tool) — with the matrix above trimmed to Windows-only, this job
+  # would be pure dead weight (checking out code, installing valgrind,
+  # building, and running it for no reason connected to what's actually
+  # being tested right now). Disabled rather than deleted so re-enabling
+  # is a one-line uncomment, not a rewrite, when Linux/macOS coverage
+  # comes back. This job was ALWAYS non-blocking (continue-on-error:
+  # true) and never gated releases or installs — see the comment that
+  # was here explaining exactly that, preserved below.
+  #
+  # memory-check:
+  #   name: Memory leak check (valgrind, Linux)
+  #   runs-on: ubuntu-latest
+  #   # Informational, not a merge gate yet: exact leak byte-counts can
+  #   # shift slightly across glibc/gcc versions from one-time compiler/
+  #   # parser bookkeeping allocations that are expected (see docs/
+  #   # memory-notes.md). What matters is whether a leak *scales* with
+  #   # runtime/iterations, which a fixed-count job like this can't tell
+  #   # on its own — but this still catches the class of bug found and
+  #   # fixed in this project (a leak on every function return, a leak on
+  #   # every redefinition of a nested-closure global) if it's ever
+  #   # reintroduced, since those are unmissable multi-KB jumps, not a
+  #   # few dozen fixed bytes.
+  #   continue-on-error: true
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #
+  #   - name: Install valgrind and sqlite3 dev headers
+  #     run: sudo apt-get update && sudo apt-get install -y valgrind libsqlite3-dev
+  #
+  #   - name: Build debug binary
+  #     run: |
+  #       gcc -std=c11 -g -O0 -Isrc -D_POSIX_C_SOURCE=200809L \
+  #         -Wno-implicit-function-declaration -Wno-builtin-declaration-mismatch -Wno-cast-function-type \
+  #         src/lexer.c src/parser.c src/ast.c src/chunk.c src/value.c src/compiler.c src/vm.c \
+  #         src/vm_libs.c src/interpreter.c src/khan_stdlib.c src/json_lib.c src/datetime_lib.c \
+  #         src/requests_lib.c src/webi_lib.c src/sqlite_lib.c src/vision_lib.c src/vision_cv.c \
+  #         src/vision_cascade.c src/main.c -o khan_dbg -lm -lsqlite3
+  #
+  #   - name: Run valgrind against the test suite
+  #     run: |
+  #       valgrind --leak-check=full --error-exitcode=99 ./khan_dbg tests/run_all.kh

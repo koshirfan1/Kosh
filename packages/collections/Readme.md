@@ -1,13 +1,13 @@
-# Khan Collections Package — v1.0.0
+# Kosh Collections Package — v1.0.0
 
 **Package**: `collections`  
 **Installation**: `kh install collections`
 
 ## Overview
 
-The `collections` package provides functional array helpers for Khan. Since Khan has no built-in sort, filter, map, or reduce, this package fills that gap with higher-order functions that take a named function as an argument.
+The `collections` package provides functional array helpers for Kosh. Since Kosh has no built-in sort, filter, map, or reduce, this package fills that gap with higher-order functions that take a named function as an argument.
 
-> **Important**: In Khan, a function's closure snapshots the enclosing scope at the moment it is **declared**, not when it is called. Helper functions must be declared **before** any function that calls them — there is no forward reference or hoisting.
+> **Important**: In Kosh, a function's closure snapshots the enclosing scope at the moment it is **declared**, not when it is called. Helper functions must be declared **before** any function that calls them — there is no forward reference or hoisting.
 
 ## Installation
 
@@ -15,7 +15,7 @@ The `collections` package provides functional array helpers for Khan. Since Khan
 kh install collections
 ```
 
-```khan
+```kosh
 import "collections"
 ```
 
@@ -23,14 +23,14 @@ import "collections"
 
 ## Basic Operations
 
-```khan
+```kosh
 reverse_arr(arr)        # Return reversed copy of array
 arr_contains(arr, val)  # Check if array contains value → bool
 ```
 
 #### Examples
 
-```khan
+```kosh
 print reverse_arr([1, 2, 3])        # [3, 2, 1]
 print arr_contains([1, 2, 3], 2)    # true
 print arr_contains([1, 2, 3], 5)    # false
@@ -44,13 +44,13 @@ These functions take a **named function** as an argument. Define your predicate 
 
 ### Filter
 
-```khan
+```kosh
 filter(arr, pred)       # Return array of elements where pred(x) is true
 ```
 
 #### Example
 
-```khan
+```kosh
 fn is_even(n):
     return n % 2 == 0
 
@@ -59,13 +59,13 @@ print filter([1, 2, 3, 4, 5, 6], is_even)   # [2, 4, 6]
 
 ### Map
 
-```khan
+```kosh
 map_each(arr, transform_fn)  # Transform each element
 ```
 
 #### Example
 
-```khan
+```kosh
 fn double(n):
     return n * 2
 
@@ -74,13 +74,13 @@ print map_each([1, 2, 3], double)   # [2, 4, 6]
 
 ### Reduce
 
-```khan
+```kosh
 reduce(arr, reducer, initial)  # Accumulate values left-to-right
 ```
 
 #### Example
 
-```khan
+```kosh
 fn sum(acc, x):
     return acc + x
 
@@ -89,14 +89,14 @@ print reduce([1, 2, 3, 4], sum, 0)   # 10
 
 ### Find
 
-```khan
+```kosh
 find(arr, pred)         # Return first element matching pred, or nil
 find_index(arr, pred)   # Return index of first match, or -1
 ```
 
 #### Example
 
-```khan
+```kosh
 fn is_positive(n):
     return n > 0
 
@@ -106,7 +106,7 @@ print find_index([-3, -2, 0, 1, 2], is_positive)  # 3
 
 ### Matching
 
-```khan
+```kosh
 any_match(arr, pred)        # True if any element matches
 all_match(arr, pred)        # True if all elements match
 count_matching(arr, pred)   # Count matching elements
@@ -114,7 +114,7 @@ count_matching(arr, pred)   # Count matching elements
 
 #### Examples
 
-```khan
+```kosh
 fn is_odd(n):
     return n % 2 == 1
 
@@ -130,28 +130,28 @@ print count_matching([1, 2, 3, 4, 5], is_odd)  # 3
 
 ### Sort Numbers
 
-```khan
+```kosh
 sort(arr)               # Ascending sort (numbers only, insertion sort)
 sort_desc(arr)          # Descending sort
 ```
 
 #### Example
 
-```khan
+```kosh
 print sort([3, 1, 4, 1, 5, 9])         # [1, 1, 3, 4, 5, 9]
 print sort_desc([3, 1, 4, 1, 5, 9])    # [9, 5, 4, 3, 1, 1]
 ```
 
 ### Sort by Key
 
-```khan
+```kosh
 sort_by(arr, key_fn)        # Sort by numeric key extracted from each element
 sort_by_desc(arr, key_fn)   # Sort descending by key
 ```
 
 #### Example
 
-```khan
+```kosh
 fn get_age(person):
     return person["age"]
 
@@ -169,7 +169,7 @@ let sorted = sort_by(people, get_age)
 
 ## Utility Operations
 
-```khan
+```kosh
 chunk(arr, size)        # Split array into chunks of given size
 zip(a, b)               # Pair up elements from two arrays
 unique(arr)             # Remove duplicates (preserves first occurrence)
@@ -177,7 +177,7 @@ unique(arr)             # Remove duplicates (preserves first occurrence)
 
 #### Examples
 
-```khan
+```kosh
 print chunk([1, 2, 3, 4, 5], 2)    # [[1, 2], [3, 4], [5]]
 print zip([1, 2, 3], ["a", "b", "c"])  # [[1, "a"], [2, "b"], [3, "c"]]
 print unique([1, 2, 2, 3, 1, 4])   # [1, 2, 3, 4]
@@ -187,7 +187,7 @@ print unique([1, 2, 2, 3, 1, 4])   # [1, 2, 3, 4]
 
 ## Complete Example
 
-```khan
+```kosh
 import "collections"
 
 # Define helper functions

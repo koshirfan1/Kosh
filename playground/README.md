@@ -1,6 +1,6 @@
-# Khan Playground
+# Kosh Playground
 
-A browser-based way to try Khan with nothing installed — the real
+A browser-based way to try Kosh with nothing installed — the real
 lexer/parser/compiler/VM, compiled to WebAssembly with Emscripten, running
 client-side. No server executes any code; everything happens in the
 visitor's own tab.
@@ -28,8 +28,8 @@ already on the machine.
 
 ## What's deliberately not in this build
 
-This links a **reduced** set of Khan's native libraries — not the same
-36-package, everything-included `khan` binary the CLI produces:
+This links a **reduced** set of Kosh's native libraries — not the same
+36-package, everything-included `kosh` binary the CLI produces:
 
 - **No `webi` / `requests`.** Both need real socket I/O, which doesn't
   exist in a browser's WASM sandbox without substantial extra shimming
@@ -37,7 +37,7 @@ This links a **reduced** set of Khan's native libraries — not the same
   networking layer). Out of scope for a first playground.
 - **No `ocr`.** Needs libtesseract, which isn't compiled to WASM here —
   a real undertaking on its own (tesseract.js exists as a *separate*,
-  already-WASM-ported project; bridging Khan's own C code to a
+  already-WASM-ported project; bridging Kosh's own C code to a
   WASM-compiled libtesseract would be its own project, not a build flag).
 
 **What does work**: the core language (functions, closures, control

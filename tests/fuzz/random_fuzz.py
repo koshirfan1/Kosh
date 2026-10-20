@@ -15,7 +15,7 @@ segfault/abort/hang counts as a finding.
 Usage:
   python3 tests/fuzz/random_fuzz.py [khan_binary] [iterations] [seed]
 
-Defaults: ./khan, 500 iterations, a fixed seed (for reproducibility —
+Defaults: ./kosh, 500 iterations, a fixed seed (for reproducibility —
 pass a different seed or 0 for a randomized run).
 """
 import subprocess
@@ -25,7 +25,7 @@ import random
 import glob
 import tempfile
 
-KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./khan"
+KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
 ITERATIONS = int(sys.argv[2]) if len(sys.argv) > 2 else 500
 SEED = int(sys.argv[3]) if len(sys.argv) > 3 else 42
 TIMEOUT_SECS = 3

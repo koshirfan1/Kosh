@@ -4,7 +4,7 @@
 # regression_mod_div_zero.kh, this is EXPECTED to halt the script, so
 # there's nothing to assert on in-language. Run manually or from CI:
 #
-#   .\khan tests/regression_stack_overflow.kh
+#   .\kosh tests/regression_stack_overflow.kh
 #     -> should print "Fatal: stack overflow (exceeded 16384 values)..."
 #        and exit non-zero (70) — NOT segfault (exit 139/SIGSEGV).
 #

@@ -16,6 +16,9 @@ typedef enum {
     VAL_NATIVE,
     VAL_ARRAY,
     VAL_MAP,
+    VAL_TENSOR,    /* a native n-dimensional array of doubles — real
+                       contiguous storage (data/shape/ndim/size below),
+                       not a nested-array simulation. See tensor_lib.c. */
     VAL_CLASS,     /* a `class Name: ...` value — its Obj's as.map holds
                        method_name -> VAL_FUNCTION entries, keyed and
                        stored exactly like a VAL_MAP (see map_get/map_set
@@ -93,6 +96,13 @@ typedef struct Obj {
             int *hash_index;     /* open-addressing index -> entries[] slot, -1 = empty */
             int hash_capacity;   /* power of 2, 0 = not yet allocated */
         } map;
+        struct {
+            double *data;   /* flat, row-major, owned, length == size */
+            int    *shape;  /* owned, length == ndim; ndim==0 is a scalar
+                                tensor (size == 1, shape == NULL) */
+            int     ndim;
+            int     size;   /* product of shape[], total element count */
+        } tensor;
     } as;
 } Obj;
 
@@ -144,6 +154,11 @@ Value value_array(Value *items, int count);
 Value value_map_empty(void);
 Value value_class_new(const char *name);
 Value value_instance_new(Value klass); /* klass.type must be VAL_CLASS */
+Value value_tensor(const double *data, const int *shape, int ndim); /* copies both */
+#define AS_TENSOR_DATA(v)  ((v).as.obj->as.tensor.data)
+#define AS_TENSOR_SHAPE(v) ((v).as.obj->as.tensor.shape)
+#define AS_TENSOR_NDIM(v)  ((v).as.obj->as.tensor.ndim)
+#define AS_TENSOR_SIZE(v)  ((v).as.obj->as.tensor.size)
 void  gc_collect_cycles(void); /* see value.c's "Cycle collector" section */
 
 void map_set(Value *map, const char *key, Value value);

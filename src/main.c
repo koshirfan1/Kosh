@@ -61,11 +61,11 @@ static char *read_file(const char *path) {
 
 static void print_usage(FILE *out) {
     fprintf(out,
-        "Khan " KHAN_VERSION "\n"
-        "Usage: khan <script.kh> [args...]\n"
-        "       khan                    (starts an interactive REPL)\n"
-        "       khan --version | -v\n"
-        "       khan --help    | -h\n"
+        "Kosh " KHAN_VERSION "\n"
+        "Usage: kosh <script.kh> [args...]\n"
+        "       kosh                    (starts an interactive REPL)\n"
+        "       kosh --version | -v\n"
+        "       kosh --help    | -h\n"
         "\n"
         "Once run, extra arguments after the script path are available\n"
         "inside the script as the global array `argv` (argv[0] is the\n"
@@ -74,7 +74,7 @@ static void print_usage(FILE *out) {
 }
 
 /* Registers every native library the script-running path also
-   registers, so the REPL and `khan script.kh` behave identically as
+   registers, so the REPL and `kosh script.kh` behave identically as
    far as what's available to call — `import` isn't needed for any of
    these either way, matching how the script path already works.
    Kept as its own function specifically so run_repl() and main()'s
@@ -124,7 +124,7 @@ static char *read_repl_input(void) {
     int have_any = 0;
 
     for (;;) {
-        printf(in_block ? "... " : "khan> ");
+        printf(in_block ? "... " : "kosh> ");
         fflush(stdout);
 
         if (!fgets(line, sizeof(line), stdin)) {
@@ -169,7 +169,7 @@ static char *read_repl_input(void) {
     return buf;
 }
 
-/* Interactive mode — entered when `khan` is run with no script
+/* Interactive mode — entered when `kosh` is run with no script
  * argument, the same trigger Python's own `python` (no args) uses for
  * its REPL. One VM instance persists across every line typed, so a
  * `let x = 5` on one line is still visible as `x` on the next — the
@@ -186,7 +186,7 @@ static char *read_repl_input(void) {
  * matching how a real interactive interpreter should behave when
  * given bad input, rather than being one-mistake-and-you're-out. */
 static int run_repl(void) {
-    printf("Khan " KHAN_VERSION " — interactive mode. Type 'exit' or press Ctrl+D to quit.\n");
+    printf("Kosh " KHAN_VERSION " — interactive mode. Type 'exit' or press Ctrl+D to quit.\n");
 
     VM vm;
     vm_init(&vm);
@@ -270,7 +270,7 @@ int main(int argc, char *argv[]) {
        other way; this is a deliberate, minor trade-off in favor of
        the common case working without ceremony). */
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-        printf("Khan " KHAN_VERSION "\n");
+        printf("Kosh " KHAN_VERSION "\n");
         return 0;
     }
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {

@@ -1,0 +1,104 @@
+name: Deploy Playground to GitHub Pages
+
+# Deploys the static files in playground/ (index.html, khan.js, khan.wasm)
+# to GitHub Pages, unchanged, on every push to main that touches that
+# directory. No build step at deploy time — the WASM/JS artifacts are
+# already committed (see playground/build.sh if they ever need
+# regenerating from source; that's a separate, manual step requiring
+# emcc, not part of this workflow).
+#
+# Structured as two jobs (build, then deploy) rather than one,
+# matching GitHub's own official Pages-deployment template exactly —
+# an earlier version of this file combined both into a single job and
+# was missing the `actions/configure-pages` step entirely. Neither was
+# caught by local review; both are exactly the kind of deviation from
+# a well-tested official template that this project's other workflow
+# (c-cpp.yml) already learned the hard way costs real debugging time
+# on an actual run, for a hand-rolled shortcut that saves very little.
+# This version follows the template as closely as reasonably possible
+# instead of a shortened version of it.
+#
+# NOTE: this workflow has not been run through actual GitHub Actions in
+# the environment this was authored in (no such access there) — same
+# caveat as .github/workflows/c-cpp.yml's own, documented in
+# ROADMAP_STATUS_UPDATED.md item 17. Sticking close to the official
+# template is exactly the mitigation available for that gap here: it's
+# the version most likely to work on a first real run precisely because
+# it's the version GitHub tests and documents, not a shortened one this
+# project came up with independently.
+#
+# One-time setup REQUIRED (confirmed by an actual failed run — this
+# isn't a "just in case" note) before this workflow can succeed:
+#   1. Go to the repo on github.com → Settings → Pages
+#   2. Under "Build and deployment" → "Source", change the dropdown
+#      from "Deploy from a branch" to "GitHub Actions"
+#   3. Re-run this workflow (Actions tab → this workflow → "Re-run
+#      all jobs", or push again, or use "Run workflow" if
+#      workflow_dispatch is available)
+# Without step 2, this workflow's `configure-pages`/`deploy-pages`
+# steps fail with "Get Pages site failed" / "Resource not accessible
+# by integration" — the default GITHUB_TOKEN this workflow runs with
+# can DEPLOY to an existing Pages site but cannot CREATE one from
+# scratch; only a repo admin doing step 2 by hand in the web UI can.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "playground/**"
+      - ".github/workflows/deploy-playground.yml"
+  workflow_dispatch: {} # allows triggering manually from the Actions tab,
+                        # useful for the very first deploy or to re-run
+                        # without an unrelated commit
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time; if a new push comes in while one is
+# still running, let the in-progress one finish rather than cancelling
+# it (cancelling a live deployment mid-way is worse than a short queue).
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Sets up the Pages environment (detects the repo's Pages
+      # configuration, sets the correct base URL for the artifact
+      # that follows) — required by GitHub's own documented pattern,
+      # and was missing entirely from an earlier version of this file.
+      # `enablement: true` was tried here to auto-create the Pages site
+      # via the API instead of requiring the manual toggle below — an
+      # actual run confirmed it does NOT work with this workflow's
+      # default GITHUB_TOKEN permissions ("Resource not accessible by
+      # integration": creating a Pages site for the first time needs
+      # repo-admin-level access that `pages: write` alone doesn't grant,
+      # even though that same permission is enough to DEPLOY to a site
+      # that already exists). Removed rather than left in non-
+      # functional — the manual step below is confirmed required, not
+      # just documented as a possibility.
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload playground/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,4 +1,4 @@
-# Khan v1.0 Roadmap — Status (Updated)
+# Kosh v1.0 Roadmap — Status (Updated)
 
 Tracking against the 19-point stability plan. Honest status, not optimistic status.
 This revision layers a second session's findings on top of the previous update —
@@ -29,8 +29,8 @@ most basic blocker of all:
   regression automatically going forward.
 
 **Bottom line: prior to this session, `make` did not produce a working
-`khan` binary on Linux from a clean checkout.** Everything below assumes
-this is now fixed and verified (`make clean && make` succeeds, `khan` runs).
+`kosh` binary on Linux from a clean checkout.** Everything below assumes
+this is now fixed and verified (`make clean && make` succeeds, `kosh` runs).
 
 ---
 
@@ -203,7 +203,7 @@ this is now fixed and verified (`make clean && make` succeeds, `khan` runs).
   fix. Now fails safely with a clear message and a clean exit (70)
   instead of corrupting adjacent memory — see `tests/
   regression_stack_overflow.kh` and the design tradeoff noted in the
-  fix's own comment (a hard abort rather than a catchable Khan-level
+  fix's own comment (a hard abort rather than a catchable Kosh-level
   error, since threading a recoverable error through every `push()`/
   `pop()` call site in `run_loop` would be a much larger, riskier
   change than the safety win justifies here). Ordinary deep recursion
@@ -234,7 +234,7 @@ this is now fixed and verified (`make clean && make` succeeds, `khan` runs).
 - 🟡 **(session 6)** Inline-native-call optimization — investigated
   properly rather than left untouched or rushed. Measured: calling
   `len()` 3M times is ~17-22% slower than not calling anything, and
-  costs about the same as calling an equivalent trivial Khan-level
+  costs about the same as calling an equivalent trivial Kosh-level
   function despite very different call mechanisms — pointing at the
   shared global-hash-lookup step (not the call mechanism itself) as
   the likely larger contributor, roughly confirming the roadmap's
@@ -344,7 +344,7 @@ this is now fixed and verified (`make clean && make` succeeds, `khan` runs).
   entries, `strdup`'d native function names), never growing with
   runtime. Deliberately left as-is — see `docs/memory-notes.md` for the
   reasoning (this is normal for a short-lived script interpreter; only
-  matters if Khan starts running many scripts in one long-lived
+  matters if Kosh starts running many scripts in one long-lived
   process, which it doesn't today).
 (Memory-safety tools ran ad hoc during session 2's debugging — ASAN/gdb
 were used to isolate a buffer-overflow bug and a silent runtime-error
@@ -352,7 +352,7 @@ swallow. Session 3 turned this into an actual repeatable methodology,
 documented above and in `docs/memory-notes.md`.)
 
 ## 8. Garbage collector — ✅ Done (was ❌ Not started)
-- Khan uses manual/ref-counted memory management, not a tracing GC, as
+- Kosh uses manual/ref-counted memory management, not a tracing GC, as
   far as I've seen — worth confirming with the maintainer whether GC is
   even on the roadmap or if manual management is the permanent design.
 - No circular-reference/huge-object/nested-array stress testing either way.
@@ -437,7 +437,7 @@ documented above and in `docs/memory-notes.md`.)
     correctly-implemented hash table: FNV-1a hashing, linear-probing
     collision resolution, doubles at 75% load factor. Nothing wrong
     found here.
-  - **The Khan-language `{}` map type — used everywhere in real Khan
+  - **The Kosh-language `{}` map type — used everywhere in real Kosh
     programs — is a linear-scan array, not a hash table at all.**
     `map_set`/`map_get` in `value.c` do a full O(n) scan of every
     existing key on every call. Verified empirically: building a map
@@ -589,7 +589,7 @@ documented above and in `docs/memory-notes.md`.)
     response (the framework doesn't force this — by design, matching
     `_webi_default_404`'s own use of `res_not_found()` — the test
     handler just needed to do the same)
-  - Python-style `"=" * 50` string-repeat syntax that Khan has never
+  - Python-style `"=" * 50` string-repeat syntax that Kosh has never
     supported
   Now **137/137 passing**, 0 stderr noise (previously 2 silently
   swallowed runtime errors printed on every run — see #13/#14).
@@ -718,14 +718,58 @@ documented above and in `docs/memory-notes.md`.)
   each step as its own subshell.
 - 🟡 Benchmarks still not wired in (see #16 — deliberately not done yet,
   timing noise across CI hardware needs more thought first)
-- ❌ Unverified end-to-end — this was written and the underlying shell
-  logic/commands were tested locally (they all pass), but the workflow
-  YAML itself hasn't been run through actual GitHub Actions in this
-  environment (no such access here) — flagging this explicitly rather
-  than claiming more confidence than is warranted. This caveat has now
-  applied across two sessions in a row; if this project has any GitHub
-  Actions minutes available, actually pushing this and watching it run
-  once would be higher-value than most other things left on this list.
+- ✅ **(this session, follow-up)** The "not run through actual GitHub
+  Actions" gap above finally closed partway — the maintainer actually
+  ran this workflow (Windows-only, per a scope change also made this
+  session — see below) and it found two **real** bugs on the first
+  try, exactly the kind of thing this CI exists to catch:
+  1. **`strndup` type error on MinGW** (`makes pointer from integer
+     without a cast`). The codebase already had a portable fallback
+     (`local_strndup`) for exactly this — but its guard condition
+     (`#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L`)
+     assumed that macro reliably signals whether the platform's own
+     `strndup` is usable, which holds on glibc but not on MinGW-w64,
+     and the makefile defines that macro at 200809L unconditionally on
+     every platform including Windows — so the fallback was silently
+     never compiled in on the one platform it existed for. Fixed by
+     dropping the platform-detection guard entirely: the fallback
+     (renamed `khan_strndup`, avoiding any name collision with a
+     system declaration) is now used unconditionally on every
+     platform, removing the "does this libc expose this GNU extension
+     under these flags" question altogether rather than trying to
+     detect it correctly a second time.
+  2. **`sqlite3.h: No such file or directory` despite `pacman`
+     reporting success.** The original Windows CI step installed
+     sqlite3 via MSYS2's `pacman`, then appended its bin directory to
+     `GITHUB_PATH` for later `cmd`-shell steps to pick up — but
+     `windows-latest` likely has another gcc/mingw toolchain (e.g. one
+     bundled with Strawberry Perl, also on that image) earlier on the
+     default PATH, so the actual `make`/`gcc` invoked later could
+     silently resolve to a different toolchain than the one pacman had
+     just installed sqlite3 into. Fixed by switching to the official
+     `msys2/setup-msys2` action with `shell: msys2 {0}` for every
+     Windows step, which gives each step an isolated environment where
+     `gcc`/`make`/`sqlite3` all resolve consistently from the same
+     place, instead of depending on ambient PATH ordering on a shared
+     runner image to happen to come out right.
+  Both fixes verified by rebuilding and re-running the full local test
+  suite (158+137 assertions, from-import, vision, package sweep, both
+  regression tests, negative-case suite) after the `strndup` change —
+  the MSYS2/shell fix itself still carries the same "not verified
+  against an actual Windows runner in this environment" caveat as
+  before, since fixing it required reasoning about GitHub's runner
+  image layout rather than being able to reproduce the exact failure
+  locally (this sandbox has no Windows runner either) — but it's a
+  well-documented, widely-used mechanism (many real projects build
+  MSYS2/MinGW-w64 targets on GitHub Actions exactly this way) rather
+  than the hand-rolled approach that was already demonstrated wrong.
+- ✅ **(this session)** Scope change at the maintainer's request: the
+  build matrix is Windows-only for now (previously
+  `[ubuntu-latest, windows-latest, macos-latest]`), and the Linux-only
+  `memory-check` (valgrind) job is disabled. Both changes are
+  reversible one-liners (uncomment/re-add), not rewrites — done this
+  way specifically so returning to full multi-OS coverage later isn't
+  a redo from scratch.
 - ✅ **(this session)** Re-verified every one of this workflow's test
   gates by hand, end to end, against a build containing this session's
   full set of changes (hash-map rewrite, string-concat partial fix,
@@ -764,7 +808,7 @@ documented above and in `docs/memory-notes.md`.)
   memory audit: what was found, why, the fix, and how to reproduce the
   methodology for future audits.
 - ✅ **(session 4)** `docs/hash-table-audit.md` — full writeup of the
-  #11 finding (the Khan-language map type isn't a hash table).
+  #11 finding (the Kosh-language map type isn't a hash table).
 - ✅ **(session 4)** `benchmarks/RESULTS.md` — real, executed benchmark
   numbers plus analysis, including the string-concatenation and map
   quadratic-growth findings.
@@ -924,7 +968,7 @@ are still missing, though the VM/memory side is now meaningfully
 better documented than the compiler/parser side. CI (#17) went from
 nonexistent-in-practice to real but unverified-on-actual-GitHub-Actions,
 which is an honest caveat, not a claim of completion. Your friend's
-original instinct that Khan isn't v1.0-ready yet remains correct — but
+original instinct that Kosh isn't v1.0-ready yet remains correct — but
 the specific *reason* it isn't ready has shifted across these three
 sessions from "does it even build" to "does it work" to "does it work
 without silently consuming more memory forever," which is a real
@@ -950,18 +994,18 @@ trajectory toward v1.0, not just a longer list of caveats.
    the value stack before the separate frame-count limit kicks in).
    Now fails safely with a clear message instead of corrupting memory.
 4. **Built the benchmark suite from scratch** (#16, previously fully
-   unstarted): 5 benchmarks × Khan/Python/Node/C-where-applicable, a
+   unstarted): 5 benchmarks × Kosh/Python/Node/C-where-applicable, a
    runner, and real executed results with analysis — not placeholder
    numbers.
 5. **The benchmarks immediately found two real, concrete performance
    bugs**, both documented in depth rather than just measured:
    - String concatenation is O(n²) in a loop — traced to a specific,
      unnecessary `strlen()` call on the accumulated string in `OP_ADD`.
-   - Building a `{}` map is O(n²) — because **Khan's map type is a
+   - Building a `{}` map is O(n²) — because **Kosh's map type is a
      linear-scan array, not a hash table at all**, despite roadmap
      item #11 describing it as if it were. This is arguably the single
      most consequential correctness-adjacent finding of this session,
-     since `{}` maps are used pervasively throughout every real Khan
+     since `{}` maps are used pervasively throughout every real Kosh
      program.
 6. **Did a full hash-table audit** (#11, previously fully unstarted)
    and found the above — plus confirmed the VM's *actual* hash table

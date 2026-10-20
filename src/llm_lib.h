@@ -19,10 +19,10 @@
  * run inference on it.
  *
  * Requires libllama.a / libggml*.a to be built (see docs/llm.md) and linked
- * into the `khan` binary. Hard build-time dependency, same posture as `ocr`
+ * into the `kosh` binary. Hard build-time dependency, same posture as `ocr`
  * requiring libtesseract-dev: if the libs aren't there, the build fails
  * rather than silently degrading to a fake. Because ggml/llama.cpp are C++
- * internally, the *linker* for the final `khan` binary must be g++ (or gcc
+ * internally, the *linker* for the final `kosh` binary must be g++ (or gcc
  * with -lstdc++ added) even though this wrapper file itself is plain C —
  * see docs/llm.md for the exact makefile change.
  *

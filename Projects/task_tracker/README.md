@@ -2,7 +2,7 @@
 
 A small but genuinely complete web app: `webi` (routes/server) + `sqlite`
 (real persistence) + session-based per-user task ownership. Built to
-exercise Khan as an actual web backend, not just isolated feature demos.
+exercise Kosh as an actual web backend, not just isolated feature demos.
 
 ## A real bug found and fixed to build this
 
@@ -20,7 +20,7 @@ default build, `libsqlite3-dev` at build time). All four functions
 (`sqlite_open`/`sqlite_exec`/`sqlite_query`/`sqlite_close`) do real work:
 verified by writing rows in one process, reading them back correctly in
 a separate process invocation, and confirming the file on disk is a
-genuine SQLite database (`file` command output, not just a Khan-internal
+genuine SQLite database (`file` command output, not just a Kosh-internal
 format).
 
 ## Parameter binding (this matters, not just style)
@@ -40,7 +40,7 @@ parameter binding is actually for, demonstrated, not just claimed.
 
 ## Auth - deliberately simple, stated plainly
 
-Khan has no password-hashing primitive (no sha256/bcrypt native exists
+Kosh has no password-hashing primitive (no sha256/bcrypt native exists
 anywhere in this codebase). Rather than fake security with something
 that looks like a password check but isn't, this app has no passwords at
 all: `POST /login` with any username creates that user the first time or
@@ -48,8 +48,8 @@ logs into the existing one after, and returns a real, server-checked
 session token (verified against a `sessions` table on every subsequent
 request). That means anyone who knows a username can act as that user -
 fine for a local/demo tool, not fine for anything with real accounts.
-Adding real auth needs a real hash primitive in Khan first, which this
-project doesn't add (out of scope here - a Khan core change, not an app
+Adding real auth needs a real hash primitive in Kosh first, which this
+project doesn't add (out of scope here - a Kosh core change, not an app
 concern).
 
 ## One honest API nuance
@@ -68,7 +68,7 @@ this; the data isolation holds regardless.
 
 The `datetime` package's own comment claims `clock()` returns "seconds
 since epoch," and `dt_now()`/`dt_format()` are built on that assumption.
-It doesn't - Khan's native `clock()` is the C standard library's
+It doesn't - Kosh's native `clock()` is the C standard library's
 CPU-time clock, not wall-clock time. Confirmed directly:
 `dt_format(dt_now())` returns `"00:00:00"`, always, regardless of when
 it's actually called. Not fixed here (a `datetime` package problem, not
@@ -91,20 +91,20 @@ Two path-resolution conventions collided while wiring this up, found by
 actually testing rather than assumed:
 - `serve_static(app, "/static", "public")`'s folder argument resolves
   relative to *this .kh file's own directory* - works regardless of
-  where you run `khan` from.
+  where you run `kosh` from.
 - `read_file()` (used in `h_index` to load `index.html`) resolves
   relative to the *process's working directory* instead - same
   convention as `llm_load()` in the LLM bridge, different from
-  `serve_static()`. Run `khan` from the repo root, as below; that's the
+  `serve_static()`. Run `kosh` from the repo root, as below; that's the
   path `read_file()` here is written for.
 
 ## Run it
 
 ```bash
-./khan examples/task_tracker/app.kh
+./kosh examples/task_tracker/app.kh
 # then open http://localhost:8200 in a browser
 ```
 
 Requires `libsqlite3-dev` at build time (new default-build dependency -
 see the makefile diff). Data persists in `tasks.db` next to wherever you
-run `khan` from.
+run `kosh` from.

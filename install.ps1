@@ -1,4 +1,4 @@
-# Khan installer for Windows — mirrors the "irm | iex" experience of
+# Kosh installer for Windows — mirrors the "irm | iex" experience of
 # rustup, deno, etc. on Windows, and persists PATH the same way the
 # official Python/Node.js Windows installers do: writing to the
 # CURRENT USER's Environment registry key via
@@ -24,14 +24,14 @@
 #   1. Checks for gcc and make on PATH (refuses to silently half-install).
 #   2. Checks for sqlite3.h reachability the same way install.sh does
 #      (a header-only compile check, not a full build).
-#   3. Uses the current directory if it looks like a Khan checkout,
+#   3. Uses the current directory if it looks like a Kosh checkout,
 #      otherwise clones the repo into $env:USERPROFILE\.khan\src.
 #   4. Runs `make`.
-#   5. Copies khan.exe/kh.exe into $env:USERPROFILE\.khan\bin.
+#   5. Copies kosh.exe/kh.exe into $env:USERPROFILE\.khan\bin.
 #   6. Adds that folder to the CURRENT USER's PATH (persisted via the
 #      registry, survives closing this window) — the same mechanism
 #      Python's "Add to PATH" installer checkbox uses under the hood.
-#   7. Verifies with `khan --version`.
+#   7. Verifies with `kosh --version`.
 #
 # Safe to re-run — every step is idempotent.
 
@@ -46,12 +46,12 @@ function Info($msg) { Write-Host "  $msg" }
 function Warn($msg) { Write-Host "  $msg" -ForegroundColor Yellow }
 function Fail($msg) { Write-Host "  Error: $msg" -ForegroundColor Red; exit 1 }
 
-Write-Host "Khan installer (Windows)"
+Write-Host "Kosh installer (Windows)"
 Write-Host "========================"
 
 # -- 1. Compiler + make --------------------------------------------------
 if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
-    Fail "gcc not found on PATH. Khan needs a GCC toolchain (MSYS2/MinGW-w64) to build from source.`n`n    Install MSYS2 from https://www.msys2.org/, then from an MSYS2 MinGW64 shell:`n        pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3`n    and make sure C:\msys64\mingw64\bin is on your PATH before re-running this script."
+    Fail "gcc not found on PATH. Kosh needs a GCC toolchain (MSYS2/MinGW-w64) to build from source.`n`n    Install MSYS2 from https://www.msys2.org/, then from an MSYS2 MinGW64 shell:`n        pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3`n    and make sure C:\msys64\mingw64\bin is on your PATH before re-running this script."
 }
 if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     Fail "make not found on PATH. Install it the same way as gcc above (mingw-w64-x86_64-make)."
@@ -72,13 +72,13 @@ try {
 }
 Remove-Item -Recurse -Force $sqliteCheckDir -ErrorAction SilentlyContinue
 if (-not $sqliteOk) {
-    Fail "sqlite3.h not found -- Khan's sqlite bridge needs the dev headers.`n`n    From an MSYS2 MinGW64 shell:`n        pacman -S mingw-w64-x86_64-sqlite3`n    Then re-run this script."
+    Fail "sqlite3.h not found -- Kosh's sqlite bridge needs the dev headers.`n`n    From an MSYS2 MinGW64 shell:`n        pacman -S mingw-w64-x86_64-sqlite3`n    Then re-run this script."
 }
 Info "Found sqlite3 dev headers."
 
 # -- 3. Get the source ----------------------------------------------------
 if ((Test-Path ".\makefile") -and (Test-Path ".\src\main.c")) {
-    Info "Running from an existing Khan checkout -- building in place."
+    Info "Running from an existing Kosh checkout -- building in place."
     $BuildDir = "."
 } elseif (Test-Path (Join-Path $KhanSrc ".git")) {
     Info "Reusing existing checkout at $KhanSrc -- pulling latest."
@@ -86,9 +86,9 @@ if ((Test-Path ".\makefile") -and (Test-Path ".\src\main.c")) {
     $BuildDir = $KhanSrc
 } else {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Fail "git not found and no local checkout detected -- install git or run this script from inside a Khan checkout."
+        Fail "git not found and no local checkout detected -- install git or run this script from inside a Kosh checkout."
     }
-    Info "Cloning Khan into $KhanSrc ..."
+    Info "Cloning Kosh into $KhanSrc ..."
     New-Item -ItemType Directory -Path $KhanHome -Force | Out-Null
     git clone --depth 1 $KhanRepo $KhanSrc
     $BuildDir = $KhanSrc
@@ -106,7 +106,7 @@ try {
 
 Info "Installing to $KhanBin ..."
 New-Item -ItemType Directory -Path $KhanBin -Force | Out-Null
-Copy-Item (Join-Path $BuildDir "khan.exe") (Join-Path $KhanBin "khan.exe") -Force
+Copy-Item (Join-Path $BuildDir "kosh.exe") (Join-Path $KhanBin "kosh.exe") -Force
 Copy-Item (Join-Path $BuildDir "kh.exe")   (Join-Path $KhanBin "kh.exe")   -Force
 
 # -- 6. Persist PATH for the CURRENT USER ----------------------------------
@@ -128,8 +128,8 @@ if ($pathEntries -contains $KhanBin) {
 } else {
     $newPath = if ($currentUserPath.Trim() -eq "") { $KhanBin } else { "$currentUserPath;$KhanBin" }
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    # Also update the current session's PATH so `khan --version` below
-    # (and any use of `khan` for the rest of THIS terminal session)
+    # Also update the current session's PATH so `kosh --version` below
+    # (and any use of `kosh` for the rest of THIS terminal session)
     # works immediately, without waiting for a new window.
     $env:Path = "$env:Path;$KhanBin"
     Info "Added $KhanBin to your User PATH (persisted -- new terminal windows will have it automatically)."
@@ -137,14 +137,14 @@ if ($pathEntries -contains $KhanBin) {
 
 # -- 7. Verify --------------------------------------------------------------
 Write-Host ""
-$khanExe = Join-Path $KhanBin "khan.exe"
+$khanExe = Join-Path $KhanBin "kosh.exe"
 try {
     $version = & $khanExe --version
     Write-Host "Installed: $version" -ForegroundColor Green
     Write-Host ""
-    Write-Host "This terminal window already has khan on PATH. New windows will too."
-    Write-Host "    khan --version"
-    Write-Host "    khan path\to\script.kh"
+    Write-Host "This terminal window already has kosh on PATH. New windows will too."
+    Write-Host "    kosh --version"
+    Write-Host "    kosh path\to\script.kh"
 } catch {
     Warn "Build finished but $khanExe --version didn't run cleanly -- something's off."
     Warn "Try running it directly to see the error: $khanExe --version"

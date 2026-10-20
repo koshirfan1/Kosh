@@ -37,7 +37,7 @@ except ImportError:
           "docs/memory-notes.md, not a replacement for it.")
     sys.exit(0)
 
-KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./khan"
+KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
 ITERATIONS = 10_000_000
 SAMPLE_INTERVAL = 0.5
 
@@ -107,7 +107,7 @@ def run_scenario(name, script, khan_bin):
     os.remove(script_path)
 
     if proc.returncode != 0:
-        print(f"FAILED: khan exited with code {proc.returncode}")
+        print(f"FAILED: kosh exited with code {proc.returncode}")
         print(stderr.decode(errors="replace")[:500])
         return False
 

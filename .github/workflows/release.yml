@@ -1,0 +1,110 @@
+name: Release (Windows)
+
+# Builds kosh.exe/kh.exe, runs the core test suite as a gate, compiles
+# the Inno Setup GUI installer (khan-installer.iss), and publishes all
+# three as assets on a GitHub Release. Triggered by pushing a version
+# tag (e.g. `git tag v0.010.0 && git push origin v0.010.0`), or
+# manually from the Actions tab via workflow_dispatch for a test run
+# without needing a real tag.
+#
+# Windows-only, matching this project's other CI workflow's current
+# scope (c-cpp.yml) — see that file's own comments and
+# ROADMAP_STATUS_UPDATED.md item 17 for why, and for the several real,
+# found-by-an-actual-run bugs (strndup, MSYS2/PATH, bash errexit,
+# MSYS2's shell not exposing Python) that shaped how that workflow
+# ended up structured the way it did. This workflow reuses that same,
+# now-battle-tested MSYS2 setup rather than re-deriving it.
+#
+# NOT VERIFIED END-TO-END against a real GitHub Actions run in the
+# environment this was authored in (no such access there) — same
+# standing caveat as this project's other workflows. One specific
+# assumption worth flagging: this relies on Inno Setup being
+# preinstalled on the `windows-latest` GitHub-hosted runner image at
+# `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`, which is documented
+# in GitHub's own `actions/runner-images` software manifest for that
+# image as of this writing — if a future runner image update moves or
+# removes it, the "Compile installer" step below will fail with a
+# clear "file not found" rather than silently skipping, which is the
+# right failure mode for something this workflow can't verify itself.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {} # lets you run this once by hand from the Actions
+                        # tab to sanity-check it before ever pushing a
+                        # real tag — the release step below only
+                        # actually publishes when triggered by a tag
+                        # push (see its own `if:`), so a manual
+                        # workflow_dispatch run builds and tests
+                        # everything but stops short of creating a
+                        # Release, which is the safe default for a
+                        # "let me just check this works" run.
+
+permissions:
+  contents: write # needed to create a Release and upload assets
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same MSYS2 setup as .github/workflows/c-cpp.yml, kept
+      # deliberately identical rather than reinvented — see that
+      # file's own extensive comments for exactly why this specific
+      # approach (official msys2/setup-msys2 action, not hand-rolled
+      # PATH manipulation) is what it is; this workflow benefits from
+      # those same lessons without needing to re-learn them.
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          pathtype: inherit
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-sqlite3
+
+      - name: Build
+        shell: msys2 {0}
+        run: make
+
+      # Gate the release on the core suite actually passing — a tag
+      # push shouldn't publish a release built from something broken.
+      # This is deliberately just the core suite (not the full matrix
+      # of checks c-cpp.yml runs) to keep this workflow focused on
+      # "is this build sound enough to ship," not a duplicate of CI.
+      - name: Run core test suite (release gate)
+        shell: msys2 {0}
+        run: ./kosh.exe tests/run_all.kh
+
+      - name: Compile Windows installer (Inno Setup)
+        shell: pwsh
+        # Not msys2 {0} here — ISCC.exe is a native Windows tool, and
+        # this step needs no bash-specific syntax, same reasoning as
+        # the two Python-invoking steps in c-cpp.yml that also use
+        # pwsh instead of msys2 {0}.
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" khan-installer.iss
+          # khan-installer.iss's own [Files] section expects kosh.exe/
+          # kh.exe sitting next to it — true here since the Build step
+          # above just produced them in the checkout root, and this
+          # .iss file lives in the checkout root too.
+
+      - name: Publish GitHub Release
+        # Only when triggered by an actual tag push — a manual
+        # workflow_dispatch run (see the trigger comment above) builds
+        # and tests everything above but stops here, without
+        # publishing anything, so it's safe to run by hand just to
+        # check the build/test/compile steps work.
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kosh.exe
+            kh.exe
+            Output/kosh-setup-*.exe
+          generate_release_notes: true

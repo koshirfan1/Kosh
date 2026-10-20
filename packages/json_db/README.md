@@ -1,4 +1,4 @@
-# Khan JSON Database Package — v1.0.0
+# Kosh JSON Database Package — v1.0.0
 
 **Package**: `json_db`  
 **Installation**: `kh install json_db`
@@ -13,7 +13,7 @@ The `json_db` package provides a simple NoSQL database using JSON files. It stor
 kh install json_db
 ```
 
-```khan
+```kosh
 import "json_db"
 ```
 
@@ -21,7 +21,7 @@ import "json_db"
 
 ## Functions
 
-```khan
+```kosh
 db_open(path)               # Open/create a JSON database file → db map
 db_get(db, key, default)    # Get value by key (or default)
 db_set(db, key, value)      # Set value by key
@@ -32,7 +32,7 @@ db_save(db)                 # Save database to disk → bool
 
 #### Example
 
-```khan
+```kosh
 # Open database
 let db = db_open("mydb.json")
 
@@ -53,7 +53,7 @@ db_save(db)
 
 ## Complete Example
 
-```khan
+```kosh
 import "json_db"
 
 # Open or create database

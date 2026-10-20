@@ -1,6 +1,6 @@
-# Khan Programming Language
+# Kosh Programming Language
 
-<p align="center"><img src="assets/khan-icon-256.png" width="128" height="128" alt="Khan logo"></p>
+<p align="center"><img src="assets/khan-icon-256.png" width="128" height="128" alt="Kosh logo"></p>
 
 ![Language](https://img.shields.io/badge/language-C11-blue)
  ![Build](https://img.shields.io/badge/build-make-green)
@@ -8,11 +8,13 @@
 ![Status](https://img.shields.io/badge/status-pre--1.0%20active%20development-yellow)
 ![Packages](https://img.shields.io/badge/packages-37-purple)
 
-**Khan** is a custom, indentation-based programming language built entirely from scratch in C11 — lexer, parser, bytecode compiler, and VM, with no dependency on any other language's runtime. Created by **Irfan Khan**, this project is a hands-on exploration of compiler design, virtual machine implementation, and standard library engineering, with a 37-package ecosystem spanning web development, classical computer vision, real OCR, and network protocols. The language draws inspiration from Python's clean indentation syntax and Lua's simplicity, while keeping a minimal footprint in pure C.
+**Kosh** is a custom, indentation-based programming language built entirely from scratch in C11 — lexer, parser, bytecode compiler, and VM, with no dependency on any other language's runtime. Created by **Irfan Khan**, this project is a hands-on exploration of compiler design, virtual machine implementation, and standard library engineering, with a 37-package ecosystem spanning web development, classical computer vision, real OCR, and network protocols. The language draws inspiration from Python's clean indentation syntax and Lua's simplicity, while keeping a minimal footprint in pure C.
 
-Honest framing, since this README makes a point of not overstating things: Khan is **pre-1.0** by its own [roadmap](#roadmap)'s criteria. It's a real, working, multi-session-hardened language and runtime, not a toy — but if you're picking a language to ship something in tomorrow, this isn't that. If you want to see how a real bytecode VM and a real package ecosystem get built from nothing, read on.
+Honest framing, since this README makes a point of not overstating things: Kosh is **pre-1.0** by its own [roadmap](#roadmap)'s criteria. It's a real, working, multi-session-hardened language and runtime, not a toy — but if you're picking a language to ship something in tomorrow, this isn't that. If you want to see how a real bytecode VM and a real package ecosystem get built from nothing, read on.
 
 > **Repository**: [github.com/khandev1211-cpu/Khan](https://github.com/khandev1211-cpu/Khan)
+
+> **Naming note:** the language is called **Kosh** (project name `kosh-lang`). The interpreter command is `kosh`, the package manager is `kh`, and source files keep the `.kh` extension. The GitHub repository path (`khandev1211-cpu/Khan`) and the `~/.khan` install directory still use the old name for now.
 
 ---
 
@@ -39,7 +41,7 @@ Honest framing, since this README makes a point of not overstating things: Khan 
 
 ## Overview
 
-Khan is a from-scratch programming language implementation focused on understanding the fundamentals of how programming languages work under the hood. The project implements a complete language pipeline:
+Kosh is a from-scratch programming language implementation focused on understanding the fundamentals of how programming languages work under the hood. The project implements a complete language pipeline:
 
 1. **Lexer (Tokenizer)** — Converts raw source code into a stream of tokens
 2. **Parser** — Builds an Abstract Syntax Tree (AST) using recursive descent parsing
@@ -61,7 +63,7 @@ Most from-scratch language projects are tempted to round up. This one tries hard
 - `{}` maps — a real open-addressing hash index (FNV-1a), not a linear scan; the old O(n) version made a 50,000-key map take ~9 seconds, the current one takes ~0.01s (~725x). Full story in [docs/hash-table-audit.md](docs/hash-table-audit.md)
 - `try`/`catch`/`throw` — a real exception-handling implementation (unwinds the VM stack and call frames to the nearest handler), not just a parser accepting the syntax. Catches both user `throw`s and every built-in runtime error. Design and a real bug found along the way in [docs/trycatch-implementation.md](docs/trycatch-implementation.md)
 - `class` — Python-style classes: `fn` methods with an explicit `self`, `__init__` constructors, dynamic fields, method chaining, single inheritance (`class Dog(Animal):`) with `super`, all working with `try`/`catch`. No multiple inheritance or bound-method values yet. See [docs/classes.md](docs/classes.md)
-- `Tensor` — a real native tensor type (`VAL_TENSOR`: one contiguous buffer, not nested arrays) with automatic differentiation: `add`/`sub`/`mul`/`matmul`/`transpose`/`reshape`/`sum`/`relu`/`sigmoid`/`tanh`, `.backward()`, `.grad`, row/column broadcasting (e.g. a shared bias across a batch). The first slice of Khan's AI-native-core direction. 2-D-only matmul, no GPU. See [docs/tensor.md](docs/tensor.md)
+- `Tensor` — a real native tensor type (`VAL_TENSOR`: one contiguous buffer, not nested arrays) with automatic differentiation: `add`/`sub`/`mul`/`matmul`/`transpose`/`reshape`/`sum`/`relu`/`sigmoid`/`tanh`, `.backward()`, `.grad`, row/column broadcasting (e.g. a shared bias across a batch). The first slice of Kosh's AI-native-core direction. 2-D-only matmul, no GPU. See [docs/tensor.md](docs/tensor.md)
 - A cycle collector for circular references in arrays/maps (`a[0] = a` no longer leaks for the life of the process) — a Bacon-Rajan trial-deletion collector, the same algorithm CPython's `gc` module uses, not a full tracing GC. Two real bugs found and fixed during testing, plus a >99% leak reduction measured (not just "doesn't crash") in [docs/gc-notes.md](docs/gc-notes.md)
 - Testing: thousands of fuzz-mutated parser inputs with zero crashes, memory stress-tested at 10M-allocation scale with flat RSS, CI gating on real assertion suites across Linux/Windows/macOS
 
@@ -81,13 +83,13 @@ Most from-scratch language projects are tempted to round up. This one tries hard
 
 If a claim in this README turns out to not match reality, that's a bug in the README — [open an issue](https://github.com/khandev1211-cpu/Khan/issues).
 
-**On performance, specifically**: Khan is generally slower than Python and Node right now, not faster — roughly 2-8x slower on tight loops, competitive only on JSON round-trips (where it's actually ~2.4x faster than Python). Computed-goto dispatch was tried as the obvious next lever and **measured slower, not faster**, than the existing switch-based dispatch (5-15% depending on benchmark) — reverted; full measurement and why in [docs/dispatch-perf.md](docs/dispatch-perf.md). The next real lead is a `value_copy()` call on every basic operation (even a plain number) — not yet profiled, flagged as the most promising thing to actually measure next. Full numbers and methodology in [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
+**On performance, specifically**: Kosh is generally slower than Python and Node right now, not faster — roughly 2-8x slower on tight loops, competitive only on JSON round-trips (where it's actually ~2.4x faster than Python). Computed-goto dispatch was tried as the obvious next lever and **measured slower, not faster**, than the existing switch-based dispatch (5-15% depending on benchmark) — reverted; full measurement and why in [docs/dispatch-perf.md](docs/dispatch-perf.md). The next real lead is a `value_copy()` call on every basic operation (even a plain number) — not yet profiled, flagged as the most promising thing to actually measure next. Full numbers and methodology in [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
 
 ---
 
 ## Quick Start
 
-**Want to try it before installing anything?** [Try Khan in your browser](https://khandev1211-cpu.github.io/Khan/) — the real compiler and VM, compiled to WebAssembly with Emscripten, running client-side with no server involved. (Deployed via GitHub Pages from `playground/` — see [.github/workflows/deploy-playground.yml](.github/workflows/deploy-playground.yml). If that link 404s, GitHub Pages needs a one-time manual enable that a workflow file can't do on its own — confirmed by an actual failed deploy, not just a guess: repo Settings → Pages → Source → "GitHub Actions", then re-run the workflow from the Actions tab.) See [playground/README.md](playground/README.md) for what's and isn't included in that build.
+**Want to try it before installing anything?** [Try Kosh in your browser](https://khandev1211-cpu.github.io/Kosh/) — the real compiler and VM, compiled to WebAssembly with Emscripten, running client-side with no server involved. (Deployed via GitHub Pages from `playground/` — see [.github/workflows/deploy-playground.yml](.github/workflows/deploy-playground.yml). If that link 404s, GitHub Pages needs a one-time manual enable that a workflow file can't do on its own — confirmed by an actual failed deploy, not just a guess: repo Settings → Pages → Source → "GitHub Actions", then re-run the workflow from the Actions tab.) See [playground/README.md](playground/README.md) for what's and isn't included in that build.
 
 ### Install
 
@@ -102,16 +104,16 @@ irm https://raw.githubusercontent.com/khandev1211-cpu/Khan/main/install.ps1 | ie
 ```
 Needs a GCC toolchain on `PATH` already (MSYS2/MinGW-w64) — the script checks for one and tells you exactly what to install if it's missing, rather than silently installing a toolchain for you. **Caveat, stated plainly**: this script was written and reviewed carefully but has not been run on an actual Windows machine in the environment it was authored in (no such access there) — same class of caveat this project's CI workflow already carries for its own Windows steps. If something in it doesn't work as described, that's a bug — please open an issue with what happened.
 
-**Windows (GUI installer, alternative to the PowerShell script above):** [khan-installer.iss](khan-installer.iss) is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that produces a proper double-click `khan-setup.exe` — a setup wizard with an **"Add Khan to PATH" checkbox** (checked by default), a Start Menu entry, and a normal Add/Remove Programs uninstaller, closer to Python's own official Windows installer experience than a terminal one-liner is. It packages already-built `khan.exe`/`kh.exe` rather than compiling them itself (see the comment at the top of that file for the exact build-then-compile steps). [.github/workflows/release.yml](.github/workflows/release.yml) automates exactly that build-then-compile sequence and can publish the result to Releases (see just below) — until a tagged release actually exists there, building `khan-setup.exe` yourself via the free Inno Setup Compiler is the only way to get one. Same not-yet-verified-on-real-Windows caveat as `install.ps1` above applies here too.
+**Windows (GUI installer, alternative to the PowerShell script above):** [khan-installer.iss](khan-installer.iss) is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that produces a proper double-click `khan-setup.exe` — a setup wizard with an **"Add Kosh to PATH" checkbox** (checked by default), a Start Menu entry, and a normal Add/Remove Programs uninstaller, closer to Python's own official Windows installer experience than a terminal one-liner is. It packages already-built `kosh.exe`/`kh.exe` rather than compiling them itself (see the comment at the top of that file for the exact build-then-compile steps). [.github/workflows/release.yml](.github/workflows/release.yml) automates exactly that build-then-compile sequence and can publish the result to Releases (see just below) — until a tagged release actually exists there, building `khan-setup.exe` yourself via the free Inno Setup Compiler is the only way to get one. Same not-yet-verified-on-real-Windows caveat as `install.ps1` above applies here too.
 
-There's no *published* pre-built binary release yet (see the [roadmap](#roadmap) — v1.0 hasn't shipped) — [.github/workflows/release.yml](.github/workflows/release.yml) can build one (`khan.exe`, `kh.exe`, and a compiled `khan-setup.exe` from the Inno Setup script above) and publish it to this repo's [Releases page](https://github.com/khandev1211-cpu/Khan/releases) automatically whenever a version tag (`v0.010.0`-style) is pushed, but that hasn't been done yet either. Once it has, downloading a release asset from there is the fastest path on Windows — no compiler needed. Until then, both scripted installers below build from source rather than downloading a binary, the way `rustup`/`deno`'s installers do when there's nothing prebuilt for your platform yet. Neither one runs `sudo`/an elevated prompt on your behalf — they check for what they need and tell you the exact command for your platform if something's missing. Read [install.sh](install.sh) / [install.ps1](install.ps1) before piping either into a shell, same as you should for any curl-pipe installer — that's not Khan-specific advice.
+There's no *published* pre-built binary release yet (see the [roadmap](#roadmap) — v1.0 hasn't shipped) — [.github/workflows/release.yml](.github/workflows/release.yml) can build one (`kosh.exe`, `kh.exe`, and a compiled `khan-setup.exe` from the Inno Setup script above) and publish it to this repo's [Releases page](https://github.com/khandev1211-cpu/Khan/releases) automatically whenever a version tag (`v0.010.0`-style) is pushed, but that hasn't been done yet either. Once it has, downloading a release asset from there is the fastest path on Windows — no compiler needed. Until then, both scripted installers below build from source rather than downloading a binary, the way `rustup`/`deno`'s installers do when there's nothing prebuilt for your platform yet. Neither one runs `sudo`/an elevated prompt on your behalf — they check for what they need and tell you the exact command for your platform if something's missing. Read [install.sh](install.sh) / [install.ps1](install.ps1) before piping either into a shell, same as you should for any curl-pipe installer — that's not Kosh-specific advice.
 
-After it finishes — restart your shell on Linux/macOS (or `source` the rc file it mentions); on Windows, `khan` is already on `PATH` in the same PowerShell window, new windows get it automatically too:
+After it finishes — restart your shell on Linux/macOS (or `source` the rc file it mentions); on Windows, `kosh` is already on `PATH` in the same PowerShell window, new windows get it automatically too:
 
 ```bash
-khan --version
-khan                    # starts an interactive REPL — see "Interactive REPL" below
-khan path/to/script.kh
+kosh --version
+kosh                    # starts an interactive REPL — see "Interactive REPL" below
+kosh path/to/script.kh
 
 # Install packages
 kh install math
@@ -121,7 +123,7 @@ kh install requests
 kh install postman
 ```
 
-```khan
+```kosh
 import "math"
 import "colors"
 
@@ -134,18 +136,18 @@ print math_sqrt(144)
 ```bash
 git clone https://github.com/khandev1211-cpu/Khan.git
 cd Khan
-make                    # builds khan(.exe) and kh(.exe) in the current directory
+make                    # builds kosh(.exe) and kh(.exe) in the current directory
 make install            # Linux/macOS only — installs both to ~/.khan/bin, same as install.sh's last step.
                         # On Windows, use install.ps1 instead (`make install` prints why and stops).
 ```
 
-Without `make install`, run the binaries directly as `./khan script.kh` (Linux/macOS) or `khan.exe script.kh` (Windows) from inside the checkout.
+Without `make install`, run the binaries directly as `./kosh script.kh` (Linux/macOS) or `kosh.exe script.kh` (Windows) from inside the checkout.
 
 ---
 
 ## Package Manager — kh
 
-Khan ships with `kh.exe` — a package manager that downloads packages from the official registry hosted on GitHub.
+Kosh ships with `kh.exe` — a package manager that downloads packages from the official registry hosted on GitHub.
 
 ### Commands
 
@@ -166,7 +168,7 @@ Khan ships with `kh.exe` — a package manager that downloads packages from the 
 ```bash
 kh install math
 ```
-```khan
+```kosh
 import "math"
 print math_sqrt(144)    # 12
 print PI                # 3.14159...
@@ -255,7 +257,7 @@ Full detail on the packages below is in their own docs where noted; everything e
 
 ### math
 
-```khan
+```kosh
 import "math"
 
 print math_sqrt(144)        # 12
@@ -270,7 +272,7 @@ print E                     # 2.71828182...
 
 ### strings
 
-```khan
+```kosh
 import "strings"
 
 print str_trim("  hello  ")               # hello
@@ -284,7 +286,7 @@ print str_pad_left("5", 3, "0")          # 005
 
 ### colors
 
-```khan
+```kosh
 import "colors"
 
 print red("error occurred")
@@ -299,7 +301,7 @@ print_info("Server started on port 8080")
 
 ### requests
 
-```khan
+```kosh
 import "requests"
 
 let res = get("https://api.example.com/users")
@@ -317,7 +319,7 @@ print status(res2)
 
 ### postman
 
-```khan
+```kosh
 import "postman"
 
 let pm = pm_new_with_base("https://jsonplaceholder.typicode.com")
@@ -357,13 +359,13 @@ Output:
 `webi` is a Flask-inspired web framework: routing, request/response
 helpers, middleware, opt-in security (CSRF, rate limiting, API keys,
 CORS), HTML templates (including reading them off disk), static file
-serving, and a small HTTP server — all built on top of Khan.
+serving, and a small HTTP server — all built on top of Kosh.
 
 ```bash
 kh install webi
 ```
 
-```khan
+```kosh
 import "webi"
 
 let app = webi_app()
@@ -380,7 +382,7 @@ webi_run(app, 8080)
 Or pull in the security/HTTP-client/JSON helpers in one line with
 [`from`-import](docs/from-import.md):
 
-```khan
+```kosh
 from webi import webi, security, requests, json
 ```
 
@@ -432,7 +434,7 @@ binary static assets).
 
 ### Variables & Types
 
-```khan
+```kosh
 let name    = "Irfan"
 let age     = 25
 let active  = true
@@ -443,7 +445,7 @@ let person  = {"name": "Irfan", "city": "Faisalabad"}
 
 ### Conditionals with elif
 
-```khan
+```kosh
 fn grade(score):
     if score >= 90:
         return "A"
@@ -459,7 +461,7 @@ print grade(85)   # B
 
 ### Loops with break and continue
 
-```khan
+```kosh
 # break
 let i = 0
 while true:
@@ -477,7 +479,7 @@ for n in [1, 2, 3, 4, 5, 6]:
 
 ### Recursion
 
-```khan
+```kosh
 fn factorial(n):
     if n <= 1:
         return 1
@@ -495,7 +497,7 @@ print fib(10)   # 55
 
 ### String Escape Sequences
 
-```khan
+```kosh
 print "Hello\nWorld"         # newline
 print "Tab:\there"           # tab
 print "Quote: \"Hi\""        # double quote
@@ -504,7 +506,7 @@ print "\x1b[31mRed\x1b[0m"  # ANSI color (hex escape)
 
 ### JSON (built-in)
 
-```khan
+```kosh
 let data = {"name": "Khan", "version": 2, "ready": true}
 let s = json_encode(data)
 print s   # {"name": "Khan", "version": 2, "ready": true}
@@ -515,7 +517,7 @@ print decoded["name"]   # Khan
 
 ### Datetime (built-in)
 
-```khan
+```kosh
 let today = now()
 print date_format(today, "%Y-%m-%d")       # 2026-06-28
 print date_format(today, "%A, %B %d %Y")   # Saturday, June 28 2026
@@ -526,7 +528,7 @@ print date_format(next_week, "%Y-%m-%d")
 
 ### HTTP Requests (built-in)
 
-```khan
+```kosh
 let res = http_get("https://api.example.com/data")
 print res["status"]    # 200
 print res["success"]   # true
@@ -541,14 +543,14 @@ print post_res["status"]
 
 ## Built-in Libraries
 
-These are native C libraries included in `khan.exe` — no installation needed.
+These are native C libraries included in `kosh.exe` — no installation needed.
 
 ### JSON
 
 | Function | Description |
 |---|---|
-| `json_encode(value)` | Any Khan value → JSON string |
-| `json_decode(string)` | JSON string → Khan map/array/value |
+| `json_encode(value)` | Any Kosh value → JSON string |
+| `json_decode(string)` | JSON string → Kosh map/array/value |
 
 ### Datetime
 
@@ -581,7 +583,7 @@ All HTTP functions return `{"status": 200, "body": "...", "success": true}`.
 
 ## Standard Library
 
-30+ native built-in functions available in every Khan program:
+30+ native built-in functions available in every Kosh program:
 
 ### Type Conversion
 
@@ -656,8 +658,8 @@ All HTTP functions return `{"status": 200, "body": "...", "success": true}`.
 
 ```
 Khan/
-├── khan.exe                  # Khan runtime (Windows) — compiler + VM
-├── kh.exe                    # Khan package manager (Windows)
+├── kosh.exe                  # Kosh runtime (Windows) — compiler + VM
+├── kh.exe                    # Kosh package manager (Windows)
 ├── makefile                  # Build configuration
 ├── README.md                 # This file
 ├── ROADMAP_STATUS_UPDATED.md # Detailed, session-by-session engineering log
@@ -674,7 +676,7 @@ Khan/
 │   ├── parser-robustness-audit.md         # Fuzz-testing findings
 │   └── call-overhead-audit.md             # Function-call performance audit
 ├── benchmarks/
-│   └── RESULTS.md             # Khan vs Python/Node/C, honestly reported
+│   └── RESULTS.md             # Kosh vs Python/Node/C, honestly reported
 ├── packages/                  # all 37 live here; registry.json lists them all
 │   ├── registry.json
 │   ├── math/  strings/  collections/  colors/  argparse/  validation/
@@ -690,7 +692,7 @@ Khan/
 │   ├── vision_demo.kh          # face detection, filters, thresholding walkthrough
 │   ├── vision_test_all.kh      # visual (manual-inspection) vision test
 │   ├── ocr_test.png / ocr_paragraph.png / ocr_french.png  # OCR test fixtures
-│   └── todo_app/               # a small real app written in Khan
+│   └── todo_app/               # a small real app written in Kosh
 ├── tests/
 │   ├── run_all.kh              # the core assertion suite
 │   ├── test_vision.kh          # automated vision suite
@@ -740,11 +742,11 @@ cd Khan
 make
 ```
 
-Produces `khan.exe` (the compiler+VM runtime) and `kh.exe` (package manager) on Windows, or `khan` and `kh` on Linux/macOS.
+Produces `kosh.exe` (the compiler+VM runtime) and `kh.exe` (package manager) on Windows, or `kosh` and `kh` on Linux/macOS.
 
 ```bash
 make clean   # remove build artifacts
-make install # Linux/macOS: install khan and kh to ~/.khan/bin (override with PREFIX=/your/path)
+make install # Linux/macOS: install kosh and kh to ~/.khan/bin (override with PREFIX=/your/path)
 make uninstall # remove them again
 ```
 
@@ -766,33 +768,33 @@ The [Quick Start](#quick-start) section's `install.sh` (Linux/macOS) / `install.
 
 | Flag | Meaning |
 |---|---|
-| `khan script.kh [args...]` | Run a script; extra args are available inside it as the global array `argv` |
-| `khan` (no arguments) | Starts an interactive REPL — see below |
-| `khan --version` / `-v` | Print the version and exit |
-| `khan --help` / `-h` | Print usage and exit |
+| `kosh script.kh [args...]` | Run a script; extra args are available inside it as the global array `argv` |
+| `kosh` (no arguments) | Starts an interactive REPL — see below |
+| `kosh --version` / `-v` | Print the version and exit |
+| `kosh --help` / `-h` | Print usage and exit |
 
 ### Interactive REPL
 
-Running `khan` with no arguments — the same trigger `python` uses — starts an interactive session: type a line, see it run immediately, keep going.
+Running `kosh` with no arguments — the same trigger `python` uses — starts an interactive session: type a line, see it run immediately, keep going.
 
 ```
-$ khan
-Khan 0.1.0-dev — interactive mode. Type 'exit' or press Ctrl+D to quit.
-khan> let x = 10
-khan> x * 5
+$ kosh
+Kosh 0.014.0 — interactive mode. Type 'exit' or press Ctrl+D to quit.
+kosh> let x = 10
+kosh> x * 5
 50
-khan> fn square(n):
+kosh> fn square(n):
 ...     return n * n
 ...
-khan> square(7)
+kosh> square(7)
 49
-khan> exit
+kosh> exit
 ```
 
 A few things worth knowing about how it behaves:
 - **Variables persist across lines** — one shared VM instance runs every line you type, so `let x = 10` on one line is still visible as `x` on the next, the whole point of a REPL over running one-off scripts.
 - **A bare expression auto-prints its value** (`x * 5` above shows `50` with no explicit `print`) — same convention as Python's REPL. Statements that don't produce a value (`let`, `if`, `fn`, …) print nothing, same as always.
-- **Multi-line blocks**: Khan is indentation-based like Python, so a line ending in `:` (an `fn`/`if`/`while`/`try` header) switches the prompt to `...` and keeps reading indented lines until a **blank line** closes the block, then runs the whole thing at once. This is a simpler rule than Python's own indentation-tracking REPL, but it means the same thing in practice: finish a block, then hit Enter on an empty line.
+- **Multi-line blocks**: Kosh is indentation-based like Python, so a line ending in `:` (an `fn`/`if`/`while`/`try` header) switches the prompt to `...` and keeps reading indented lines until a **blank line** closes the block, then runs the whole thing at once. This is a simpler rule than Python's own indentation-tracking REPL, but it means the same thing in practice: finish a block, then hit Enter on an empty line.
 - **A runtime error doesn't end the session** — it prints and the REPL keeps going with all your variables intact, the same way a real interactive interpreter should behave, rather than one mistake forcing a restart.
 - Type `exit`, `quit` (with or without `()`), or press Ctrl+D to leave.
 
@@ -884,7 +886,7 @@ package.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Build and test: `make && khan examples/full_test.kh`
+3. Build and test: `make && kosh examples/full_test.kh`
 4. Commit and push
 5. Open a Pull Request
 
@@ -900,7 +902,7 @@ MIT License — open source, free to use.
 
 ## Author
 
-**Irfan Khan** — Creator and maintainer of the Khan programming language.
+**Irfan Khan** — Creator and maintainer of the Kosh programming language.
 
 - GitHub: [@khandev1211-cpu](https://github.com/khandev1211-cpu)
 - Repository: [github.com/khandev1211-cpu/Khan](https://github.com/khandev1211-cpu/Khan)

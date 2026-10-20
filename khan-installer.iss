@@ -1,9 +1,9 @@
 ; ============================================================================
-; Khan — Windows GUI installer (Inno Setup script)
+; Kosh — Windows GUI installer (Inno Setup script)
 ; ============================================================================
 ; Produces the "download an .exe, double-click, click through a wizard"
 ; experience Python's own official Windows installer gives — a proper
-; setup wizard with an "Add Khan to PATH" checkbox, a Start Menu entry,
+; setup wizard with an "Add Kosh to PATH" checkbox, a Start Menu entry,
 ; and a normal Add/Remove Programs uninstaller entry. This is a DIFFERENT
 ; artifact from install.ps1 (which builds from source via a piped
 ; PowerShell script, closer to how rustup/deno install): this is the
@@ -15,16 +15,16 @@
 ; This .iss file is a SOURCE script for Inno Setup, not the installer
 ; itself. To produce khan-setup.exe:
 ;   1. Install Inno Setup (free): https://jrsoftware.org/isinfo.php
-;   2. Build khan.exe and kh.exe first — this script packages ALREADY-
-;      BUILT binaries, it does not compile Khan itself (bundling a full
+;   2. Build kosh.exe and kh.exe first — this script packages ALREADY-
+;      BUILT binaries, it does not compile Kosh itself (bundling a full
 ;      C toolchain just to build two binaries on install would defeat
 ;      the point of a simple double-click installer). From a Windows
 ;      machine with the same MSYS2/MinGW-w64 toolchain install.ps1 sets
 ;      up:
 ;          make
-;      This produces khan.exe and kh.exe in the project root.
+;      This produces kosh.exe and kh.exe in the project root.
 ;   3. Open this file in Inno Setup (or run it via the command line:
-;      "ISCC.exe khan-installer.iss"), with khan.exe/kh.exe/packages/
+;      "ISCC.exe khan-installer.iss"), with kosh.exe/kh.exe/packages/
 ;      AND assets/khan-icon.ico (the project's icon — see that folder,
 ;      generated from assets/khan-icon.svg) sitting in the SAME
 ;      directory as this .iss file (adjust the
@@ -42,9 +42,9 @@
 ; compiling or running this doesn't work as described, that's a bug —
 ; please open an issue with what happened.
 
-#define KhanVersion "0.012.0"
-#define KhanAppName "Khan"
-#define KhanPublisher "Khan Language Project"
+#define KhanVersion "0.011.0"
+#define KhanAppName "Kosh"
+#define KhanPublisher "Kosh Language Project"
 #define KhanURL "https://github.com/khandev1211-cpu/Khan"
 
 [Setup]
@@ -71,8 +71,8 @@ AppUpdatesURL={#KhanURL}/releases
 ; automatically, without forcing everyone through an admin prompt.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-DefaultDirName={autopf}\Khan
-DefaultGroupName=Khan
+DefaultDirName={autopf}\Kosh
+DefaultGroupName=Kosh
 DisableProgramGroupPage=yes
 
 ; Modern wizard look (matches recent Inno Setup's default styling,
@@ -81,7 +81,7 @@ DisableProgramGroupPage=yes
 WizardStyle=modern
 
 OutputDir=Output
-OutputBaseFilename=khan-setup-{#KhanVersion}
+OutputBaseFilename=kosh-setup-{#KhanVersion}
 ; Both the installer .exe itself AND the shortcuts Inno Setup creates
 ; use this — without it, khan-setup.exe and its Start Menu/Desktop
 ; shortcuts all show Windows' generic blank-program icon.
@@ -105,24 +105,24 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; default (this mirrors the direction newer Python installers moved
 ; in; the option to uncheck it is still right there for anyone who'd
 ; rather manage PATH themselves).
-Name: "addtopath"; Description: "Add Khan to PATH (recommended — lets you run 'khan' from any terminal)"; GroupDescription: "Setup options:"; Flags: checkedonce
+Name: "addtopath"; Description: "Add Kosh to PATH (recommended — lets you run 'kosh' from any terminal)"; GroupDescription: "Setup options:"; Flags: checkedonce
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
-; Adjust these Source paths if khan.exe/kh.exe/packages aren't sitting
+; Adjust these Source paths if kosh.exe/kh.exe/packages aren't sitting
 ; directly next to this .iss file when you compile it — see the
 ; "HOW TO BUILD" comment at the top.
-Source: "khan.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "kosh.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "kh.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\khan-icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "packages\*"; DestDir: "{app}\packages"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "\.git\*"
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion; DestName: "README.txt"
 
 [Icons]
-Name: "{group}\Khan Interpreter"; Filename: "{app}\khan.exe"; IconFilename: "{app}\khan-icon.ico"; Comment: "Start the Khan interactive REPL"
-Name: "{group}\Khan Documentation"; Filename: "{#KhanURL}"; IconFilename: "{app}\khan-icon.ico"
-Name: "{group}\Uninstall Khan"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Khan"; Filename: "{app}\khan.exe"; IconFilename: "{app}\khan-icon.ico"; Tasks: desktopicon
+Name: "{group}\Kosh Interpreter"; Filename: "{app}\kosh.exe"; IconFilename: "{app}\khan-icon.ico"; Comment: "Start the Kosh interactive REPL"
+Name: "{group}\Kosh Documentation"; Filename: "{#KhanURL}"; IconFilename: "{app}\khan-icon.ico"
+Name: "{group}\Uninstall Kosh"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Kosh"; Filename: "{app}\kosh.exe"; IconFilename: "{app}\khan-icon.ico"; Tasks: desktopicon
 
 [Run]
 ; Offers to open a REPL right when setup finishes — the installer
@@ -130,7 +130,7 @@ Name: "{autodesktop}\Khan"; Filename: "{app}\khan.exe"; IconFilename: "{app}\kha
 ; worked" step, just as a clickable checkbox instead of a printed
 ; command. Unchecked by default so setup doesn't unexpectedly pop a
 ; console window open for someone who just wanted the files installed.
-Filename: "{app}\khan.exe"; Description: "Launch the Khan interactive REPL now"; Flags: postinstall nowait skipifsilent unchecked
+Filename: "{app}\kosh.exe"; Description: "Launch the Kosh interactive REPL now"; Flags: postinstall nowait skipifsilent unchecked
 
 [Code]
 // ── PATH manipulation ──────────────────────────────────────────────
@@ -156,7 +156,7 @@ begin
   end;
   // Look for an exact, delimiter-bounded match rather than a plain
   // substring search — a substring check would wrongly treat
-  // "C:\Khan2\bin" as already covering "C:\Khan\bin", or miss a
+  // "C:\Khan2\bin" as already covering "C:\Kosh\bin", or miss a
   // legitimate match sitting at the very start/end of the PATH string
   // (which has no leading/trailing semicolon to anchor against).
   Result := Pos(';' + ExpandConstant('{app}') + ';', ';' + OrigPath + ';') = 0;
@@ -197,7 +197,7 @@ begin
   begin
     Delete(NewPath, P, Length(AppPath) + 1);
     // Trim the leading/trailing ';' we added above for the search,
-    // so a PATH that was e.g. "C:\Khan;C:\Other" and had "C:\Khan"
+    // so a PATH that was e.g. "C:\Kosh;C:\Other" and had "C:\Kosh"
     // removed ends up as "C:\Other", not ";C:\Other" or "C:\Other;".
     Delete(NewPath, 1, 1);
     if (Length(NewPath) > 0) and (NewPath[Length(NewPath)] = ';') then

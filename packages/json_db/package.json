@@ -1,7 +1,7 @@
 {
   "name": "json_db",
   "version": "1.0.0",
-  "description": "A schema-less NoSQL database engine that persists Khan Maps to local JSON files with automatic serialization.",
+  "description": "A schema-less NoSQL database engine that persists Kosh Maps to local JSON files with automatic serialization.",
   "author": "khandev1211-cpu",
   "developer": "Irfan Khan",
   "main": "json_db.kh",

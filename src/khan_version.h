@@ -7,10 +7,10 @@
  *
  * "0.x" deliberately, not "1.0" — ROADMAP_STATUS_UPDATED.md's own v1.0
  * release criteria aren't met yet (see that file), and claiming 1.0 in
- * `khan --version` while the roadmap says otherwise would be exactly
+ * `kosh --version` while the roadmap says otherwise would be exactly
  * the kind of inconsistency this project's docs otherwise go out of
  * their way to avoid. Bump to 1.0.0 when the roadmap says so, not
  * before. */
-#define KHAN_VERSION "0.014.0"
+#define KHAN_VERSION "0.015.0"
 
 #endif

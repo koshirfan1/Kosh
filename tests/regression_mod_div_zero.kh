@@ -6,9 +6,9 @@
 # (or from CI as two separate invocations) and check for the expected
 # error message + non-zero exit code:
 #
-#   .\khan tests/regression_mod_div_zero.kh div
+#   .\kosh tests/regression_mod_div_zero.kh div
 #     -> should print "Runtime error: Division by zero" and exit non-zero
-#   .\khan tests/regression_mod_div_zero.kh mod
+#   .\kosh tests/regression_mod_div_zero.kh mod
 #     -> should print "Runtime error: Modulo by zero" and exit non-zero
 #
 # What this actually protects against: constant folding (compiler.c)
@@ -29,4 +29,4 @@ if mode == "div":
 elif mode == "mod":
     print 10 % (1 - 1)
 else:
-    print "usage: khan tests/regression_mod_div_zero.kh [div|mod]"
+    print "usage: kosh tests/regression_mod_div_zero.kh [div|mod]"
