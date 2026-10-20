@@ -486,7 +486,7 @@ static int cmd_installed(void) {
 #ifdef _WIN32
     // Use FindFirstFile / FindNextFile on Windows
     char search[1024];
-    snprintf(search, sizeof(search), "%s\\*", pkgs_dir);
+    snprintf(search, sizeof(search), "%s/*", pkgs_dir);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(search, &fd);
     int count = 0;
