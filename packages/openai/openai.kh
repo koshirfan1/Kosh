@@ -1,4 +1,4 @@
-# Khan openai package v2.0.0
+# Kosh openai package v2.0.0
 # Usage: import "openai"
 #
 # A client wrapper for the OpenAI API — chat, embeddings, moderation, and

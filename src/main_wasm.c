@@ -34,7 +34,7 @@
 #include "vision_cascade.h"
 
 EMSCRIPTEN_KEEPALIVE
-int run_khan_source(const char *source) {
+int run_kosh_source(const char *source) {
     Lexer lexer;
     lexer_init(&lexer, source);
 
@@ -47,7 +47,7 @@ int run_khan_source(const char *source) {
         return 65;
     }
 
-    KhanFunction *script = compile(program, "playground.kh");
+    KoshFunction *script = compile(program, "playground.kh");
     if (!script) {
         ast_free(program);
         return 65;

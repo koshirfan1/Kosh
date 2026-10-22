@@ -62,7 +62,7 @@ print p.birthday()           # 3
   gap as closures). `a.friend = b; b.friend = a` leaks both; acyclic
   structures are freed normally.
 - **Function registry limit.** Every method is a registered function, and
-  the registry holds 1024 (`KHANFN_REGISTRY_MAX` in `src/vm.c`), shared
+  the registry holds 1024 (`KOSHFN_REGISTRY_MAX` in `src/vm.c`), shared
   with ordinary functions.
 - **Classes declared inside a function** work (the class is rebuilt and
   rebound as a global each time the function runs, like a nested `fn`),

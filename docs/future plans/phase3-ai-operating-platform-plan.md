@@ -225,7 +225,7 @@ like at first glance.
 `kh install <name>`, `kh remove <name>`, `kh list`, `kh installed`,
 `kh info <name>`, all backed by a real remote registry fetch
 (`download_to_file()` pulls from
-`raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/...`,
+`raw.githubusercontent.com/koshirfan1/Kosh/main/packages/...`,
 confirmed directly in `src/kh.c`). `kh install yolo` / `kh install
 llama` / `kh install whisper` need nothing new in `kh` itself — they
 need `yolo`/`llama`/`whisper` packages to exist and get registry

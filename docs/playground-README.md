@@ -9,9 +9,9 @@ visitor's own tab.
 
 **Automated**: a GitHub Actions workflow (`.github/workflows/deploy-playground.yml`) deploys this directory's contents to GitHub Pages on every push to `main` that touches `playground/`. One-time setup: repo Settings → Pages → Source: "GitHub Actions". Once that's set, pushing here (or running the workflow manually from the Actions tab) publishes to `https://<owner>.github.io/<repo>/`.
 
-**Manual / local**: three static files, no build step at request time: `index.html`, `khan.js`, `khan.wasm`. Any static host works — GitHub Pages, Netlify, Vercel, a plain `python3 -m http.server`, whatever's convenient. Nothing here needs a backend.
+**Manual / local**: three static files, no build step at request time: `index.html`, `kosh.js`, `kosh.wasm`. Any static host works — GitHub Pages, Netlify, Vercel, a plain `python3 -m http.server`, whatever's convenient. Nothing here needs a backend.
 
-**MIME type matters**: the host must serve `khan.wasm` as
+**MIME type matters**: the host must serve `kosh.wasm` as
 `application/wasm` (GitHub Pages, Netlify, etc. already do this
 correctly for `.wasm` by default). If your instantiation is slow or
 falls back to the non-streaming path, that's the first thing to check.
@@ -51,7 +51,7 @@ part of this pass).
 ## A real bug this surfaced
 
 Building this exposed a genuine latent bug in `src/compiler.c`: it
-called `khanfn_register()`/`khanfn_registry_index()` (declared in
+called `koshfn_register()`/`koshfn_registry_index()` (declared in
 `vm.h`) without including `vm.h` at all, so the compiler fell back to
 an implicit `int`-returning declaration that didn't match the real
 `void`-returning function. Harmless on native x86 — the calling

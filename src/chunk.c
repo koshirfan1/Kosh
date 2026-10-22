@@ -38,10 +38,10 @@ int chunk_add_const(Chunk *c, Value v) {
     return c->const_count++;
 }
 
-/* ── KhanFunction ── */
+/* ── KoshFunction ── */
 
-KhanFunction *khanfn_new(const char *name, int arity) {
-    KhanFunction *fn = malloc(sizeof(KhanFunction));
+KoshFunction *koshfn_new(const char *name, int arity) {
+    KoshFunction *fn = malloc(sizeof(KoshFunction));
     fn->name       = name ? strdup(name) : NULL;
     fn->source_dir = NULL;
     fn->arity      = arity;
@@ -52,7 +52,7 @@ KhanFunction *khanfn_new(const char *name, int arity) {
     return fn;
 }
 
-void khanfn_free(KhanFunction *fn) {
+void koshfn_free(KoshFunction *fn) {
     if (!fn) return;
     free(fn->name);
     if (fn->source_dir) free(fn->source_dir);
@@ -61,21 +61,21 @@ void khanfn_free(KhanFunction *fn) {
     free(fn);
 }
 
-/* ── KhanClosure ── */
+/* ── KoshClosure ── */
 
-KhanClosure *khanclosure_new(int count) {
-    KhanClosure *cl = malloc(sizeof(KhanClosure));
+KoshClosure *koshclosure_new(int count) {
+    KoshClosure *cl = malloc(sizeof(KoshClosure));
     cl->ref_count = 1;
     cl->count     = count;
     cl->values    = count > 0 ? malloc(sizeof(Value) * count) : NULL;
     return cl;
 }
 
-void khanclosure_retain(KhanClosure *cl) {
+void koshclosure_retain(KoshClosure *cl) {
     if (cl) cl->ref_count++;
 }
 
-void khanclosure_release(KhanClosure *cl) {
+void koshclosure_release(KoshClosure *cl) {
     if (!cl) return;
     cl->ref_count--;
     if (cl->ref_count <= 0) {

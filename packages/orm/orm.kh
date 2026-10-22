@@ -1,4 +1,4 @@
-# Khan ORM (Object-Relational Mapper)
+# Kosh ORM (Object-Relational Mapper)
 # Usage: import "orm"
 
 import "json_db"

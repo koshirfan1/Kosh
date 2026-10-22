@@ -42,7 +42,7 @@ typedef struct {
 } ImportCtx;
 
 typedef struct CompilerState {
-    KhanFunction       *fn;           /* function being compiled */
+    KoshFunction       *fn;           /* function being compiled */
     Local               locals[MAX_LOCALS];
     int                 local_count;
     int                 scope_depth;  /* 0 = global */
@@ -237,7 +237,7 @@ static void emit_global_def(const char *name, int line) {
 
 /* ── CompilerState init/end ── */
 
-static void compiler_state_init(CompilerState *c, KhanFunction *fn,
+static void compiler_state_init(CompilerState *c, KoshFunction *fn,
                                 CompilerState *enclosing) {
     c->fn           = fn;
     c->local_count  = 0;
@@ -943,7 +943,7 @@ static void emit_name_op(uint8_t narrow, uint8_t wide, const char *name, int lin
 }
 
 /* Compiles one class method (an AST_FN_DECL) into a registered
-   KhanFunction and returns its registry index — same body-compilation
+   KoshFunction and returns its registry index — same body-compilation
    as a top-level `fn`, minus the trailing "define a global" step, since
    a method lives in its class's method table instead. `self` is just
    the first ordinary parameter. */
@@ -952,7 +952,7 @@ static int compile_class_method(AstNode *node, const char *super_name) {
     const char *fname = node->data.fn_decl.fn_name;
     int arity = list_count(node->data.fn_decl.params);
 
-    KhanFunction *fn = khanfn_new(fname, arity);
+    KoshFunction *fn = koshfn_new(fname, arity);
 
     CompilerState fn_state;
     compiler_state_init(&fn_state, fn, current);
@@ -984,8 +984,8 @@ static int compile_class_method(AstNode *node, const char *super_name) {
     current = fn_state.enclosing;
     if (fn_had_error) current->had_error = 1;
 
-    khanfn_register(fn);
-    return khanfn_registry_index();
+    koshfn_register(fn);
+    return koshfn_registry_index();
 }
 
 static void compile_block(AstNodeList *stmts, int line) {
@@ -1321,7 +1321,7 @@ static void compile_stmt(AstNode *node) {
         const char *fname = node->data.fn_decl.fn_name;
         int arity = list_count(node->data.fn_decl.params);
 
-        KhanFunction *fn = khanfn_new(fname, arity);
+        KoshFunction *fn = koshfn_new(fname, arity);
 
         /* compile function body into a nested compiler state */
         CompilerState fn_state;
@@ -1350,7 +1350,7 @@ static void compile_stmt(AstNode *node) {
         int fn_had_error = current->had_error;
 
         /* Copy the free-variable capture list this function needs (if any)
-           from the compile-time scratch state into the KhanFunction itself,
+           from the compile-time scratch state into the KoshFunction itself,
            so it survives after fn_state goes out of scope. */
         if (fn_state.upvalue_count > 0) {
             fn->upvalue_count = fn_state.upvalue_count;
@@ -1362,8 +1362,8 @@ static void compile_stmt(AstNode *node) {
         if (fn_had_error) current->had_error = 1;
 
         /* Register compiled function; emit its index so VM finds it */
-        khanfn_register(fn);
-        int fn_idx = khanfn_registry_index();
+        koshfn_register(fn);
+        int fn_idx = koshfn_registry_index();
 
         emit_const(value_number((double)fn_idx), line);
         emit_global_def(fname, line);
@@ -1406,8 +1406,8 @@ static void compile_stmt(AstNode *node) {
    Public entry point
    ══════════════════════════════════════════════════════════════ */
 
-KhanFunction *compile(AstNode *program, const char *base_path) {
-    KhanFunction *script = khanfn_new("<script>", 0);
+KoshFunction *compile(AstNode *program, const char *base_path) {
+    KoshFunction *script = koshfn_new("<script>", 0);
 
     CompilerState state;
     compiler_state_init(&state, script, NULL);
@@ -1446,7 +1446,7 @@ KhanFunction *compile(AstNode *program, const char *base_path) {
     current = NULL;
 
     if (state.had_error) {
-        khanfn_free(script);
+        koshfn_free(script);
         return NULL;
     }
     return script;

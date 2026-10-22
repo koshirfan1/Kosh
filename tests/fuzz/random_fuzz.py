@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tests/fuzz/random_fuzz.py — mutation-based fuzzing using real Khan
+tests/fuzz/random_fuzz.py — mutation-based fuzzing using real Kosh
 source files (from examples/, tests/, packages/) as seed corpus.
 
 Unlike negative_cases.py's hand-picked cases, this explores input space
@@ -13,7 +13,7 @@ a clean SyntaxError or even a clean runtime error is a pass. Only a
 segfault/abort/hang counts as a finding.
 
 Usage:
-  python3 tests/fuzz/random_fuzz.py [khan_binary] [iterations] [seed]
+  python3 tests/fuzz/random_fuzz.py [kosh_binary] [iterations] [seed]
 
 Defaults: ./kosh, 500 iterations, a fixed seed (for reproducibility —
 pass a different seed or 0 for a randomized run).
@@ -25,7 +25,7 @@ import random
 import glob
 import tempfile
 
-KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
+KOSH_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
 ITERATIONS = int(sys.argv[2]) if len(sys.argv) > 2 else 500
 SEED = int(sys.argv[3]) if len(sys.argv) > 3 else 42
 TIMEOUT_SECS = 3
@@ -99,7 +99,7 @@ def mutate(data: bytearray, rng: random.Random) -> bytearray:
 def run_mutant(path):
     try:
         result = subprocess.run(
-            [KHAN_BIN, path], capture_output=True, timeout=TIMEOUT_SECS
+            [KOSH_BIN, path], capture_output=True, timeout=TIMEOUT_SECS
         )
         return result.returncode, None
     except subprocess.TimeoutExpired as e:

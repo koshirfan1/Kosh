@@ -1,7 +1,7 @@
-# Khan Tensor package — real n-dimensional tensors with automatic
+# Kosh Tensor package — real n-dimensional tensors with automatic
 # differentiation, backed by the native engine in src/tensor_lib.c
-# (VAL_TENSOR: one contiguous double buffer, not nested Khan arrays).
-# This is the first slice of Khan's AI-native-core direction — see
+# (VAL_TENSOR: one contiguous double buffer, not nested Kosh arrays).
+# This is the first slice of Kosh's AI-native-core direction — see
 # docs/tensor.md for the full design writeup and v1 scope limits.
 #
 # Usage: import "tensor"
@@ -226,7 +226,7 @@ class Tensor:
 
 # -- backward-compatible free functions (nested-array in, nested-array
 # out), kept for anything written against the old array-based package.
-# These now call the native engine instead of the old pure-Khan O(n^3)
+# These now call the native engine instead of the old pure-Kosh O(n^3)
 # loops, so they're also just faster. ------------------------------------
 
 fn matmul(A, B):

@@ -1,5 +1,5 @@
-#ifndef KHAN_JSON_LIB_H
-#define KHAN_JSON_LIB_H
+#ifndef KOSH_JSON_LIB_H
+#define KOSH_JSON_LIB_H
 
 #include "interpreter.h"
 

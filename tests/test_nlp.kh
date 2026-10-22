@@ -4,7 +4,7 @@ import "../packages/test/test.kh"
 
 let t = test_suite("NLP Suite")
 
-let text1 = "Khan language is GREAT!"
+let text1 = "Kosh language is GREAT!"
 let score1 = sentiment(text1)
 t = test_eq(t, "Positive sentence should have score 1", score1, 1)
 

@@ -44,7 +44,7 @@ print str_contains("hello world", "world")  # true
 print str_index_of("hello", "l")        # 2
 print str_count("banana", "na")         # 2
 print str_is_empty("")                  # true
-print str_char_at("Khan", 0)            # "K"
+print str_char_at("Kosh", 0)            # "K"
 ```
 
 ### Trimming
@@ -91,7 +91,7 @@ str_capitalize(s)               # Capitalize first letter, lowercase rest
 
 ```kosh
 print str_replace("foo bar foo", "foo", "baz")  # "baz bar baz"
-print str_reverse("Khan")                        # "nahK"
+print str_reverse("Kosh")                        # "nahK"
 print str_capitalize("hello")                    # "Hello"
 ```
 
@@ -116,13 +116,13 @@ print str_join(["x", "y", "z"], " | ")   # "x | y | z"
 ```kosh
 import "strings"
 
-let text = "  Hello, Khan World!  "
+let text = "  Hello, Kosh World!  "
 
-print str_trim(text)                    # "Hello, Khan World!"
+print str_trim(text)                    # "Hello, Kosh World!"
 print str_starts_with(text, "  Hello")  # true
-print str_contains(text, "Khan")        # true
-print str_replace(text, "World", "Universe")  # "  Hello, Khan Universe!  "
-print str_reverse("Khan")               # "nahK"
+print str_contains(text, "Kosh")        # true
+print str_replace(text, "World", "Universe")  # "  Hello, Kosh Universe!  "
+print str_reverse("Kosh")               # "nahK"
 
 let parts = str_split("a,b,c", ",")
 print str_join(parts, " - ")            # "a - b - c"

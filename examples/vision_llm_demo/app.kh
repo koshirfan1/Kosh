@@ -2,7 +2,7 @@ import "vision"
 import "webi"
 
 # Single-binary demo: classical vision analysis + local LLM description,
-# served over HTTP - one static Khan binary, no venv, no pip, no docker.
+# served over HTTP - one static Kosh binary, no venv, no pip, no docker.
 #
 # The vision half works right now, no setup needed. The LLM half needs a
 # real GGUF model file (this sandbox has no path to download one - see
@@ -63,7 +63,7 @@ fn fn_analyze(req):
     return res_json(result)
 
 fn fn_index(req):
-    let html = "<h1>Khan vision + LLM + webi demo</h1>"
+    let html = "<h1>Kosh vision + LLM + webi demo</h1>"
     html = html + "<p>One static binary. No venv, no pip, no docker.</p>"
     html = html + "<p><a href=\"/analyze\">Run analysis on sample.png</a></p>"
     return res_html(html)

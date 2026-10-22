@@ -24,7 +24,7 @@
 // collide with any system declaration, sidesteps the whole class of
 // "does this libc expose this GNU extension under these flags"
 // uncertainty for good.
-static char *khan_strndup(const char *s, size_t n) {
+static char *kosh_strndup(const char *s, size_t n) {
     size_t len = strnlen(s, n);
     char *copy = malloc(len + 1);
     if (copy) {
@@ -217,7 +217,7 @@ static AstNode *print_statement(Parser *parser) {
 static AstNode *let_statement(Parser *parser) {
     int line = parser->previous.line;
     consume(parser, TOKEN_IDENTIFIER, "Expected variable name after 'let'.");
-    const char *name = khan_strndup(parser->previous.start, parser->previous.length);
+    const char *name = kosh_strndup(parser->previous.start, parser->previous.length);
     AstNode *initializer = NULL;
     if (match(parser, TOKEN_EQUAL)) {
         initializer = expression(parser);
@@ -253,7 +253,7 @@ static AstNode *while_statement(Parser *parser) {
 static AstNode *for_statement(Parser *parser) {
     int line = parser->previous.line;
     consume(parser, TOKEN_IDENTIFIER, "Expected loop variable name after 'for'.");
-    const char *var_name = khan_strndup(parser->previous.start, parser->previous.length);
+    const char *var_name = kosh_strndup(parser->previous.start, parser->previous.length);
     consume(parser, TOKEN_IN, "Expected 'in' after loop variable.");
     AstNode *iterable = expression(parser);
     consume(parser, TOKEN_COLON, "Expected ':' after for-loop iterable.");
@@ -279,7 +279,7 @@ static AstNode *try_statement(Parser *parser) {
     const char *catch_var = NULL;
     if (check(parser, TOKEN_IDENTIFIER)) {
         advance(parser);
-        catch_var = khan_strndup(parser->previous.start, parser->previous.length);
+        catch_var = kosh_strndup(parser->previous.start, parser->previous.length);
     }
     consume(parser, TOKEN_COLON, "Expected ':' after 'catch'.");
     AstNode *catch_block = block(parser);
@@ -298,7 +298,7 @@ static AstNode *throw_statement(Parser *parser) {
 static AstNode *fn_declaration(Parser *parser) {
     int line = parser->previous.line;
     consume(parser, TOKEN_IDENTIFIER, "Expected function name after 'fn'.");
-    const char *name = khan_strndup(parser->previous.start, parser->previous.length);
+    const char *name = kosh_strndup(parser->previous.start, parser->previous.length);
 
     AstNodeList *params = NULL;
     if (match(parser, TOKEN_LPAREN)) {
@@ -308,7 +308,7 @@ static AstNode *fn_declaration(Parser *parser) {
                 consume(parser, TOKEN_IDENTIFIER, "Expected parameter name.");
                 params = ast_list_append(params,
                     ast_new_identifier(
-                        khan_strndup(parser->previous.start, parser->previous.length),
+                        kosh_strndup(parser->previous.start, parser->previous.length),
                         parser->previous.line));
             } while (match(parser, TOKEN_COMMA));
         }
@@ -334,7 +334,7 @@ static AstNode *fn_declaration(Parser *parser) {
 static AstNode *class_declaration(Parser *parser) {
     int line = parser->previous.line;
     consume(parser, TOKEN_IDENTIFIER, "Expected class name after 'class'.");
-    const char *name = khan_strndup(parser->previous.start, parser->previous.length);
+    const char *name = kosh_strndup(parser->previous.start, parser->previous.length);
 
     // Optional `(Base)` — single inheritance only, no comma-separated
     // base list. `Base` must already be a defined class by the time this
@@ -343,7 +343,7 @@ static AstNode *class_declaration(Parser *parser) {
     const char *super_name = NULL;
     if (match(parser, TOKEN_LPAREN)) {
         consume(parser, TOKEN_IDENTIFIER, "Expected superclass name after '('.");
-        super_name = khan_strndup(parser->previous.start, parser->previous.length);
+        super_name = kosh_strndup(parser->previous.start, parser->previous.length);
         consume(parser, TOKEN_RPAREN, "Expected ')' after superclass name.");
     }
     consume(parser, TOKEN_COLON, "Expected ':' after class name.");
@@ -658,7 +658,7 @@ static AstNode *finish_index(Parser *parser, AstNode *object) {
 // is fused into one node rather than composed from a GET_ATTR + a call.
 static AstNode *finish_dot(Parser *parser, AstNode *object) {
     consume(parser, TOKEN_IDENTIFIER, "Expected property or method name after '.'.");
-    const char *name = khan_strndup(parser->previous.start, parser->previous.length);
+    const char *name = kosh_strndup(parser->previous.start, parser->previous.length);
     int line = parser->previous.line;
 
     if (match(parser, TOKEN_LPAREN)) {
@@ -714,7 +714,7 @@ static AstNode *primary(Parser *parser) {
     }
 
     if (match(parser, TOKEN_IDENTIFIER)) {
-        const char *name = khan_strndup(parser->previous.start, parser->previous.length);
+        const char *name = kosh_strndup(parser->previous.start, parser->previous.length);
         return ast_new_identifier(name, parser->previous.line);
     }
 
@@ -727,7 +727,7 @@ static AstNode *primary(Parser *parser) {
         int line = parser->previous.line;
         consume(parser, TOKEN_DOT, "Expected '.' after 'super'.");
         consume(parser, TOKEN_IDENTIFIER, "Expected method name after 'super.'.");
-        const char *name = khan_strndup(parser->previous.start, parser->previous.length);
+        const char *name = kosh_strndup(parser->previous.start, parser->previous.length);
         consume(parser, TOKEN_LPAREN, "Expected '(' after 'super.<method>'.");
         AstNodeList *args = NULL;
         if (!check(parser, TOKEN_RPAREN)) {

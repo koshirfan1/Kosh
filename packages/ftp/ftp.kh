@@ -1,4 +1,4 @@
-# Khan FTP Package
+# Kosh FTP Package
 # Usage: import "mqtt"
 
 fn ftp_client(host, user, pass):

@@ -1,6 +1,6 @@
-# Khan math package v2.0.0
+# Kosh math package v2.0.0
 # Author: Irfan Khan
-# Extends v1 with full 3D math for Khan Engine and Khan Studio
+# Extends v1 with full 3D math for Kosh Engine and Kosh Studio
 #
 # NEW in v2:
 #   Trig         — sin, cos, tan, asin, acos, atan, atan2, deg/rad

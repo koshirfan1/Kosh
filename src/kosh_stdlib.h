@@ -1,5 +1,5 @@
-#ifndef KHAN_KHANSTDLIB_H
-#define KHAN_KHANSTDLIB_H
+#ifndef KOSH_KOSHSTDLIB_H
+#define KOSH_KOSHSTDLIB_H
 
 #include "interpreter.h"
 

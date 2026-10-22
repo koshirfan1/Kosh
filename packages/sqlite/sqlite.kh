@@ -1,4 +1,4 @@
-# Khan SQLite Package
+# Kosh SQLite Package
 # Usage: import "sqlite"
 #
 # Real bridge to libsqlite3 (was a mock that ignored the SQL and always

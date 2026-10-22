@@ -7,7 +7,7 @@
 #include "datetime_lib.h"
 
 // ---------------------------------------------------------------------------
-// Helper: build a Khan map from a struct tm + timestamp
+// Helper: build a Kosh map from a struct tm + timestamp
 // ---------------------------------------------------------------------------
 static Value tm_to_map(struct tm *t, time_t ts) {
     Value m = value_map_empty();

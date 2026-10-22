@@ -1,5 +1,5 @@
-#ifndef KHAN_INT8ARRAY_LIB_H
-#define KHAN_INT8ARRAY_LIB_H
+#ifndef KOSH_INT8ARRAY_LIB_H
+#define KOSH_INT8ARRAY_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
@@ -17,12 +17,12 @@
  * quant.kh's own convention). No shape/strides, no dtype beyond int8, no
  * arithmetic kernels (add/matmul) on it yet, and no `[]` indexing syntax -
  * read it back via int8_get()/int8_unpack(). This is real storage, not a
- * new Tensor type; it proves the specific missing piece (can Khan store
+ * new Tensor type; it proves the specific missing piece (can Kosh store
  * something smaller than a double) rather than the whole Tensor Engine.
  *
  * Registers:
  *   int8_pack(array, scale)   -> int8array value
- *       Quantizes a Khan array of numbers into packed signed bytes using
+ *       Quantizes a Kosh array of numbers into packed signed bytes using
  *       the given scale (round-to-nearest, clipped to [-127, 127]). Pass
  *       whatever scale your own calibration strategy computed - this
  *       function only does the storage/packing, not the calibration
@@ -32,10 +32,10 @@
  *   int8_len(qarray)          -> number (element count)
  *   int8_byte_size(qarray)    -> number (actual bytes used - count * 1,
  *       here for the real memory-savings comparison against a regular
- *       Khan array's count * 8 bytes; not a new fact int8_len() couldn't
+ *       Kosh array's count * 8 bytes; not a new fact int8_len() couldn't
  *       already tell you, just named for that specific comparison)
  *   int8_dot(qarray, array)   -> number (dot product against a regular
- *       Khan array of numbers, computed directly on the packed bytes -
+ *       Kosh array of numbers, computed directly on the packed bytes -
  *       does NOT call int8_unpack() internally. Mathematically identical
  *       to dot(int8_unpack(qarray), array) - confirmed to match exactly
  *       in testing (same distributed-multiply math, reordered).
@@ -44,9 +44,9 @@
  *       2.94s for unpack-then-dot(), a ~280x difference - but be honest
  *       about WHY: int8_unpack() alone only accounts for ~4% of that
  *       2.94s (0.12s measured separately). The other ~96% is tensor.kh's
- *       dot() being pure interpreted Khan, not native C. So this number
- *       is real, but it's mostly evidence for "Khan needs native tensor
- *       kernels, not pure-Khan loops" (already flagged in the roadmap
+ *       dot() being pure interpreted Kosh, not native C. So this number
+ *       is real, but it's mostly evidence for "Kosh needs native tensor
+ *       kernels, not pure-Kosh loops" (already flagged in the roadmap
  *       docs) rather than proof that avoiding the unpack step specifically
  *       is what's fast. int8_dot()'s honest, isolated advantage is being
  *       one native loop instead of an allocation + a native loop + an

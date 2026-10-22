@@ -6,7 +6,7 @@
 
 #define TENSOR_MAX_NDIM 16
 
-/* ── nested-Khan-array <-> flat tensor conversion ──────────────────── */
+/* ── nested-Kosh-array <-> flat tensor conversion ──────────────────── */
 
 /* Depth of a valid, perfectly rectangular nested array of numbers (a
    lone number is depth 0). -1 if `v` isn't shaped like that at all —
@@ -502,7 +502,7 @@ void fn_tensor_zeros_like(Value *result, Interpreter *interp, int argc, Value *a
 /* ── activations (for the nn package) ───────────────────────────────── */
 /* Forward only, plus one backward helper for ReLU (its gradient needs a
    0/1 mask that isn't expressible by composing the existing elementwise
-   ops). Sigmoid/tanh's backward is instead composed in Khan from their
+   ops). Sigmoid/tanh's backward is instead composed in Kosh from their
    own *output* plus existing mul/sub (g * out * (1 - out), and
    g * (1 - out*out) respectively) -- see packages/nn/nn.kh -- so they
    don't need a dedicated native backward function the way ReLU does. */
@@ -636,7 +636,7 @@ void fn_tensor_argmax(Value *result, Interpreter *interp, int argc, Value *args)
     *result = value_array(items, m);
 }
 
-/* probs: (N,C) tensor from _tensor_softmax. target: a plain Khan array
+/* probs: (N,C) tensor from _tensor_softmax. target: a plain Kosh array
    of N class indices (0..C-1), NOT a one-hot tensor — ergonomics over a
    separate one-hot-encoding step, matching how most frameworks' own
    CrossEntropyLoss accepts class indices directly. */

@@ -7,7 +7,7 @@
 
 import "webi"
 
-# NOTE: Khan function closures snapshot outer variables BY VALUE at the
+# NOTE: Kosh function closures snapshot outer variables BY VALUE at the
 # point the function is defined, not by live reference. So a plain
 # `stats["pass"] = ...` inside test_eq would silently mutate test_eq's own
 # private copy of `stats`, invisible to the caller. Threading `stats`

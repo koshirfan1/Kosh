@@ -3,7 +3,7 @@ import "webi"
 let app = webi_app()
 
 fn fn_index(req):
-    return res_html(<h1>Hello from Khan webi! Hi</h1>")
+    return res_html(<h1>Hello from Kosh webi! Hi</h1>")
 
 fn fn_hello(req):
     let name = query_get(req, "name", "World")

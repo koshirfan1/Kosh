@@ -45,8 +45,8 @@ fn suite_functions():
     # this exact call shape (map + function-value passed as 2nd arg,
     # first param used to index the map) is what originally surfaced the
     # bug in the webi/morgos "after(app, hook_fn)" pattern
-    let built = make_map_with("name", "khan")
-    t = test_eq(t, "REGRESSION: first param used for map indexing, not the callee", built["name"], "khan")
+    let built = make_map_with("name", "kosh")
+    t = test_eq(t, "REGRESSION: first param used for map indexing, not the callee", built["name"], "kosh")
 
     # ── recursion ──────────────────────────────────────────────────────
     t = test_eq(t, "recursive factorial(6)", factorial(6), 720)

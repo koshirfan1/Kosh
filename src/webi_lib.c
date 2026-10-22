@@ -1,8 +1,8 @@
 // ===========================================================================
-// webi_lib.c — Native HTTP server backend for the webi Khan package
+// webi_lib.c — Native HTTP server backend for the webi Kosh package
 //
 // Provides:
-//   http_serve(port, app)  — blocking server loop, calls Khan's webi_handle()
+//   http_serve(port, app)  — blocking server loop, calls Kosh's webi_handle()
 //
 // Also provides the v1.1 requests extensions:
 //   http_get_h / http_post_h / http_put_h / http_put_json
@@ -70,14 +70,14 @@ typedef int wb_sock_t;
 #define WB_MAX_BODY_SIZE     (10 * 1024 * 1024)   /* 10 MB */
 #define WB_SOCKET_TIMEOUT_SEC 30
 
-/* Bridge: call Khan function by name from C */
-extern Value khan_call_fn(Interpreter *interp, Environment *env,
+/* Bridge: call Kosh function by name from C */
+extern Value kosh_call_fn(Interpreter *interp, Environment *env,
                           const char *fn_name, int argc, Value *argv);
-/* Global env pointer set by http_serve so the accept loop can call Khan */
+/* Global env pointer set by http_serve so the accept loop can call Kosh */
 static Environment *g_webi_env = NULL;
 
 // ---------------------------------------------------------------------------
-// wb_safe_call_webi_handle — call the Khan webi_handle() bridge function
+// wb_safe_call_webi_handle — call the Kosh webi_handle() bridge function
 // and CONTAIN any runtime error to this one request.
 //
 // Previously a runtime error inside a route handler (a typo, a bad map
@@ -391,7 +391,7 @@ static char *wb_build_http_response(Value *res_map) {
     wb_buf_str(&out, &olen, &ocap, line);
 
     // Standard headers
-    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.1.3 (Khan)\r\n");
+    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.1.3 (Kosh)\r\n");
     wb_buf_str(&out, &olen, &ocap, "Connection: close\r\n");
     snprintf(line, sizeof(line), "Content-Type: %s\r\n", ct);
     wb_buf_str(&out, &olen, &ocap, line);
@@ -437,7 +437,7 @@ static char *wb_build_http_response(Value *res_map) {
 static char *wb_run_curl(const char **args, int nargs) {
     size_t cmd_len = 16;
     for (int i = 0; i < nargs; i++)
-        cmd_len += strlen(args[i]) * 2 + 4;
+        cmd_len += strlen(args[i]) * 4 + 4;   /* worst case: every char is a quote -> 4 bytes ('\'') */
     char *cmd = malloc(cmd_len);
     strcpy(cmd, "curl -s");
     for (int i = 0; i < nargs; i++) {
@@ -593,13 +593,13 @@ void fn_http_head(Value *result, Interpreter *interp, int argc, Value *args) {
 
 // ---------------------------------------------------------------------------
 // fn_http_serve — the main server loop
-// Signature (Khan): http_serve(port, app)
+// Signature (Kosh): http_serve(port, app)
 //
 // The server:
 //   1. Binds to 0.0.0.0:port
 //   2. Accepts connections in a loop
 //   3. Parses each HTTP request
-//   4. Calls Khan's webi_handle(app, method, path, query, headers, body)
+//   4. Calls Kosh's webi_handle(app, method, path, query, headers, body)
 //   5. Builds the HTTP response from the returned map
 //   6. Sends it back and closes the connection
 // ---------------------------------------------------------------------------
@@ -682,11 +682,11 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         char  client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
 
-        // Call webi_handle(app, method, path, query, headers, body) in Khan
+        // Call webi_handle(app, method, path, query, headers, body) in Kosh
         // We need to look up the function from the interpreter environment.
         // We pass it via a synthetic AstNode call using interpreter_execute.
-        // Simpler approach: look up "webi_handle" as a global native or Khan fn
-        // and call its underlying C NativeFn / Khan fn body directly.
+        // Simpler approach: look up "webi_handle" as a global native or Kosh fn
+        // and call its underlying C NativeFn / Kosh fn body directly.
 
         // Build args array for webi_handle
         Value call_args[7];
@@ -698,7 +698,7 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         call_args[5] = value_string(body_str);
         call_args[6] = value_string(client_ip);
 
-        /* Call Khan webi_handle(app, method, path, query, headers, body, ip) */
+        /* Call Kosh webi_handle(app, method, path, query, headers, body, ip) */
         Value res_map;
         // In VM mode, g_webi_env is NULL, but we have the VM pointer in 'interp'
         if (g_webi_env || interp) {
@@ -714,9 +714,9 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         send(client_fd, http_response, strlen(http_response), 0);
 
         // Cleanup
-        // NOTE: call_args are NOT freed here — khan_call_fn() binds them as
+        // NOTE: call_args are NOT freed here — kosh_call_fn() binds them as
         // parameters in the callee's environment, and env_free() (called
-        // internally by khan_call_fn after the function returns) already
+        // internally by kosh_call_fn after the function returns) already
         // owns and frees each parameter Value. Freeing them again here
         // would be a double-free.
         free(http_response);
@@ -758,7 +758,7 @@ static Value wh_request(const char *method, const char *url,
     BOOL use_https = (strncmp(url, "https", 5) == 0);
     INTERNET_PORT port = use_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
 
-    HINTERNET hSess = WinHttpOpen(L"Khan-webi/1.1",
+    HINTERNET hSess = WinHttpOpen(L"Kosh-webi/1.1",
                                    WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
     Value result = value_map_empty();
     map_set(&result, "status",  value_number(0));
@@ -996,7 +996,7 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         send(cli, http_response, (int)strlen(http_response), 0);
 
         // NOTE: call_args are NOT freed here — see POSIX loop comment above;
-        // khan_call_fn's internal env_free already owns/frees each param.
+        // kosh_call_fn's internal env_free already owns/frees each param.
         free(http_response);
         free(raw);
         if (headers_str) free(headers_str);
@@ -1021,7 +1021,7 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
 // ===========================================================================
 // Static file serving support (Phase 3): MIME type table + a
 // traversal-safe path resolver shared by serve_static()/render_file() on
-// the Khan side (routing.kh/template.kh). Every untrusted path segment —
+// the Kosh side (routing.kh/template.kh). Every untrusted path segment —
 // the part of the URL after a serve_static mount prefix, or a template
 // path passed to render_file() — goes through _webi_safe_static_path()
 // below before anything ever touches the filesystem. That's the one
@@ -1110,7 +1110,7 @@ static const char *wb_mime_for_path(const char *path) {
     return "application/octet-stream";
 }
 
-// Khan: _webi_mime_type(path) -> string
+// Kosh: _webi_mime_type(path) -> string
 void fn_webi_mime_type(Value *result, Interpreter *interp, int argc, Value *args) {
     if (!wb_check(interp, "_webi_mime_type", 1, argc)) { *result = value_nil(); return; }
     const char *path;
@@ -1138,7 +1138,7 @@ static int wb_realpath(const char *path, char *out, size_t out_cap) {
 #endif
 }
 
-// Khan: _webi_script_dir() -> string
+// Kosh: _webi_script_dir() -> string
 //
 // Same fallback order as _webi_resolve_path, exposed on its own so
 // callers that need "the directory of whichever .kh file is currently
@@ -1156,7 +1156,7 @@ void fn_webi_script_dir(Value *result, Interpreter *interp, int argc, Value *arg
     }
 }
 
-// Khan: _webi_resolve_path(path) -> string
+// Kosh: _webi_resolve_path(path) -> string
 //
 // Directory-aware resolution for a file path an app author wrote in
 // their own source (a template path for render_file(), a folder for
@@ -1272,7 +1272,7 @@ void fn_webi_safe_static_path(Value *result, Interpreter *interp, int argc, Valu
 // ===========================================================================
 // secure_token — cryptographically-random hex token (v1.1.1 security)
 //
-// Khan's existing random() is seeded rand() — fine for game logic, but
+// Kosh's existing random() is seeded rand() — fine for game logic, but
 // predictable enough that it must never be used for session IDs, CSRF
 // tokens, password reset links, or anything else where an attacker being
 // able to guess the value matters. This pulls from the OS's actual CSPRNG
@@ -1296,7 +1296,7 @@ static int wb_fill_random_bytes(unsigned char *buf, int n) {
 #endif
 }
 
-// Khan: secure_token(num_bytes = 32) -> hex string (num_bytes*2 chars)
+// Kosh: secure_token(num_bytes = 32) -> hex string (num_bytes*2 chars)
 void fn_secure_token(Value *result, Interpreter *interp, int argc, Value *args) {
     int nbytes = 32; /* 256 bits by default */
     if (argc >= 1) {
@@ -1333,10 +1333,10 @@ void fn_secure_token(Value *result, Interpreter *interp, int argc, Value *args) 
 // rate_limit_check — simple in-memory, per-key sliding-window rate limiter
 // (v1.1.1 security)
 //
-// State has to live here in C, not in a Khan-visible map, because the
+// State has to live here in C, not in a Kosh-visible map, because the
 // native server passes http_serve a *copy* of the app map on every single
 // request (see call_args[0] = value_copy(app) above) — anything mutated
-// on a Khan map during one request is gone by the next one. This table is
+// on a Kosh map during one request is gone by the next one. This table is
 // a real process-lifetime C global, so counts actually persist across
 // requests the way a rate limiter needs them to.
 //
@@ -1403,7 +1403,7 @@ static int wb_rate_limit_check(const char *key, int max_requests, int window_sec
     return 1;
 }
 
-// Khan: rate_limit_check(key, max_requests, window_seconds) -> bool
+// Kosh: rate_limit_check(key, max_requests, window_seconds) -> bool
 void fn_rate_limit_check(Value *result, Interpreter *interp, int argc, Value *args) {
     if (!wb_check(interp, "rate_limit_check", 3, argc)) { *result = value_nil(); return; }
     const char *key;

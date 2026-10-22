@@ -46,7 +46,7 @@ a real decrement already touched.
 
 Scope: **`VAL_ARRAY`/`VAL_MAP` only.** Strings, numbers, bools, nil
 can't be shared, so they can't cycle. Functions/closures use a
-separate refcount in `chunk.c`'s `KhanClosure` and could in principle
+separate refcount in `chunk.c`'s `KoshClosure` and could in principle
 cycle too (a closure capturing a variable that indirectly holds the
 same closure) — much rarer in practice, and a documented follow-up,
 not covered here.

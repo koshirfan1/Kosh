@@ -1,14 +1,14 @@
-# collections.kh — functional array helpers for Khan
+# collections.kh — functional array helpers for Kosh
 #
-# Khan has no built-in sort/filter/map/reduce — this package fills that gap.
-# Higher-order functions here take a plain Khan function BY NAME (Khan has
+# Kosh has no built-in sort/filter/map/reduce — this package fills that gap.
+# Higher-order functions here take a plain Kosh function BY NAME (Kosh has
 # no anonymous/lambda function syntax, so define a named function first,
 # then pass it):
 #
 #   fn is_even(n): return n % 2 == 0
 #   print filter([1,2,3,4], is_even)   # [2, 4]
 #
-# IMPORTANT ORDERING NOTE: in Khan, a function's closure snapshots the
+# IMPORTANT ORDERING NOTE: in Kosh, a function's closure snapshots the
 # enclosing scope at the moment it's DECLARED, not when it's called. That
 # means a helper function must be declared BEFORE any function that calls
 # it in this file — there's no forward-reference / hoisting. Every function
@@ -108,7 +108,7 @@ fn zip(a, b):
     return result
 
 # Ascending sort for an array of NUMBERS (insertion sort — simple, stable,
-# fine for the array sizes Khan programs typically deal with). Note: Khan's
+# fine for the array sizes Kosh programs typically deal with). Note: Kosh's
 # < and > operators don't support strings yet, so this works on numbers
 # only. To sort other things, use sort_by with a function that returns a
 # number (see below).

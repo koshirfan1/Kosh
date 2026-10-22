@@ -88,7 +88,7 @@ parser = add_arg(parser, "output", "result.txt", "Output file path")
 parser = add_flag(parser, "verbose", "Show detailed output")
 parser = add_flag(parser, "compress", "Compress output")
 
-# Parse (argv comes from Khan's built-in)
+# Parse (argv comes from Kosh's built-in)
 let args = parse_args(parser, argv)
 
 # Show help if requested

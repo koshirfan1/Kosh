@@ -381,7 +381,7 @@ it's exposed mainly so tests can dispatch a request without actually
 opening a socket (see `examples/webi_phase3_test.kh` for an example).
 
 ```kosh
-print webi_version()    # "webi/1.1.3 (Khan)"
+print webi_version()    # "webi/1.1.3 (Kosh)"
 print webi_routes(app)  # list every registered route, for debugging
 ```
 

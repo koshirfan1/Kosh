@@ -31,7 +31,7 @@ fn webi_set_cors_origins(app, origins):
 #   app = webi_set_rate_limit(app, 100, 60)   # 100 requests / IP / minute
 # The actual counting happens in native code (see rate_limit_check() in
 # webi_lib.c) — it has to, since a request handler only ever sees a fresh
-# copy of `app`, so counts can't live on the Khan map itself and survive
+# copy of `app`, so counts can't live on the Kosh map itself and survive
 # to the next request.
 # ---------------------------------------------------------------------------
 fn webi_set_rate_limit(app, max_requests, window_seconds):
@@ -88,7 +88,7 @@ fn _webi_strip_bearer_prefix(auth):
 # meant for service-to-service or internal-tool endpoints. For anything
 # with real user accounts, write your own middleware that checks
 # credentials/sessions the way your app actually models them; any normal
-# Khan function can be registered with use(app, ...).
+# Kosh function can be registered with use(app, ...).
 # ---------------------------------------------------------------------------
 fn mw_require_api_key(req):
     let app = req["_app"]

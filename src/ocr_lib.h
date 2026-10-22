@@ -1,5 +1,5 @@
-#ifndef KHAN_OCR_LIB_H
-#define KHAN_OCR_LIB_H
+#ifndef KOSH_OCR_LIB_H
+#define KOSH_OCR_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
@@ -12,14 +12,14 @@
  * API (tesseract/capi.h) and feeds it pixel buffers directly from
  * vision_lib's already-decoded image data (via vision_internal_data() and
  * friends) — no temp files, no shelling out to a CLI, no Leptonica PIX
- * plumbing needed on Khan's side.
+ * plumbing needed on Kosh's side.
  *
  * Requires libtesseract (+ its trained language data) to be installed on
- * the machine Khan is built on. See docs/ocr.md for install notes per
+ * the machine Kosh is built on. See docs/ocr.md for install notes per
  * platform. This is a hard build-time dependency: if libtesseract-dev
  * isn't found, the build fails rather than silently degrading to a fake.
  *
- * An "ocr engine" at the Khan level is a plain map:
+ * An "ocr engine" at the Kosh level is a plain map:
  *   {"__ocr_id": <handle>, "lang": <language code>}
  * The underlying TessBaseAPI instance lives in a native-side table indexed
  * by __ocr_id. Always call ocr_free() on engines you no longer need.

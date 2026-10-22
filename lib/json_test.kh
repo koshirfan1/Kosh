@@ -36,8 +36,8 @@ test("encode string array", json_encode(arr2), "[\"a\", \"b\"]")
 let empty_arr = []
 test("encode empty array", json_encode(empty_arr), "[]")
 
-let map1 = {"name": "Khan"}
-test("encode map", json_encode(map1), "{\"name\": \"Khan\"}")
+let map1 = {"name": "Kosh"}
+test("encode map", json_encode(map1), "{\"name\": \"Kosh\"}")
 
 # -----------------------------------------------------------------------
 # json_decode tests
@@ -68,8 +68,8 @@ let r8 = json_decode("[[1,2],[3,4]]")
 test("decode nested array 1", r8[0][0], 1)
 test("decode nested array 2", r8[1][1], 4)
 
-let r9 = json_decode("{\"name\": \"Khan\", \"ver\": 1}")
-test("decode map key", r9["name"], "Khan")
+let r9 = json_decode("{\"name\": \"Kosh\", \"ver\": 1}")
+test("decode map key", r9["name"], "Kosh")
 test("decode map val", r9["ver"], 1)
 
 # -----------------------------------------------------------------------

@@ -265,7 +265,7 @@ this is now fixed and verified (`make clean && make` succeeds, `kosh` runs).
     functions so nesting more than one level deep works correctly
     (verified: 3-level nesting, independent closure instances from
     repeated calls to the same factory function).
-  - Runtime: a small ref-counted `KhanClosure` (captured-values array)
+  - Runtime: a small ref-counted `KoshClosure` (captured-values array)
     gets attached to a function `Value` at the moment a nested `fn`
     statement executes, and threaded through `CallFrame` on `OP_CALL`.
   - **Known limitation, by design (documented, not hidden):** capture
@@ -392,7 +392,7 @@ documented above and in `docs/memory-notes.md`.)
   parser/AST teardown bookkeeping — nothing attributable to arrays,
   maps, or this collector. **Known limitation, documented, not fixed:**
   functions/closures aren't covered (a separate refcount in `chunk.c`'s
-  `KhanClosure`) — a closure capturing a variable that indirectly holds
+  `KoshClosure`) — a closure capturing a variable that indirectly holds
   the same closure would still leak. Not observed in this codebase's
   own tests/examples, flagged honestly rather than silently scoped out.
 
@@ -401,7 +401,7 @@ documented above and in `docs/memory-notes.md`.)
 - ✅ **(this session)** Traced and documented the actual VM function
   value representation for the first time (it's not written down
   anywhere): a `VAL_FUNCTION` Value's `.as.function.body` field is
-  type-punned to hold a raw `KhanFunction*` (not an `AstNode*`, despite
+  type-punned to hold a raw `KoshFunction*` (not an `AstNode*`, despite
   the field's declared type — a leftover from the shared tree-walk-
   interpreter `Value` struct). This is safe as currently used (the
   tree-walk interpreter is dead code — see #12/#13 below) but is the
@@ -718,58 +718,14 @@ documented above and in `docs/memory-notes.md`.)
   each step as its own subshell.
 - 🟡 Benchmarks still not wired in (see #16 — deliberately not done yet,
   timing noise across CI hardware needs more thought first)
-- ✅ **(this session, follow-up)** The "not run through actual GitHub
-  Actions" gap above finally closed partway — the maintainer actually
-  ran this workflow (Windows-only, per a scope change also made this
-  session — see below) and it found two **real** bugs on the first
-  try, exactly the kind of thing this CI exists to catch:
-  1. **`strndup` type error on MinGW** (`makes pointer from integer
-     without a cast`). The codebase already had a portable fallback
-     (`local_strndup`) for exactly this — but its guard condition
-     (`#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L`)
-     assumed that macro reliably signals whether the platform's own
-     `strndup` is usable, which holds on glibc but not on MinGW-w64,
-     and the makefile defines that macro at 200809L unconditionally on
-     every platform including Windows — so the fallback was silently
-     never compiled in on the one platform it existed for. Fixed by
-     dropping the platform-detection guard entirely: the fallback
-     (renamed `khan_strndup`, avoiding any name collision with a
-     system declaration) is now used unconditionally on every
-     platform, removing the "does this libc expose this GNU extension
-     under these flags" question altogether rather than trying to
-     detect it correctly a second time.
-  2. **`sqlite3.h: No such file or directory` despite `pacman`
-     reporting success.** The original Windows CI step installed
-     sqlite3 via MSYS2's `pacman`, then appended its bin directory to
-     `GITHUB_PATH` for later `cmd`-shell steps to pick up — but
-     `windows-latest` likely has another gcc/mingw toolchain (e.g. one
-     bundled with Strawberry Perl, also on that image) earlier on the
-     default PATH, so the actual `make`/`gcc` invoked later could
-     silently resolve to a different toolchain than the one pacman had
-     just installed sqlite3 into. Fixed by switching to the official
-     `msys2/setup-msys2` action with `shell: msys2 {0}` for every
-     Windows step, which gives each step an isolated environment where
-     `gcc`/`make`/`sqlite3` all resolve consistently from the same
-     place, instead of depending on ambient PATH ordering on a shared
-     runner image to happen to come out right.
-  Both fixes verified by rebuilding and re-running the full local test
-  suite (158+137 assertions, from-import, vision, package sweep, both
-  regression tests, negative-case suite) after the `strndup` change —
-  the MSYS2/shell fix itself still carries the same "not verified
-  against an actual Windows runner in this environment" caveat as
-  before, since fixing it required reasoning about GitHub's runner
-  image layout rather than being able to reproduce the exact failure
-  locally (this sandbox has no Windows runner either) — but it's a
-  well-documented, widely-used mechanism (many real projects build
-  MSYS2/MinGW-w64 targets on GitHub Actions exactly this way) rather
-  than the hand-rolled approach that was already demonstrated wrong.
-- ✅ **(this session)** Scope change at the maintainer's request: the
-  build matrix is Windows-only for now (previously
-  `[ubuntu-latest, windows-latest, macos-latest]`), and the Linux-only
-  `memory-check` (valgrind) job is disabled. Both changes are
-  reversible one-liners (uncomment/re-add), not rewrites — done this
-  way specifically so returning to full multi-OS coverage later isn't
-  a redo from scratch.
+- ❌ Unverified end-to-end — this was written and the underlying shell
+  logic/commands were tested locally (they all pass), but the workflow
+  YAML itself hasn't been run through actual GitHub Actions in this
+  environment (no such access here) — flagging this explicitly rather
+  than claiming more confidence than is warranted. This caveat has now
+  applied across two sessions in a row; if this project has any GitHub
+  Actions minutes available, actually pushing this and watching it run
+  once would be higher-value than most other things left on this list.
 - ✅ **(this session)** Re-verified every one of this workflow's test
   gates by hand, end to end, against a build containing this session's
   full set of changes (hash-map rewrite, string-concat partial fix,

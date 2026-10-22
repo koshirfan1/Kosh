@@ -17,7 +17,7 @@ fn handle_detect(req):
     if image_b64 == nil:
         return res_bad_request("missing \"image\" field")
 
-    let temp_path = "/tmp/khan_face_demo_" + str(random()) + ".png"
+    let temp_path = "/tmp/kosh_face_demo_" + str(random()) + ".png"
     let decoded = base64_decode_to_file(image_b64, temp_path)
     if decoded == false:
         return res_server_error("could not write decoded image")

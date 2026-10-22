@@ -1,6 +1,6 @@
 (() => {
   const API = "";
-  const state = { token: localStorage.getItem("khan_token"), username: localStorage.getItem("khan_username") };
+  const state = { token: localStorage.getItem("kosh_token"), username: localStorage.getItem("kosh_username") };
 
   const loginScreen = document.getElementById("loginScreen");
   const appScreen   = document.getElementById("appScreen");
@@ -28,8 +28,8 @@
   function showLogin(message) {
     state.token = null;
     state.username = null;
-    localStorage.removeItem("khan_token");
-    localStorage.removeItem("khan_username");
+    localStorage.removeItem("kosh_token");
+    localStorage.removeItem("kosh_username");
     appScreen.classList.remove("visible");
     loginScreen.classList.remove("hidden");
     loginError.textContent = message || "";
@@ -107,8 +107,8 @@
       const data = await res.json();
       state.token = data.token;
       state.username = username;
-      localStorage.setItem("khan_token", state.token);
-      localStorage.setItem("khan_username", username);
+      localStorage.setItem("kosh_token", state.token);
+      localStorage.setItem("kosh_username", username);
       showApp();
     } catch (err) {
       loginError.textContent = "server unreachable";

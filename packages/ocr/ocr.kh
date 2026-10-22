@@ -1,4 +1,4 @@
-# Khan ocr package v1.1.0
+# Kosh ocr package v1.1.0
 # Usage: import "ocr"
 #
 # Real text recognition via Tesseract (libtesseract) — the same OCR engine
@@ -8,7 +8,7 @@
 # decoded by vision_load(), so any format vision.kh can open (PNG, JPEG,
 # BMP, GIF, TGA, ...) works here too.
 #
-# Requires libtesseract (+ trained language data) on the machine Khan is
+# Requires libtesseract (+ trained language data) on the machine Kosh is
 # BUILT on — see docs/ocr.md for install notes per platform. If the build
 # can't find it, `make` fails outright rather than silently shipping
 # something that pretends to work.
@@ -49,7 +49,7 @@
 #   # directly, no separate API for this:
 #   let bilingual = read_text_lang("menu.png", "eng+fra")
 #
-#   # A different single language (Khan has no default/optional params,
+#   # A different single language (Kosh has no default/optional params,
 #   # so this is a separate function rather than an optional argument):
 #   let french = read_text_lang("menu.png", "fra")
 #

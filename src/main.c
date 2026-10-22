@@ -1,5 +1,5 @@
 // ===========================================================================
-// main.c — Khan High-Performance Entry Point
+// main.c — Kosh High-Performance Entry Point
 //
 // Uses the Bytecode VM for execution (36% faster than Python).
 // ===========================================================================
@@ -236,7 +236,7 @@ static int run_repl(void) {
             ast_free(stmt);
         }
 
-        KhanFunction *script = compile(program, "<repl>");
+        KoshFunction *script = compile(program, "<repl>");
         ast_free(program);
         if (!script) { free(source); continue; }
 
@@ -296,7 +296,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* ── Compile to VM bytecode ── */
-    KhanFunction *script = compile(program, argv[1]);
+    KoshFunction *script = compile(program, argv[1]);
     if (!script) {
         ast_free(program);
         free(source);

@@ -1,4 +1,4 @@
-# Khan postman package v1.0.0
+# Kosh postman package v1.0.0
 # Usage: import "postman"
 #
 # API testing toolkit. Uses a context map (pm) that you pass to each function.
@@ -157,7 +157,7 @@ fn _pm_print_line(result):
 fn pm_run(pm):
     let total = pm["passed"] + pm["failed"]
     print ""
-    print "\x1b[1m\x1b[36m  Khan Postman ─ Test Results\x1b[0m"
+    print "\x1b[1m\x1b[36m  Kosh Postman ─ Test Results\x1b[0m"
     print "\x1b[36m  ══════════════════════════════════════\x1b[0m"
     print ""
     for result in pm["results"]:

@@ -9,7 +9,7 @@
  * Engine slots
  *
  * Same pattern as vision_cascade.c's HaarCascade table: a small fixed-size
- * array of native handles, addressed from Khan by index. Each Khan-visible
+ * array of native handles, addressed from Kosh by index. Each Kosh-visible
  * "engine" map just carries its slot number back to us.
  * ========================================================================= */
 
@@ -26,7 +26,7 @@ static int ocr_alloc_slot(void) {
     return -1;
 }
 
-/* Resolve a Khan-level engine map back to its native slot, or -1 if the
+/* Resolve a Kosh-level engine map back to its native slot, or -1 if the
  * argument isn't a live engine (wrong type, freed already, corrupt id). */
 static int ocr_resolve_slot(Value *engine) {
     if (engine->type != VAL_MAP) return -1;
@@ -383,7 +383,7 @@ void fn_ocr_set_char_whitelist(Value *result, Interpreter *interp, int argc, Val
  * Unlike every other function here, this one takes a file PATH rather
  * than an already vision_load()-ed image: TessBaseAPIProcessPages loads
  * the file itself (through Tesseract's own Leptonica-linked I/O), which
- * is what lets this avoid pulling Leptonica's PIX type into Khan's side
+ * is what lets this avoid pulling Leptonica's PIX type into Kosh's side
  * of the bridge at all. */
 void fn_ocr_save_pdf(Value *result, Interpreter *interp, int argc, Value *args) {
     (void)interp;
@@ -406,7 +406,7 @@ void fn_ocr_save_pdf(Value *result, Interpreter *interp, int argc, Value *args) 
     TessResultRenderer *renderer = TessPDFRendererCreate(output_base, datadir, 0);
     if (!renderer) return;
 
-    if (!TessResultRendererBeginDocument(renderer, "Khan OCR")) {
+    if (!TessResultRendererBeginDocument(renderer, "Kosh OCR")) {
         TessDeleteResultRenderer(renderer);
         return;
     }

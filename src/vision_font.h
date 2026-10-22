@@ -1,5 +1,5 @@
-#ifndef KHAN_VISION_FONT_H
-#define KHAN_VISION_FONT_H
+#ifndef KOSH_VISION_FONT_H
+#define KOSH_VISION_FONT_H
 
 /*
  * A compact 5x7 bitmap font — uppercase A-Z, digits 0-9, space, and a

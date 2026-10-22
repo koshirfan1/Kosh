@@ -27,7 +27,7 @@ fn suite_variables():
 
     # a nested function can read a TRUE top-level global (declared
     # outside any function) — but NOT an enclosing function's own
-    # local variable; Khan functions aren't full lexical closures.
+    # local variable; Kosh functions aren't full lexical closures.
     fn read_true_global():
         return TOP_LEVEL_CONST
     t = test_eq(t, "nested function can read a true top-level global", read_true_global(), 777)

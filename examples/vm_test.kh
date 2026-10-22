@@ -11,9 +11,9 @@ let r = 17 % 5
 print r              # 2
 
 # ── 2. Strings ──
-let name = "Khan"
+let name = "Kosh"
 let msg  = "Hello, " + name + "!"
-print msg            # Hello, Khan!
+print msg            # Hello, Kosh!
 print len(msg)       # 13
 print upper("hello") # HELLO
 print lower("WORLD") # world

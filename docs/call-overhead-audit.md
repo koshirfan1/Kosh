@@ -13,7 +13,7 @@ loop shape, same iteration count (3,000,000), differing only in what
 happens each iteration:
 
 1. `call_overhead.kh` — calls a **native** function (`len(arr)`)
-2. `call_overhead_khan_fn.kh` — calls a **Kosh-level** function
+2. `call_overhead_kosh_fn.kh` — calls a **Kosh-level** function
    (`get_five()`) that does the same "return a value" job
 3. `call_overhead_no_call.kh` — no call at all (`total = total + 5`)
 
@@ -35,7 +35,7 @@ otherwise-consistent run):
 | scenario | median time (3M iterations) |
 |---|---|
 | `native_call` (`len`) | 0.853s |
-| `khan_call` (`get_five`) | 0.890s |
+| `kosh_call` (`get_five`) | 0.890s |
 | `no_call` (baseline) | 0.730s |
 
 ## Interpretation

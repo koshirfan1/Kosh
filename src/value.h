@@ -1,5 +1,5 @@
-#ifndef KHAN_VM_VALUE_H
-#define KHAN_VM_VALUE_H
+#ifndef KOSH_VM_VALUE_H
+#define KOSH_VM_VALUE_H
 
 /*
  * value.h — VM-specific re-exports of core types.

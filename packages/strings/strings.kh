@@ -1,7 +1,7 @@
-# Khan strings package v1.0.0
+# Kosh strings package v1.0.0
 # Usage: import "strings"
 #
-# NOTE: Khan's built-in substring(s, start, length) uses LENGTH as 3rd arg.
+# NOTE: Kosh's built-in substring(s, start, length) uses LENGTH as 3rd arg.
 # All helpers here account for this correctly.
 
 fn str_starts_with(s, prefix):

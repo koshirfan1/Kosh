@@ -14,19 +14,19 @@
 #include "interpreter.h"
 
 /* ══════════════════════════════════════════════════════════════
-   KhanFunction registry
+   KoshFunction registry
    ══════════════════════════════════════════════════════════════ */
 
-#define KHANFN_REGISTRY_MAX 1024
-static KhanFunction *fn_registry[KHANFN_REGISTRY_MAX];
+#define KOSHFN_REGISTRY_MAX 1024
+static KoshFunction *fn_registry[KOSHFN_REGISTRY_MAX];
 static int           fn_registry_count = 0;
 
-void khanfn_register(KhanFunction *fn) {
-    if (fn_registry_count < KHANFN_REGISTRY_MAX)
+void koshfn_register(KoshFunction *fn) {
+    if (fn_registry_count < KOSHFN_REGISTRY_MAX)
         fn_registry[fn_registry_count++] = fn;
 }
 
-int khanfn_registry_index(void) {
+int koshfn_registry_index(void) {
     return fn_registry_count - 1;
 }
 
@@ -58,7 +58,7 @@ static Value materialize_registered_fn(CallFrame *frame, int idx) {
     fv.as.function.body    = (struct AstNode*)fn_registry[idx];
     fv.as.function.params  = NULL;
     if (fn_registry[idx]->upvalue_count > 0) {
-        KhanClosure *cl = khanclosure_new(fn_registry[idx]->upvalue_count);
+        KoshClosure *cl = koshclosure_new(fn_registry[idx]->upvalue_count);
         for (int u = 0; u < fn_registry[idx]->upvalue_count; u++) {
             UpvalueDesc *d = &fn_registry[idx]->upvalues[u];
             if (d->is_local) {
@@ -181,7 +181,7 @@ static int global_get(VM *vm, const char *key, Value *out) {
 
    These now fail safely: a clear message to stderr and a clean exit,
    rather than corrupting adjacent memory. This can't be threaded back
-   as a normal catchable Khan-level runtime error without changing the
+   as a normal catchable Kosh-level runtime error without changing the
    signature (and every call site) of push()/pop() throughout run_loop
    — a much larger, riskier change. A hard, clearly-diagnosed abort is
    a large, deliberate improvement over undefined behavior even without
@@ -223,7 +223,7 @@ static inline Value peek(VM *vm, int distance) {
    `thrown` as the value the catch block will bind (or immediately
    discard, for a bare "catch:"). Every value that was live between
    the handler's saved stack_top and the current stack_top — including
-   the locals of every Khan call frame being unwound, since a frame's
+   the locals of every Kosh call frame being unwound, since a frame's
    `slots` are just a pointer into this same shared stack array — gets
    freed here; nothing is a separate structure that needs its own walk.
    Caller must already have checked vm->try_handler_count > 0, and must
@@ -632,7 +632,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
             }
 
             if (callee.type == VAL_FUNCTION) {
-                KhanFunction *fn = (KhanFunction*)callee.as.function.body;
+                KoshFunction *fn = (KoshFunction*)callee.as.function.body;
                 if (!fn) TRY_ERR("Invalid function");
                 if (arg_count != fn->arity) TRY_ERR("Arg count mismatch");
                 if (vm->frame_count >= VM_FRAMES_MAX) TRY_ERR("Stack overflow");
@@ -642,7 +642,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
                 new_frame->ip    = fn->chunk.code;
                 new_frame->slots = vm->stack_top - arg_count;
                 new_frame->upvalues = callee.as.function.closure
-                    ? ((KhanClosure*)callee.as.function.closure)->values
+                    ? ((KoshClosure*)callee.as.function.closure)->values
                     : NULL;
                 new_frame->is_method_call = 0;
                 new_frame->is_constructor = 0;
@@ -662,8 +662,8 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
                 Value *init = class_method_lookup(&callee, "__init__");
                 Value *cslot = vm->stack_top - arg_count - 1;
                 if (init) {
-                    KhanFunction *ifn = (init->type == VAL_FUNCTION)
-                        ? (KhanFunction*)init->as.function.body : NULL;
+                    KoshFunction *ifn = (init->type == VAL_FUNCTION)
+                        ? (KoshFunction*)init->as.function.body : NULL;
                     if (!ifn) {
                         value_free(instance);
                         TRY_ERR("'__init__' is not a method");
@@ -685,7 +685,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
                     new_frame->ip    = ifn->chunk.code;
                     new_frame->slots = cslot;    /* self = slots[0] */
                     new_frame->upvalues = iclosure
-                        ? ((KhanClosure*)iclosure)->values
+                        ? ((KoshClosure*)iclosure)->values
                         : NULL;
                     new_frame->is_method_call = 1;
                     new_frame->is_constructor = 1;
@@ -767,7 +767,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
                          mname, klass.as.obj->class_name ? klass.as.obj->class_name : "?");
                 TRY_ERR(msg);
             }
-            KhanFunction *fn = (KhanFunction*)method->as.function.body;
+            KoshFunction *fn = (KoshFunction*)method->as.function.body;
             if (!fn) TRY_ERR("Invalid method");
             if (fn->arity != arg_count + 1) TRY_ERR("Arg count mismatch (methods take 'self' first)");
             if (vm->frame_count >= VM_FRAMES_MAX) TRY_ERR("Stack overflow");
@@ -777,7 +777,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
             new_frame->ip    = fn->chunk.code;
             new_frame->slots = vm->stack_top - arg_count - 1;   /* receiver = self = slots[0] */
             new_frame->upvalues = method->as.function.closure
-                ? ((KhanClosure*)method->as.function.closure)->values
+                ? ((KoshClosure*)method->as.function.closure)->values
                 : NULL;
             new_frame->is_method_call = 1;
             new_frame->is_constructor = 0;
@@ -855,7 +855,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
                          mname, sname);
                 TRY_ERR(msg);
             }
-            KhanFunction *fn = (KhanFunction*)method->as.function.body;
+            KoshFunction *fn = (KoshFunction*)method->as.function.body;
             if (!fn) TRY_ERR("Invalid method");
             if (fn->arity != arg_count + 1) {
                 TRY_ERR("Arg count mismatch in 'super' call (methods take 'self' first)");
@@ -868,7 +868,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
             new_frame->ip    = fn->chunk.code;
             new_frame->slots = vm->stack_top - arg_count - 1;   /* self = slots[0] */
             new_frame->upvalues = method->as.function.closure
-                ? ((KhanClosure*)method->as.function.closure)->values
+                ? ((KoshClosure*)method->as.function.closure)->values
                 : NULL;
             new_frame->is_method_call = 1;
             new_frame->is_constructor = 0;
@@ -1008,7 +1008,7 @@ static InterpretResult run_loop(VM *vm, int initial_frame_count) {
     }
 }
 
-InterpretResult vm_run(VM *vm, KhanFunction *script) {
+InterpretResult vm_run(VM *vm, KoshFunction *script) {
     CallFrame *frame = &vm->frames[vm->frame_count++];
     frame->fn    = script;
     frame->ip    = script->chunk.code;
@@ -1021,7 +1021,7 @@ InterpretResult vm_run(VM *vm, KhanFunction *script) {
 
 /* Shared core of vm_call_fn(): given an ALREADY-RESOLVED function Value
  * (not looked up by name), pushes it + its args, runs a nested run_loop
- * to completion, and returns its result — exactly the "call this Khan
+ * to completion, and returns its result — exactly the "call this Kosh
  * function and get its return value back" primitive that native code
  * needs for callbacks (array.map/sort, etc.). Class support does NOT go
  * through here: `__init__` (OP_CALL's VAL_CLASS branch) and method calls
@@ -1040,7 +1040,7 @@ static Value vm_call_value(VM *vm, Value fn_val, int argc, Value *args) {
     push(vm, value_copy(fn_val));
     for (int i = 0; i < argc; i++) push(vm, value_copy(args[i]));
 
-    KhanFunction *fn = (KhanFunction*)fn_val.as.function.body;
+    KoshFunction *fn = (KoshFunction*)fn_val.as.function.body;
     if (fn->arity != argc) {
         for (int i = 0; i <= argc; i++) value_free(pop(vm));
         return value_nil();
@@ -1051,7 +1051,7 @@ static Value vm_call_value(VM *vm, Value fn_val, int argc, Value *args) {
     new_frame->ip    = fn->chunk.code;
     new_frame->slots = vm->stack_top - argc;
     new_frame->upvalues = fn_val.as.function.closure
-        ? ((KhanClosure*)fn_val.as.function.closure)->values
+        ? ((KoshClosure*)fn_val.as.function.closure)->values
         : NULL;
     new_frame->is_method_call = 0;
     new_frame->is_constructor = 0;

@@ -1,5 +1,5 @@
-#ifndef KHAN_AST_H
-#define KHAN_AST_H
+#ifndef KOSH_AST_H
+#define KOSH_AST_H
 
 #include "token.h"
 

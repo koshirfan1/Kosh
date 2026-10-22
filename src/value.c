@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "value.h"
-#include "chunk.h" /* for KhanClosure — VM closure capture, see value_copy/value_free */
+#include "chunk.h" /* for KoshClosure — VM closure capture, see value_copy/value_free */
 
 /* ---------------------------------------------------------------------
  * Cached string length (SDS-style hidden header)
@@ -212,7 +212,7 @@ Value value_copy(Value v) {
         Value copy = v;
         copy.as.function.name = strdup(v.as.function.name);
         if (copy.as.function.closure) {
-            khanclosure_retain((KhanClosure *)copy.as.function.closure);
+            koshclosure_retain((KoshClosure *)copy.as.function.closure);
         }
         return copy;
     }
@@ -228,7 +228,7 @@ Value value_copy(Value v) {
  * Cycle collector — VAL_ARRAY / VAL_MAP only
  * ═══════════════════════════════════════════════════════════════════
  * Arrays and maps (see the ref_count fields above) are the only heap
- * values in Khan that are genuinely SHARED (value_copy increments
+ * values in Kosh that are genuinely SHARED (value_copy increments
  * ref_count rather than deep-copying — see value_copy()) rather than
  * always independently owned. That sharing is exactly what makes a
  * cycle possible: `a = []; a[0] = a` (direct self-reference — note
@@ -240,7 +240,7 @@ Value value_copy(Value v) {
  * that — nothing ever decrements the last ref, because the cycle is
  * decrementing itself. Strings, numbers, bools, nil can't do this
  * (never shared); functions/closures use a separate refcount in
- * `chunk.c`'s `KhanClosure` and CAN in principle cycle too (a closure
+ * `chunk.c`'s `KoshClosure` and CAN in principle cycle too (a closure
  * capturing a variable that indirectly holds the same closure) but
  * that's a much rarer pattern in practice and is a documented
  * follow-up, not covered here.
@@ -508,7 +508,7 @@ static void gc_collect_white(Obj *o) {
  * possible-roots buffer. Safe to call at any time — including "never"
  * (a program with no cycles simply keeps behaving exactly as pure
  * refcounting always did; nothing in this section changes normal
- * free() timing for acyclic data). Exposed to Khan scripts as the
+ * free() timing for acyclic data). Exposed to Kosh scripts as the
  * native `gc_collect()` (see kosh_stdlib.c) and also called
  * automatically every GC_AUTO_INTERVAL array/map allocations — see
  * obj_new()'s counter — so long-running programs (a `webi` server
@@ -609,7 +609,7 @@ void value_free(Value v) {
     } else if (v.type == VAL_FUNCTION) {
         free((void*)v.as.function.name);
         if (v.as.function.closure) {
-            khanclosure_release((KhanClosure *)v.as.function.closure);
+            koshclosure_release((KoshClosure *)v.as.function.closure);
         }
     } else if (v.type == VAL_NATIVE) {
         free((void*)v.as.native.name);

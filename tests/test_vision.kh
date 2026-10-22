@@ -9,10 +9,10 @@ import "../packages/test/test.kh"
 
 let t = test_suite("Vision Suite")
 
-let IMG = "../examples/photo.png"
+let IMG = "fixtures/sample.png"
 
 let info = image_info(IMG)
-t = test_not_nil(t, "image_info() finds the sample photo", info)
+t = test_not_nil(t, "image_info() finds the sample image", info)
 if info != nil:
     t = test_gt(t, "width is positive", info["width"], 0)
     t = test_gt(t, "height is positive", info["height"], 0)

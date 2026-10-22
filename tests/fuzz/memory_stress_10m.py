@@ -3,7 +3,7 @@
 tests/fuzz/memory_stress_10m.py — the roadmap's own explicit ask for
 item #7 (Memory manager): "10 million allocations. Leak? Fragmentation?"
 
-Runs a real Khan script that performs 10 million map allocations (one
+Runs a real Kosh script that performs 10 million map allocations (one
 per loop iteration, immediately becoming unreachable garbage the next
 iteration — exactly the shape of workload that would reveal an
 OP_RETURN/OP_DEF_GLOBAL-style leak if one still existed), while
@@ -21,7 +21,7 @@ smaller iteration count (docs/memory-notes.md) for byte-exact
 confirmation; use this for "does it actually hold up at the scale the
 roadmap asked for."
 
-Usage: python3 tests/fuzz/memory_stress_10m.py [khan_binary]
+Usage: python3 tests/fuzz/memory_stress_10m.py [kosh_binary]
 """
 import subprocess
 import sys
@@ -37,7 +37,7 @@ except ImportError:
           "docs/memory-notes.md, not a replacement for it.")
     sys.exit(0)
 
-KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
+KOSH_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
 ITERATIONS = 10_000_000
 SAMPLE_INTERVAL = 0.5
 
@@ -83,14 +83,14 @@ print total
 }
 
 
-def run_scenario(name, script, khan_bin):
+def run_scenario(name, script, kosh_bin):
     script_path = os.path.join(tempfile.gettempdir(), f"_memstress_{name}.kh")
     with open(script_path, "w") as f:
         f.write(script)
 
     print(f"\n{'=' * 60}\nScenario: {name}\n{'=' * 60}")
     t0 = time.time()
-    proc = subprocess.Popen([khan_bin, script_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen([kosh_bin, script_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ps_proc = psutil.Process(proc.pid)
 
     samples = []
@@ -143,7 +143,7 @@ def main():
 
     ok = True
     for name, script in SCENARIOS.items():
-        ok = run_scenario(name, script, KHAN_BIN) and ok
+        ok = run_scenario(name, script, KOSH_BIN) and ok
 
     sys.exit(0 if ok else 1)
 

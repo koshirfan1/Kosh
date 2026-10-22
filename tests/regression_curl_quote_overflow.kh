@@ -1,0 +1,11 @@
+# Regression: the POSIX http_request()/webi curl command builder used to
+# allocate 2 bytes per input char but expands every single quote to 4
+# bytes ('\''), so a URL full of quotes overflowed the heap buffer.
+# Must now complete without crashing. Port 9 (discard) refuses the
+# connection immediately, so no real network is involved.
+# Run under AddressSanitizer in CI to make a regression unmissable.
+import "requests"
+
+let q = "''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''"
+let r = http_request("GET", "http://127.0.0.1:9/" + q + q + q, nil, nil)
+print "ok"

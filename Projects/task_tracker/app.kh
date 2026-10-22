@@ -8,13 +8,13 @@ import "webi"
 # concatenation of user input into SQL, anywhere in this file).
 #
 # Auth is deliberately simple, and this is stated plainly rather than
-# glossed over: there is no password hashing native in Khan yet (no
+# glossed over: there is no password hashing native in Kosh yet (no
 # sha256/bcrypt primitive exists), so this has no passwords at all -
 # POST /login with any username creates that user (first time) or logs
 # into it (after), and returns a real, server-checked session token.
 # That means anyone who knows a username can act as that user. Fine for
 # a local demo; a real deployment needs actual password verification,
-# which needs a real hash primitive added to Khan first.
+# which needs a real hash primitive added to Kosh first.
 
 let DB_PATH = "tasks.db"
 

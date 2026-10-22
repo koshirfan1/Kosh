@@ -41,7 +41,7 @@ let name = db_get(db, "name", "default_name")
 let count = db_get(db, "count", 0)
 
 # Modify
-db = db_set(db, "name", "Khan App")
+db = db_set(db, "name", "Kosh App")
 db = db_set(db, "count", count + 1)
 db = db_set(db, "last_run", clock())
 

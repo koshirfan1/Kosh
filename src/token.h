@@ -1,5 +1,5 @@
-#ifndef KHAN_TOKEN_H
-#define KHAN_TOKEN_H
+#ifndef KOSH_TOKEN_H
+#define KOSH_TOKEN_H
 
 typedef enum {
     // Literals

@@ -1,5 +1,5 @@
-#ifndef KHAN_REQUESTS_LIB_H
-#define KHAN_REQUESTS_LIB_H
+#ifndef KOSH_REQUESTS_LIB_H
+#define KOSH_REQUESTS_LIB_H
 
 #include "interpreter.h"
 

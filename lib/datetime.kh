@@ -1,4 +1,4 @@
-# Datetime Library for Khan
+# Datetime Library for Kosh
 # Provides date and time utility functions
 #
 # All functions return maps with standard fields.
@@ -16,7 +16,7 @@
 # datetime_timestamp() - Returns current Unix timestamp (seconds since epoch)
 #   Uses clock() as a relative time base.
 
-# Since Khan doesn't have native date/time functions, we use clock() as
+# Since Kosh doesn't have native date/time functions, we use clock() as
 # a relative time reference. The base time is set when the library loads.
 let _start_time = clock()
 

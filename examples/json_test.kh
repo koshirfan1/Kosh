@@ -1,7 +1,7 @@
 # JSON library test
 
 # Encode various types
-print json_encode({"name": "Khan", "v": 2, "ready": true})
+print json_encode({"name": "Kosh", "v": 2, "ready": true})
 print json_encode([1, "two", false, nil])
 
 # Round-trip

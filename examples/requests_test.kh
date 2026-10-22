@@ -14,7 +14,7 @@ else:
     print "Request failed"
 
 # POST JSON example
-let payload = {"title": "Learn Khan", "completed": false, "userId": 1}
+let payload = {"title": "Learn Kosh", "completed": false, "userId": 1}
 let post_res = http_post_json("https://jsonplaceholder.typicode.com/todos", payload)
 print "POST status: " + str(post_res["status"])
 if post_res["success"]:

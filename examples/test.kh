@@ -9,7 +9,7 @@ let todos = []
 
 # Test 1: Create todos
 print "=== Test 1: Create Todos ==="
-todos = create_todo(todos, "Learn Khan")
+todos = create_todo(todos, "Learn Kosh")
 todos = create_todo(todos, "Build todo app")
 todos = create_todo(todos, "Add tests")
 print "Created " + str(len(todos)) + " todos"

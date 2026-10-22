@@ -2,7 +2,7 @@
 #
 # Not part of tests/run_all.kh's suite framework because both of these
 # are EXPECTED to halt the script with a runtime error — there's no
-# try/catch in Khan to assert on that in-language. Run this manually
+# try/catch in Kosh to assert on that in-language. Run this manually
 # (or from CI as two separate invocations) and check for the expected
 # error message + non-zero exit code:
 #

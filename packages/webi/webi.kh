@@ -1,7 +1,7 @@
-# Khan webi package v1.1.3
+# Kosh webi package v1.1.3
 # Usage: import "webi"
 #
-# webi is a lightweight web framework for Khan — inspired by Flask.
+# webi is a lightweight web framework for Kosh — inspired by Flask.
 # It lets you define routes, handle requests, build responses, and
 # run an HTTP server, all from .kh scripts.
 #
@@ -49,7 +49,7 @@
 # scope, so nothing about using webi changes — this is purely an internal
 # reorganization for maintainability.
 #
-# IMPORT ORDER MATTERS: Khan captures a snapshot of the surrounding scope
+# IMPORT ORDER MATTERS: Kosh captures a snapshot of the surrounding scope
 # at the moment a function is *declared*, not a live reference — so a
 # function can only call something that was already defined earlier in
 # this sequence, the same way it would need to be if this were all still

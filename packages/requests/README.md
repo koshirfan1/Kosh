@@ -96,7 +96,7 @@ post_retry(url, body, n)     # POST with retry
 let res = post("https://api.example.com/login", "user=irfan&pass=secret")
 
 # JSON POST
-let data = {"name": "Irfan", "lang": "Khan"}
+let data = {"name": "Irfan", "lang": "Kosh"}
 let res2 = post_json("https://api.example.com/users", data)
 
 # JSON POST with auth header
@@ -130,7 +130,7 @@ patch_json(url, data)       # PATCH with JSON body
 
 ```kosh
 let res = patch_json("https://api.example.com/users/1",
-                     {"lang": "Khan v2"})
+                     {"lang": "Kosh v2"})
 ```
 
 ### DELETE
@@ -205,7 +205,7 @@ let s = session("https://jsonplaceholder.typicode.com")
 s = session_set_header(s, "Authorization", "Bearer mytoken")
 
 let res1 = session_get(s, "/todos/1")
-let res2 = session_post_json(s, "/todos", {"title": "Learn Khan", "completed": false})
+let res2 = session_post_json(s, "/todos", {"title": "Learn Kosh", "completed": false})
 let res3 = session_delete(s, "/todos/1")
 ```
 
@@ -224,7 +224,7 @@ if ok(res):
     print "Completed: " + str(todo["completed"])
 
 # POST JSON
-let newTodo = {"title": "Learn Khan", "completed": false}
+let newTodo = {"title": "Learn Kosh", "completed": false}
 let res2 = post_json("https://jsonplaceholder.typicode.com/todos", newTodo)
 print "Created: " + str(status(res2))
 

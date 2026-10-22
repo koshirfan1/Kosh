@@ -1,5 +1,5 @@
-#ifndef KHAN_CHUNK_H
-#define KHAN_CHUNK_H
+#ifndef KOSH_CHUNK_H
+#define KOSH_CHUNK_H
 
 #define _POSIX_C_SOURCE 200809L
 #include <stdint.h>
@@ -154,25 +154,25 @@ typedef struct {
 } UpvalueDesc;
 
 /* ─────────────────────────────────────────────
-   KhanFunction wraps a Chunk with metadata.
+   KoshFunction wraps a Chunk with metadata.
    Stored as a Value (VAL_FUNCTION).
    ───────────────────────────────────────────── */
-typedef struct KhanFunction {
+typedef struct KoshFunction {
     char  *name;
     char  *source_dir;     /* Path directory of the .kh file this fn was defined in */
     int    arity;
     Chunk  chunk;
-    int    is_native;      /* 0 = Khan bytecode, 1 = C native */
+    int    is_native;      /* 0 = Kosh bytecode, 1 = C native */
 
     UpvalueDesc *upvalues;
     int          upvalue_count;
-} KhanFunction;
+} KoshFunction;
 
-KhanFunction *khanfn_new(const char *name, int arity);
-void          khanfn_free(KhanFunction *fn);
+KoshFunction *koshfn_new(const char *name, int arity);
+void          koshfn_free(KoshFunction *fn);
 
 /* ─────────────────────────────────────────────
-   KhanClosure — the runtime, ref-counted bundle of
+   KoshClosure — the runtime, ref-counted bundle of
    captured values for one closure *instance*. A
    VAL_FUNCTION Value points at one of these via its
    (repurposed) `as.function.closure` field when the
@@ -180,14 +180,14 @@ void          khanfn_free(KhanFunction *fn);
    enclosing function. Plain (non-capturing) functions
    leave `closure` NULL, same as before.
    ───────────────────────────────────────────── */
-typedef struct KhanClosure {
+typedef struct KoshClosure {
     int    ref_count;
     int    count;
     Value *values;
-} KhanClosure;
+} KoshClosure;
 
-KhanClosure *khanclosure_new(int count);
-void         khanclosure_retain(KhanClosure *cl);
-void         khanclosure_release(KhanClosure *cl);
+KoshClosure *koshclosure_new(int count);
+void         koshclosure_retain(KoshClosure *cl);
+void         koshclosure_release(KoshClosure *cl);
 
-#endif /* KHAN_CHUNK_H */
+#endif /* KOSH_CHUNK_H */

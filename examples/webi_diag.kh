@@ -4,7 +4,7 @@ let app = webi_app()
 print "1. app created OK"
 
 fn fn_index(req):
-    return res_html("<h1>Hello from Khan webi!</h1>")
+    return res_html("<h1>Hello from Kosh webi!</h1>")
 
 app = route(app, "GET", "/", fn_index)
 print "2. route added OK"

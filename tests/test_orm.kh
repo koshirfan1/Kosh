@@ -9,7 +9,7 @@ write_file("users.json", "{}")
 
 let User = orm_model("users")
 User = orm_create(User, {"id": 1, "name": "Irfan"})
-User = orm_create(User, {"id": 2, "name": "Khan"})
+User = orm_create(User, {"id": 2, "name": "Kosh"})
 
 let all = orm_find_all(User)
 t = test_eq(t, "should find 2 users", len(all), 2)

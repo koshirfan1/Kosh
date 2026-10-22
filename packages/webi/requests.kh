@@ -1,7 +1,7 @@
-# Khan webi requests submodule (v1.1.1)
+# Kosh webi requests submodule (v1.1.1)
 # Usage: from webi import requests
 #
-# A thin, framework-agnostic re-export of Khan's native HTTP client
+# A thin, framework-agnostic re-export of Kosh's native HTTP client
 # builtins (http_get, http_post, http_post_json, http_put, http_delete,
 # and their header/patch/head variants). This exists so a webi app can
 # make an outbound call — calling another API, proxying, firing a

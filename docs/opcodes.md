@@ -58,7 +58,7 @@ compiler encoded "define a function" as pushing its registry index, to
 avoid embedding a full function object as a bytecode constant. The VM
 reconstructs a proper `VAL_FUNCTION` value here, and — if the function
 has any upvalues — snapshots the current frame's captured values into a
-new `KhanClosure` at this exact moment. This is also why a nested `fn`
+new `KoshClosure` at this exact moment. This is also why a nested `fn`
 declared inside a function that's called repeatedly redefines the same
 global name every call (see `docs/memory-notes.md` for why that mattered
 for a real leak that was fixed here).

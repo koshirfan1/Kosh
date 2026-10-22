@@ -1,6 +1,6 @@
-# Khan test package v1.0.0
+# Kosh test package v1.0.0
 # Author: Irfan Khan
-# Lightweight unit testing framework — for testing Khan code and engine systems
+# Lightweight unit testing framework — for testing Kosh code and engine systems
 #
 # Usage:
 #   import "test"
