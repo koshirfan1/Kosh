@@ -24,14 +24,14 @@ BENCH_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCHMARKS = ["loop", "fib", "string_concat", "json_bench", "map_scale"]
 
 RUNTIMES = {
-    "kosh":   {"ext": "kh", "cmd": lambda path: [KHAN_BIN, path]},
+    "kosh":   {"ext": "kh", "cmd": lambda path: [KOSH_BIN, path]},
     "python": {"ext": "py", "cmd": lambda path: [sys.executable, path]},
     "node":   {"ext": "js", "cmd": lambda path: ["node", path]},
     "c":      {"ext": "c",  "cmd": None},  # compiled separately, see below
 }
 
 
-def find_khan_binary():
+def find_kosh_binary():
     for candidate in ("./kosh", "./kosh.exe", "kosh", "kosh.exe"):
         p = os.path.join(os.path.dirname(BENCH_DIR), candidate.lstrip("./"))
         if os.path.isfile(p) and os.access(p, os.X_OK):
@@ -42,7 +42,7 @@ def find_khan_binary():
     return None
 
 
-KHAN_BIN = find_khan_binary()
+KOSH_BIN = find_kosh_binary()
 
 
 def compile_c(name):
@@ -72,9 +72,9 @@ def main():
         row = {"benchmark": bench}
 
         # kosh
-        khan_src = os.path.join(BENCH_DIR, f"{bench}.kh")
-        if KHAN_BIN and os.path.isfile(khan_src):
-            elapsed, out = time_run([KHAN_BIN, khan_src])
+        kosh_src = os.path.join(BENCH_DIR, f"{bench}.kh")
+        if KOSH_BIN and os.path.isfile(kosh_src):
+            elapsed, out = time_run([KOSH_BIN, kosh_src])
             row["kosh"] = elapsed
         else:
             row["kosh"] = None

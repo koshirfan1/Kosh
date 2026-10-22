@@ -56,7 +56,7 @@ fs_append_line(path, line)      # Append line (with newline) to file
 #### Examples
 
 ```kosh
-fs_write("out.txt", "Hello, Khan!")
+fs_write("out.txt", "Hello, Kosh!")
 fs_write_json("data.json", {"name": "Irfan", "score": 100})
 fs_append("log.txt", "new entry\n")
 fs_append_line("log.txt", "another line")

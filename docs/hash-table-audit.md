@@ -134,7 +134,7 @@ existing `entries[]` dense array. `entries[]` itself is untouched —
 still populated and read in strict insertion order — so every one of
 the 20+ direct callers of `map_set`/`map_get`, plus every direct
 `AS_MAP_ENTRIES`/`AS_MAP_COUNT` reader (`json_lib.c`, `requests_lib.c`,
-`webi_lib.c`, `khan_stdlib.c`'s `keys()`), needed zero changes.
+`webi_lib.c`, `kosh_stdlib.c`'s `keys()`), needed zero changes.
 `map_set`/`map_get`'s public signatures are identical.
 
 No deletion path exists anywhere for maps (checked across the whole

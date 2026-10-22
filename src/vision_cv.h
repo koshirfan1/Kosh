@@ -1,5 +1,5 @@
-#ifndef KHAN_VISION_CV_H
-#define KHAN_VISION_CV_H
+#ifndef KOSH_VISION_CV_H
+#define KOSH_VISION_CV_H
 
 #include "interpreter.h"
 #include "vm.h"

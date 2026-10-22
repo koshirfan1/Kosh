@@ -1,5 +1,5 @@
-#ifndef KHAN_PARSER_H
-#define KHAN_PARSER_H
+#ifndef KOSH_PARSER_H
+#define KOSH_PARSER_H
 
 #include "token.h"
 #include "ast.h"

@@ -1,7 +1,7 @@
-# Khan requests package v1.1.0
+# Kosh requests package v1.1.0
 # Usage: import "requests"
 #
-# Built on top of Khan's native http_get / http_post / http_post_json /
+# Built on top of Kosh's native http_get / http_post / http_post_json /
 # http_put / http_delete builtins.
 #
 # v1.1 additions:
@@ -194,7 +194,7 @@ fn post_h(url, body, headers):
 
 # ---------------------------------------------------------------------------
 # post_json(url, data) -> response map
-# data is a Khan map or array — auto-encoded to JSON
+# data is a Kosh map or array — auto-encoded to JSON
 # ---------------------------------------------------------------------------
 fn post_json(url, data):
     let res = http_post_json(url, data)

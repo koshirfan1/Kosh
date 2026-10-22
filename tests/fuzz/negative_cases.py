@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 tests/fuzz/negative_cases.py — a curated set of malformed/pathological
-Khan programs.
+Kosh programs.
 
 Two categories, both about the same underlying property — the parser
 must never crash (segfault, hang, exit via signal) — but with different
@@ -28,7 +28,7 @@ import sys
 import os
 import tempfile
 
-KHAN_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
+KOSH_BIN = sys.argv[1] if len(sys.argv) > 1 else "./kosh"
 TIMEOUT_SECS = 5
 
 NEGATIVE_CASES = [
@@ -131,7 +131,7 @@ def run_case(name, source):
         f.write(source)
     try:
         result = subprocess.run(
-            [KHAN_BIN, path], capture_output=True, text=True, timeout=TIMEOUT_SECS
+            [KOSH_BIN, path], capture_output=True, text=True, timeout=TIMEOUT_SECS
         )
         code = result.returncode
     except subprocess.TimeoutExpired:

@@ -62,7 +62,7 @@ fn suite_operators():
         return 10 / (1 - 1)
     let threw = false
     let ok = true
-    # Khan doesn't have try/catch in this codebase as far as these
+    # Kosh doesn't have try/catch in this codebase as far as these
     # tests go, so this is checked structurally instead: a script that
     # actually divides by a folded-zero expression is exercised in
     # tests/regression_mod_div_zero.kh (run separately, since it's

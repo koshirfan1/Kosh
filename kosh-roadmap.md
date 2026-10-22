@@ -71,7 +71,7 @@ credible than 90% of hobby-language launches, keep it that way.
 2. **Pin/host the playground** — right now it's "not hosted anywhere
    yet." A live, clickable WASM playground is worth more than paragraphs
    of README for a first-time visitor. GitHub Pages is free and you
-   already have the built `khan.wasm`/`khan.js`.
+   already have the built `kosh.wasm`/`kosh.js`.
 
 ### Phase 2 — Content pieces (each = one specific, narrow claim)
 Pick from these, each is a standalone post/thread:

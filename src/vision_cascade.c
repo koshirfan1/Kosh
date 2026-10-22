@@ -390,7 +390,7 @@ static DetRect *vcasc_detect(const unsigned char *gray, int img_w, int img_h, Ha
     free(ii.sum);
     free(ii.sqsum);
 
-    if (cand_count == 0) { *out_count = 0; return NULL; }
+    if (cand_count <= 0) { *out_count = 0; return NULL; }
 
     /* group overlapping candidates via union-find, keep groups with enough support */
     int *parent = malloc(sizeof(int) * (size_t)cand_count);

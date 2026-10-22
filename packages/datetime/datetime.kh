@@ -1,4 +1,4 @@
-# Khan datetime package v1.0.1
+# Kosh datetime package v1.0.1
 # Author: Irfan Khan
 # Date and time utilities built on timestamp() (real wall-clock time,
 # clock_gettime(CLOCK_REALTIME)) - was built on clock() (CPU time since
@@ -124,7 +124,7 @@ fn dt_human(seconds):
 # SLEEP HELPERS
 # ─────────────────────────────────────────────────────────────
 
-# Native sleep() takes milliseconds (confirmed from src/khan_stdlib.c -
+# Native sleep() takes milliseconds (confirmed from src/kosh_stdlib.c -
 # its own parameter is named `ms`, divided by 1000 internally for its
 # busy-wait). dt_sleep_s(s) used to pass seconds straight to it (slept
 # 1000x too short - dt_sleep_s(1) slept 1ms, not 1s) and dt_sleep_ms(ms)

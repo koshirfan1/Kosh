@@ -12,7 +12,7 @@ handle connections concurrently (thread-per-connection + a dispatch
 lock). That's a different numbering track (webi-specific sub-phases)
 from this one (the brother's overall 4-phase language roadmap:
 Core → AI Foundation → AI Operating Platform → Ecosystem). Keeping this
-document under a distinct filename (`phase4-khan-ecosystem-plan.md`)
+document under a distinct filename (`phase4-kosh-ecosystem-plan.md`)
 deliberately to avoid a collision — worth renaming one of the two
 tracks later so "Phase 4" means one thing consistently across `docs/`.
 
@@ -209,7 +209,7 @@ No user intervention required.
 ### Kosh v3.0 vision, as given
 
 ```
-                Khan
+                Kosh
                   │
           ┌───────┼────────┐
           │       │        │
@@ -250,7 +250,7 @@ might look, in opposite directions.
 
 Same finding as Phase 3 §15: `kh` (`src/kh.c`) already does `install`/
 `remove`/`list`/`installed`/`info` against a real remote registry
-(`raw.githubusercontent.com/khandev1211-cpu/Khan/main/packages/...`).
+(`raw.githubusercontent.com/koshirfan1/Kosh/main/packages/...`).
 What's missing specifically for *this* section is `kh publish` —
 confirmed absent (checked every `strcmp(cmd, ...)` branch in `src/
 kh.c`; only the five commands above exist). Publishing needs the
@@ -361,7 +361,7 @@ tracking, nothing that walks the AST looking for patterns before
 code-gen. Both of these sections need that pass built from scratch.
 Separately, the closures work from this session's correctness pass
 (`ROADMAP_STATUS_UPDATED.md`) added Kosh's first ref-counted heap
-structure (`KhanClosure`) — worth knowing about specifically *because*
+structure (`KoshClosure`) — worth knowing about specifically *because*
 a future memory analyzer would need to account for it as one of the
 object kinds it can inspect, alongside the existing map/array/string
 heap objects.

@@ -5,8 +5,8 @@
 #include <windows.h>
 #include <winhttp.h>
 
-// NOTE: windows.h's "TokenType" enum constant once collided with Khan's own
-// lexer token-kind type. That's now permanently avoided by naming Khan's
+// NOTE: windows.h's "TokenType" enum constant once collided with Kosh's own
+// lexer token-kind type. That's now permanently avoided by naming Kosh's
 // type TokenKind instead (see token.h) — no include ordering required.
 #include "net.h"
 
@@ -81,7 +81,7 @@ static void fn_http_get(Value *result, Interpreter *interp, int argc, Value *arg
     BOOL use_https = (strncmp(url, "https", 5) == 0);
     INTERNET_PORT port = use_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
 
-    HINTERNET hSession = WinHttpOpen(L"Khan/1.0",
+    HINTERNET hSession = WinHttpOpen(L"Kosh/1.0",
                                       WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                       NULL, NULL, 0);
 

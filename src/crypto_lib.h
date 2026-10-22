@@ -1,5 +1,5 @@
-#ifndef KHAN_CRYPTO_LIB_H
-#define KHAN_CRYPTO_LIB_H
+#ifndef KOSH_CRYPTO_LIB_H
+#define KOSH_CRYPTO_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
@@ -7,7 +7,7 @@
 /*
  * crypto_lib — real SHA-256, HMAC-SHA256, and PBKDF2-HMAC-SHA256, closing
  * the gap flagged in examples/task_tracker/README.md ("no password
- * hashing native in Khan yet"). Self-contained (public-domain-style
+ * hashing native in Kosh yet"). Self-contained (public-domain-style
  * SHA-256 written directly in C, no external crypto library) rather than
  * bridging to OpenSSL - no new build-time dependency for something this
  * small and this standard, unlike llama.cpp or libsqlite3.

@@ -21,8 +21,8 @@
 /* ===========================================================================
  * Image handle table
  *
- * Khan-level "images" are maps holding an integer __vision_id that indexes
- * into this table. The actual pixel buffer never touches the Khan value
+ * Kosh-level "images" are maps holding an integer __vision_id that indexes
+ * into this table. The actual pixel buffer never touches the Kosh value
  * system (see vision_lib.h for why).
  * ========================================================================= */
 
@@ -470,7 +470,7 @@ void fn_vision_average_brightness(Value *result, Interpreter *interp, int argc, 
     *result = value_number(sum / (double)n);
 }
 
-/* Min/max/average luminosity in a single native pass — the Khan-level
+/* Min/max/average luminosity in a single native pass — the Kosh-level
    equivalent (looping vision_get_pixel per pixel) would mean millions
    of native calls + map allocations on a real photo. */
 void fn_vision_brightness_stats(Value *result, Interpreter *interp, int argc, Value *args) {

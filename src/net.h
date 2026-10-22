@@ -1,5 +1,5 @@
-#ifndef KHAN_NET_H
-#define KHAN_NET_H
+#ifndef KOSH_NET_H
+#define KOSH_NET_H
 
 #include "interpreter.h"
 

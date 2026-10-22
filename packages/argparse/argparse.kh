@@ -1,7 +1,7 @@
-# Khan Argparse Package
+# Kosh Argparse Package
 # Usage: import "argparse"
 
-# Internal helpers first (Khan captures scope at declaration time)
+# Internal helpers first (Kosh captures scope at declaration time)
 fn _strip_flag(f):
     if len(f) >= 2:
         if substring(f, 0, 2) == "--":

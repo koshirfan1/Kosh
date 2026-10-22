@@ -1,0 +1,11 @@
+{
+  "name": "nn",
+  "version": "1.0.0",
+  "description": "Minimal neural-network module on top of tensor: Dense, ReLU, Sequential, MSE/cross-entropy losses, SGD and Adam optimizers. Requires the tensor package.",
+  "author": "koshirfan1",
+  "developer": "Irfan Khan",
+  "main": "nn.kh",
+  "files": [
+    "nn.kh"
+  ]
+}

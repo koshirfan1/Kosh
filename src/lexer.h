@@ -1,5 +1,5 @@
-#ifndef KHAN_LEXER_H
-#define KHAN_LEXER_H
+#ifndef KOSH_LEXER_H
+#define KOSH_LEXER_H
 
 #include "token.h"
 

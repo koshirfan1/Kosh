@@ -5,12 +5,12 @@
 #include "sqlite_lib.h"
 
 /*
- * Real SQLite bridge for Khan, replacing a previous mock (fn_sqlite_exec
+ * Real SQLite bridge for Kosh, replacing a previous mock (fn_sqlite_exec
  * used to just return true without touching the SQL string or storing
  * anything - found and fixed in this session, see chat).
  *
  * Links against real libsqlite3 (libsqlite3-dev). Same handle-table
- * pattern as ocr_lib.c/llm_lib.c: a Khan-level map carries a slot index,
+ * pattern as ocr_lib.c/llm_lib.c: a Kosh-level map carries a slot index,
  * the real sqlite3* lives in a native-side table.
  */
 
@@ -57,7 +57,7 @@ static void fn_sqlite_open(Value *result, Interpreter *interp, int argc, Value *
     *result = m;
 }
 
-/* Binds a Khan array's elements (numbers/strings/nil) to a prepared
+/* Binds a Kosh array's elements (numbers/strings/nil) to a prepared
  * statement's ? placeholders, in order. Returns 1 on success, 0 on a
  * type it doesn't know how to bind. */
 static int bind_params(sqlite3_stmt *stmt, Value params) {

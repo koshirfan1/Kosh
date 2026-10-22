@@ -1,5 +1,5 @@
-#ifndef KHAN_VM_H
-#define KHAN_VM_H
+#ifndef KOSH_VM_H
+#define KOSH_VM_H
 
 #define _POSIX_C_SOURCE 200809L
 #include <string.h>   /* strdup */
@@ -13,11 +13,11 @@
 
 /* One activation record on the call stack */
 typedef struct {
-    KhanFunction *fn;
+    KoshFunction *fn;
     uint8_t      *ip;       /* instruction pointer into fn->chunk.code */
     Value        *slots;    /* base of this frame's locals on vm.stack  */
     Value        *upvalues; /* captured values for this closure instance
-                                (borrowed from the KhanClosure the callee
+                                (borrowed from the KoshClosure the callee
                                 Value pointed at; NULL for non-capturing
                                 functions) — indexed by fn->upvalues[]   */
     int          is_method_call; /* 1 if pushed by OP_CALL_METHOD: `self`
@@ -98,7 +98,7 @@ typedef enum {
 void            vm_init(VM *vm);
 void            vm_free(VM *vm);
 
-/* Register Khan's stdlib native functions into the VM's global table */
+/* Register Kosh's stdlib native functions into the VM's global table */
 void            vm_register_builtins(VM *vm);
 void            vm_global_set_native(VM *vm, const char *name, NativeFn fn);
 void            vm_global_set(VM *vm, const char *name, Value val);
@@ -109,13 +109,13 @@ void requests_register_all_vm(VM *vm);
 void webi_register_all_vm(VM *vm);
 
 /* Run a compiled script function */
-InterpretResult vm_run(VM *vm, KhanFunction *script);
+InterpretResult vm_run(VM *vm, KoshFunction *script);
 
-/* Call a Khan function by name via the VM */
+/* Call a Kosh function by name via the VM */
 Value           vm_call_fn(VM *vm, const char *name, int argc, Value *args);
 
-/* Used by compiler to register KhanFunction objects */
-void khanfn_register(KhanFunction *fn);
-int  khanfn_registry_index(void);
+/* Used by compiler to register KoshFunction objects */
+void koshfn_register(KoshFunction *fn);
+int  koshfn_registry_index(void);
 
-#endif /* KHAN_VM_H */
+#endif /* KOSH_VM_H */

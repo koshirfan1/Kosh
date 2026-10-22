@@ -92,6 +92,60 @@ static void mkdir_p(const char *path) {
 }
 
 // ---------------------------------------------------------------------------
+// Input validation. Package names, registry-supplied URLs and registry-
+// supplied file names all end up inside a shell command line (curl via
+// system()/popen()) or a filesystem path, so each one is checked against a
+// strict whitelist/blacklist BEFORE it is used -- a compromised or malicious
+// registry entry (or a hostile `kh install` argument) must not be able to
+// inject shell syntax or escape the package directory with "../".
+// ---------------------------------------------------------------------------
+
+// Package name: 1-64 chars of [A-Za-z0-9_-], never starting with '-' or '.'.
+static int valid_pkg_name(const char *name) {
+    if (!name || !*name) return 0;
+    size_t n = strlen(name);
+    if (n > 64) return 0;
+    if (name[0] == '-') return 0;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-')) return 0;
+    }
+    return 1;
+}
+
+// Relative file name inside a package dir: [A-Za-z0-9._/-], no leading '/',
+// no ".." path component, no empty component.
+static int valid_rel_file(const char *f) {
+    if (!f || !*f || strlen(f) > 128 || f[0] == '/') return 0;
+    for (const char *p = f; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '/'))
+            return 0;
+    }
+    if (strstr(f, "..") || strstr(f, "//")) return 0;
+    return 1;
+}
+
+// True if `s` can be placed inside a double-quoted shell argument without
+// being able to terminate the quote or trigger expansion.
+static int shell_safe(const char *s) {
+    if (!s || !*s) return 0;
+    for (const char *p = s; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 0x20 || c == 0x7f) return 0;          // control chars / newlines
+        if (c == '"' || c == '`' || c == '$' || c == '!') return 0;
+#ifdef _WIN32
+        if (c == '%' || c == '^') return 0;           // cmd.exe expansion
+#else
+        if (c == '\\') return 0;                      // escapes inside "..."
+#endif
+    }
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
 // Appends a cache-busting query parameter (current unix time) to a URL.
 // raw.githubusercontent.com is served through a CDN that can hold an old
 // response for a while after a push — a distinct query string forces a
@@ -119,10 +173,12 @@ static char *fetch_url(const char *url) {
     // intermediate proxy that does honor them; the cache-busting query
     // param above is what actually guarantees a fresh fetch either way.
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
+    if (!shell_safe(busted)) { free(busted); return NULL; }
+    int cn = snprintf(cmd, sizeof(cmd),
              "curl -s -L --max-time 30 -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" \"%s\"",
              busted);
     free(busted);
+    if (cn < 0 || (size_t)cn >= sizeof(cmd)) return NULL;   // truncated -> refuse
 
     FILE *fp = popen(cmd, "r");
     if (!fp) return NULL;
@@ -153,10 +209,12 @@ static int download_to_file(const char *url, const char *filepath) {
     char *busted = cache_busted_url(url);
 
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
+    if (!shell_safe(busted) || !shell_safe(filepath)) { free(busted); return 0; }
+    int cn = snprintf(cmd, sizeof(cmd),
              "curl -s -L --max-time 30 -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" -o \"%s\" \"%s\"",
              filepath, busted);
     free(busted);
+    if (cn < 0 || (size_t)cn >= sizeof(cmd)) return 0;      // truncated -> refuse
 
     int rc = system(cmd);
     return rc == 0;
@@ -367,6 +425,11 @@ static int cmd_install(const char *name) {
         snprintf(progress, sizeof(progress), "Fetching %d additional file(s)...", extra_count);
         print_info_line(progress);
         for (int i = 0; i < extra_count; i++) {
+            if (!valid_rel_file(extra_files[i])) {
+                print_err("Registry lists an unsafe file name — skipped.");
+                free(extra_files[i]);
+                continue;
+            }
             char file_url[1536], file_path[1536];
             snprintf(file_url, sizeof(file_url), "%s/%s/%s", RAW_BASE, name, extra_files[i]);
             snprintf(file_path, sizeof(file_path), "%s/%s", pkg_dir, extra_files[i]);
@@ -624,10 +687,12 @@ int main(int argc, char *argv[]) {
 
     if (strcmp(cmd, "install") == 0) {
         if (argc < 3) { print_err("Usage: kh install <name>"); return 1; }
+        if (!valid_pkg_name(argv[2])) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
         return cmd_install(argv[2]);
     }
     if (strcmp(cmd, "remove") == 0) {
         if (argc < 3) { print_err("Usage: kh remove <name>"); return 1; }
+        if (!valid_pkg_name(argv[2])) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
         return cmd_remove(argv[2]);
     }
     if (strcmp(cmd, "list") == 0) {
@@ -638,6 +703,7 @@ int main(int argc, char *argv[]) {
     }
     if (strcmp(cmd, "info") == 0) {
         if (argc < 3) { print_err("Usage: kh info <name>"); return 1; }
+        if (!valid_pkg_name(argv[2])) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
         return cmd_info(argv[2]);
     }
 

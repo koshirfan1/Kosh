@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Compile to VM bytecode */
-    KhanFunction *script = compile(program, argv[1]);
+    KoshFunction *script = compile(program, argv[1]);
     if (!script) {
         ast_free(program);
         free(source);

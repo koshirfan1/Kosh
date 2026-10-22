@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Khan Playground — try a from-scratch language in your browser</title>
-<meta name="description" content="Khan: a programming language with its own bytecode compiler and VM, written from scratch in C. Run it live, right here.">
+<title>Kosh Playground — try a from-scratch language in your browser</title>
+<meta name="description" content="Kosh: a programming language with its own bytecode compiler and VM, written from scratch in C. Run it live, right here.">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16.png" type="image/png" sizes="16x16">
@@ -90,7 +90,7 @@
     line-height: 1.05;
   }
 
-  h1 .khan {
+  h1 .kosh {
     color: var(--ember);
   }
 
@@ -325,7 +325,7 @@
 <div class="wrap">
   <header class="top">
     <p class="eyebrow"><span class="dot"></span> compiler → bytecode → vm, compiled to wasm — this is the real engine, not a simulation</p>
-    <h1><span class="khan">Khan</span>, in your browser</h1>
+    <h1><span class="kosh">Kosh</span>, in your browser</h1>
     <p class="lede">A language built from nothing but a C compiler: its own lexer, parser, bytecode compiler, and stack-based VM. <strong>No server runs this code</strong> — the same engine that compiles to a native binary was compiled to WebAssembly and is running the lexer/parser/compiler/VM pipeline locally, in this tab.</p>
   </header>
 
@@ -367,14 +367,14 @@
   </div>
 
   <footer>
-    <span>Khan — built from scratch in C11 by Irfan Khan</span>
-    <span><a href="https://github.com/khandev1211-cpu/Khan">source on GitHub</a></span>
+    <span>Kosh — built from scratch in C11 by Irfan Khan</span>
+    <span><a href="https://github.com/koshirfan1/Kosh">source on GitHub</a></span>
   </footer>
 </div>
 
 <script>
 const EXAMPLES = {
-  hello: `print("Hello from Khan!")
+  hello: `print("Hello from Kosh!")
 
 let x = 5
 let y = 10
@@ -391,10 +391,10 @@ print("sum of [1,2,3,4,5] = " + str(total))
         return "Hello, " + name + "!"
     return greet
 
-let greeter = make_greeter("Khan")
+let greeter = make_greeter("Kosh")
 print(greeter())
 
-# Khan's closures are value-capture only right now -
+# Kosh's closures are value-capture only right now -
 # they can READ an enclosing variable, but there's no
 # shared mutable upvalue, so a counter that mutates its
 # captured state doesn't work the way it does in JS/Python.
@@ -424,7 +424,7 @@ let rotated = vision_rotate(gray, 90)
 print("rotated 90 degrees: ok")
 
 print("(real face detection needs an actual photo - ")
-print(" try that in the real khan binary, not here)")
+print(" try that in the real kosh binary, not here)")
 `,
 };
 
@@ -461,7 +461,7 @@ function setStatus(kind, text) {
   statusText.textContent = text;
 }
 
-createKhanModule({
+createKoshModule({
   print: (t) => appendOutput(t, false),
   printErr: (t) => appendOutput(t, true),
 }).then((mod) => {
@@ -484,7 +484,7 @@ function runCode() {
   requestAnimationFrame(() => {
     let exitCode;
     try {
-      const run = Module.cwrap('run_khan_source', 'number', ['string']);
+      const run = Module.cwrap('run_kosh_source', 'number', ['string']);
       exitCode = run(editor.value);
     } catch (e) {
       appendOutput(String(e), true);
@@ -507,6 +507,6 @@ editor.addEventListener('keydown', (e) => {
   }
 });
 </script>
-<script src="khan.js"></script>
+<script src="kosh.js"></script>
 </body>
 </html>

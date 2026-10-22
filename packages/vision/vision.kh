@@ -1,4 +1,4 @@
-# Khan vision package v3.0.0
+# Kosh vision package v3.0.0
 # Usage: import "vision"
 #
 # A real classical computer-vision toolkit, not a simulation: genuine
@@ -12,7 +12,7 @@
 # pixel I/O and processing but no detection at all. v3.0 adds the rest of
 # a classical CV toolkit, including actual object detection — no ML
 # framework, no GPU, just the same well-established algorithms OpenCV
-# built its reputation on, implemented directly in Khan's native layer.
+# built its reputation on, implemented directly in Kosh's native layer.
 #
 # ---------------------------------------------------------------------------
 # Quick start
@@ -55,7 +55,7 @@
 #
 # All heavy per-pixel work (filters, thresholding, morphology, blob
 # detection, cascade scanning) runs natively in C — none of it is a slow
-# per-pixel Khan loop, so it stays practical on real photo resolutions.
+# per-pixel Kosh loop, so it stays practical on real photo resolutions.
 #
 # What's still NOT here: no neural-network-based detection or
 # classification of any kind. Haar cascades (detect.kh) are real object

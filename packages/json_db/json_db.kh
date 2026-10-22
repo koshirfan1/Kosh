@@ -1,4 +1,4 @@
-# Khan JSON Database
+# Kosh JSON Database
 # Usage: import "json_db"
 
 fn db_open(path):

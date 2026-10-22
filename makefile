@@ -151,8 +151,8 @@ ifeq ($(OS),Windows_NT)
 	@echo "it from your User PATH via System Properties, or:"
 	@echo "    [Environment]::SetEnvironmentVariable('Path', (([Environment]::GetEnvironmentVariable('Path','User') -split ';') -notmatch '\.kosh\\bin' -join ';'), 'User')"
 else
-	rm -f "$(BINDIR)/kosh" "$(BINDIR)/khan" "$(BINDIR)/kh"
-	@echo "Removed kosh (and any old khan) and kh from $(BINDIR)."
+	rm -f "$(BINDIR)/kosh" "$(BINDIR)/kh"
+	@echo "Removed kosh and kh from $(BINDIR)."
 	@echo "(Any PATH entry added to your shell rc file is left in place —"
 	@echo " remove the \"export PATH=...$(PREFIX)...\" line yourself if you"
 	@echo " added it and don't want it anymore.)"

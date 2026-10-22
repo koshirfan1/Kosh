@@ -1,4 +1,4 @@
-# Khan colors package v1.0.0
+# Kosh colors package v1.0.0
 # Usage: import "colors"
 
 let CLR_RESET   = "\x1b[0m"

@@ -229,7 +229,7 @@ void fn_password_hash(Value *result, Interpreter *interp, int argc, Value *args)
     /* Not cryptographically-secure randomness (no /dev/urandom read here) -
      * seeded from real wall-clock time + address entropy. Good enough to
      * make rainbow-table precomputation impractical (the actual job of a
-     * password salt); if Khan later gets a real CSPRNG source, swap this
+     * password salt); if Kosh later gets a real CSPRNG source, swap this
      * one line, nothing else about the format needs to change. */
     static int seeded = 0;
     if (!seeded) { srand((unsigned int)time(NULL) ^ (unsigned int)(size_t)&seeded); seeded = 1; }

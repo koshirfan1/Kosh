@@ -1,5 +1,5 @@
 # benchmarks/map_scale.kh — build a map with 4,000 keys, one at a time.
-# See docs/hash-table-audit.md — Khan's {} map is currently a linear-
+# See docs/hash-table-audit.md — Kosh's {} map is currently a linear-
 # scan array, not a hash table, so this is O(n^2), not O(n). This
 # benchmark exists specifically to make that a trackable number over
 # time rather than a one-off finding.

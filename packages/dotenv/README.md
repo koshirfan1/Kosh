@@ -33,7 +33,7 @@ Given a `.env` file:
 # Database configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=khan_app
+DB_NAME=kosh_app
 API_KEY="sk-abc123"
 ```
 

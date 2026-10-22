@@ -1,21 +1,21 @@
-#ifndef KHAN_VISION_LIB_H
-#define KHAN_VISION_LIB_H
+#ifndef KOSH_VISION_LIB_H
+#define KOSH_VISION_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
 
 /*
- * vision_lib — real image I/O and pixel-level processing for Khan.
+ * vision_lib — real image I/O and pixel-level processing for Kosh.
  *
  * Backed by stb_image.h / stb_image_write.h (public domain, vendored in
  * src/). Supports loading PNG/JPEG/BMP/GIF/TGA/PSD/HDR and saving to
  * PNG/BMP/JPEG/TGA.
  *
- * An "image" at the Khan level is a plain map:
+ * An "image" at the Kosh level is a plain map:
  *   {"__vision_id": <handle>, "width": w, "height": h, "channels": c}
  * The actual pixel buffer lives in a native-side table indexed by
- * __vision_id — it is NOT copied into a Khan array, since a single
- * photo can be tens of millions of bytes and Khan arrays box every
+ * __vision_id — it is NOT copied into a Kosh array, since a single
+ * photo can be tens of millions of bytes and Kosh arrays box every
  * element as a Value. Always call vision_free() on images you no
  * longer need; the native buffer is not garbage collected.
  *
@@ -47,7 +47,7 @@ void vision_register_all_vm(VM *vm);
 
 /* ---------------------------------------------------------------------------
  * Internal cross-file accessors (used by vision_cv.c, vision_cascade.c).
- * Not part of the Khan-facing API.
+ * Not part of the Kosh-facing API.
  * ------------------------------------------------------------------------- */
 int vision_internal_get_slot(Value img_map);
 unsigned char *vision_internal_data(int slot);

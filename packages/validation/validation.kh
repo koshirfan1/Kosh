@@ -1,4 +1,4 @@
-# Khan Validation Package
+# Kosh Validation Package
 # Usage: import "validation"
 
 fn is_email(s):

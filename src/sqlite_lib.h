@@ -1,5 +1,5 @@
-#ifndef KHAN_SQLITE_LIB_H
-#define KHAN_SQLITE_LIB_H
+#ifndef KOSH_SQLITE_LIB_H
+#define KOSH_SQLITE_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
@@ -15,7 +15,7 @@
  *   sqlite_query(db, sql, [params])    -> array of maps
  *   sqlite_close(db)                   -> bool
  *
- * `params` is an optional Khan array bound to the SQL's `?` placeholders
+ * `params` is an optional Kosh array bound to the SQL's `?` placeholders
  * in order (via real sqlite3_bind_*, not string concatenation) - always
  * use this for any value that didn't come from your own source code.
  * Building SQL by concatenating user input into the string is a real SQL

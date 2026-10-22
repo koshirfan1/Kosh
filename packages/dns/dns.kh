@@ -1,4 +1,4 @@
-# Khan DNS Package (DNS-over-HTTPS)
+# Kosh DNS Package (DNS-over-HTTPS)
 # Usage: import "dns"
 
 import "requests"

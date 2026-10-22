@@ -1,18 +1,18 @@
-#ifndef KHAN_TENSOR_LIB_H
-#define KHAN_TENSOR_LIB_H
+#ifndef KOSH_TENSOR_LIB_H
+#define KOSH_TENSOR_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
 
 /*
  * Native tensor engine — real contiguous double storage (VAL_TENSOR,
- * see interpreter.h), not the nested-Khan-array simulation the old
+ * see interpreter.h), not the nested-Kosh-array simulation the old
  * packages/tensor/tensor.kh used (O(n^3) matmul over Value arrays, one
  * malloc per element). This is the first slice of the AI-native-core
  * direction described in docs/future plans/phase2-ai-foundation-plan.md
  * — see docs/tensor.md for the full design writeup, scope limits, and
  * why these are named with a leading underscore (internal engine
- * functions the Khan-level `Tensor` class in packages/tensor/tensor.kh
+ * functions the Kosh-level `Tensor` class in packages/tensor/tensor.kh
  * wraps; user code is meant to go through that class, not call these
  * directly, same convention as webi_lib.c's `_webi_*` functions).
  *

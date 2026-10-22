@@ -1,14 +1,14 @@
-# Khan Quantization Package
+# Kosh Quantization Package
 # Usage: import "quant"
 #
-# Accuracy-preserving quantization, in pure Khan - no native C bridge, no
+# Accuracy-preserving quantization, in pure Kosh - no native C bridge, no
 # dtype/Tensor prerequisite. round()/abs()/max()/pow() (all already in the
 # stdlib) are enough to implement and *measure* per-channel calibrated
 # quantization today.
 #
 # Important honesty note (see docs/llm.md for the fuller discussion): this
 # simulates quantization's ACCURACY behavior - it does not get you real
-# int8 storage or faster int8 arithmetic, because Khan has no dtype system
+# int8 storage or faster int8 arithmetic, because Kosh has no dtype system
 # yet (every number is still a native double under the hood). Use this to
 # validate a calibration/granularity strategy against your own data *before*
 # investing in the native dtype+Tensor work that would make it actually
@@ -279,7 +279,7 @@ fn quantized_matmul(qmodel, x):
 
 # Total real bytes used by a quantize_real_per_channel() result's packed
 # rows (not counting the small scales array) - for a direct, honest
-# memory comparison against the equivalent plain Khan array-of-arrays.
+# memory comparison against the equivalent plain Kosh array-of-arrays.
 fn quantized_byte_size(qmodel):
     let total = 0
     for row in qmodel["rows"]:

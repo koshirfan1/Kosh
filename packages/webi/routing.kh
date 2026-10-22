@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 # route(app, method, path, handler) -> app
 # Register a route handler.
-# handler is a Khan function: fn my_handler(req) -> res
+# handler is a Kosh function: fn my_handler(req) -> res
 #
 # Example:
 #   fn handle_user(req):
@@ -145,13 +145,13 @@ fn _webi_serve_static_file(req, prefix, resolved_folder):
 # in the native layer). Unknown extensions get
 # "application/octet-stream".
 #
-# Known limitation: Khan strings are C-strings under the hood (see
+# Known limitation: Kosh strings are C-strings under the hood (see
 # read_file()), so a file containing an embedded NUL byte truncates at
 # that byte. Text assets (html/css/js/svg/json/txt) essentially never
 # contain one and are unaffected — most real-world binary formats
 # (png/jpg/etc.) usually do somewhere in the file, and can be served
 # truncated as a result. Fine for now for text-based static assets; true
-# binary-safe serving would need Khan's string type to carry an explicit
+# binary-safe serving would need Kosh's string type to carry an explicit
 # byte length instead of relying on NUL-termination, which is a bigger
 # change than this phase.
 # ---------------------------------------------------------------------------

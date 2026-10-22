@@ -16,5 +16,5 @@ while n < 50000:
         count = count + 1
     n = n + 1
 let end = clock()
-print "Khan found " + str(count) + " primes."
-print "Khan Time: " + str(end - start) + "s"
+print "Kosh found " + str(count) + " primes."
+print "Kosh Time: " + str(end - start) + "s"

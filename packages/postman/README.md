@@ -55,7 +55,7 @@ If a base URL was set, paths starting with `/` are resolved relative to it.
 ```kosh
 let pm = pm_new_with_base("https://jsonplaceholder.typicode.com")
 pm = pm_get(pm, "GET todo", "/todos/1")
-pm = pm_post_json(pm, "POST todo", "/todos", {"title": "Learn Khan", "completed": false})
+pm = pm_post_json(pm, "POST todo", "/todos", {"title": "Learn Kosh", "completed": false})
 ```
 
 ---
@@ -103,7 +103,7 @@ The report displays:
 #### Example Output
 
 ```
-  Khan Postman ─ Test Results
+  Kosh Postman ─ Test Results
   ══════════════════════════════════════
 
   PASS  GET todo  [200]
@@ -130,7 +130,7 @@ let pm = pm_new_with_base("https://jsonplaceholder.typicode.com")
 
 # HTTP request tests
 pm = pm_get(pm,      "GET todo",   "/todos/1")
-pm = pm_post_json(pm, "POST todo", "/todos", {"title": "Learn Khan", "completed": false})
+pm = pm_post_json(pm, "POST todo", "/todos", {"title": "Learn Kosh", "completed": false})
 
 # Assertions
 pm = pm_assert(pm,   "math works",  1 + 1 == 2)

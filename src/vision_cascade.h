@@ -1,5 +1,5 @@
-#ifndef KHAN_VISION_CASCADE_H
-#define KHAN_VISION_CASCADE_H
+#ifndef KOSH_VISION_CASCADE_H
+#define KOSH_VISION_CASCADE_H
 
 #include "interpreter.h"
 #include "vm.h"

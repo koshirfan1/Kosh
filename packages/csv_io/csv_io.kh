@@ -1,4 +1,4 @@
-# Khan CSV I/O Package
+# Kosh CSV I/O Package
 # Usage: import "csv_io"
 
 # Internal helper: trim whitespace

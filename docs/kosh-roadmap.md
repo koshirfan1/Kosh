@@ -67,7 +67,7 @@ Ordered by **impact on "can someone actually use this."**
    3,581 (>99% reduction), remainder all pre-existing/unrelated.
    Known, documented limitation: closures aren't covered (separate
    refcount in `chunk.c`). Files: `src/interpreter.h`, `src/value.c`,
-   `src/khan_stdlib.c`/`.h`, `src/vm_libs.c`; roadmap status in
+   `src/kosh_stdlib.c`/`.h`, `src/vm_libs.c`; roadmap status in
    `ROADMAP_STATUS_UPDATED.md` item 8.
 
 ### Phase 3 — Performance (only after correctness, so numbers are meaningful)
@@ -128,7 +128,7 @@ credible than 90% of hobby-language launches, keep it that way.
 2. **Pin/host the playground** — right now it's "not hosted anywhere
    yet." A live, clickable WASM playground is worth more than paragraphs
    of README for a first-time visitor. GitHub Pages is free and you
-   already have the built `khan.wasm`/`khan.js`.
+   already have the built `kosh.wasm`/`kosh.js`.
 
 ### Phase 2 — Content pieces (each = one specific, narrow claim)
 Pick from these, each is a standalone post/thread:

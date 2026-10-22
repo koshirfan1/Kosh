@@ -1,5 +1,5 @@
-#ifndef KHAN_INTERPRETER_H
-#define KHAN_INTERPRETER_H
+#ifndef KOSH_INTERPRETER_H
+#define KOSH_INTERPRETER_H
 
 #include <stddef.h> /* size_t */
 #include "ast.h"
@@ -190,7 +190,7 @@ struct Interpreter {
 void interpreter_init(Interpreter *interp, const char *base_path);
 Value interpreter_execute(Interpreter *interp, AstNode *node, Environment *env);
 
-Value khan_call_fn(Interpreter *interp, Environment *env,
+Value kosh_call_fn(Interpreter *interp, Environment *env,
                    const char *fn_name, int argc, Value *argv);
 
 #endif

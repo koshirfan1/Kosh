@@ -1,6 +1,6 @@
 # tests/run_all.kh — runs every test suite and reports an aggregate result.
 #
-# Usage (from the project root, same as running any Khan script):
+# Usage (from the project root, same as running any Kosh script):
 #   .\kosh tests/run_all.kh
 #
 # Exits with code 1 if anything failed (so this is CI-friendly), 0 if

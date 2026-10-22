@@ -1,6 +1,6 @@
-# Khan events package v1.0.0
+# Kosh events package v1.0.0
 # Author: Irfan Khan
-# Event emitter system — used by Khan Engine for game events, Khan Studio for UI events
+# Event emitter system — used by Kosh Engine for game events, Kosh Studio for UI events
 #
 # Usage:
 #   import "events"
@@ -112,7 +112,7 @@ fn ev_clear_history(bus):
 
 # ─────────────────────────────────────────────────────────────
 # GAME ENGINE PRESET EVENTS
-# (standard event names for Khan Engine — agents use these)
+# (standard event names for Kosh Engine — agents use these)
 # ─────────────────────────────────────────────────────────────
 
 let EV_UPDATE     = "update"

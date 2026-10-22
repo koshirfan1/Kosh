@@ -302,6 +302,22 @@
       "description": "Real OCR via Tesseract: text, word-level boxes, orientation correction, searchable PDF, char whitelist, multi-language",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ocr/ocr.kh"
+    },
+    {
+      "name": "nn",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Minimal neural-network module on top of tensor: Dense, ReLU, Sequential, MSE/cross-entropy losses, SGD and Adam optimizers. Requires the tensor package.",
+      "author": "koshirfan1",
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/nn/nn.kh"
+    },
+    {
+      "name": "quant",
+      "version": "1.0.0",
+      "developer": "Irfan Khan",
+      "description": "Accuracy-preserving quantization in pure Kosh: per-channel calibration, bias correction, outlier-aware sparse decomposition and mixed-precision strategies.",
+      "author": "koshirfan1",
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/quant/quant.kh"
     }
   ]
 }

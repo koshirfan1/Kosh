@@ -30,7 +30,7 @@ it's structural:
   lines 119–142). Every `return`, every loop `break`/`continue`, every
   runtime error, and even path resolution during `import` communicates
   through these single global fields, not through anything per-call.
-- `khan_call_fn()` (called once per request, from `wb_safe_call_webi_handle`
+- `kosh_call_fn()` (called once per request, from `wb_safe_call_webi_handle`
   in `webi_lib.c`) drives `execute_block()` against this same shared
   `Interpreter*`. Two requests dispatched at the same wall-clock moment
   would have their `return`/`break` signals and error flags stomp on each
@@ -38,7 +38,7 @@ it's structural:
   "the second request's `return` can flip a flag the first request is
   still reading," full stop, deterministically wrong, not just a rare race.
 - On top of that, `env_new`/`env_define`/`env_get` (environment
-  chains) and map/array mutation in `khan_stdlib.c` do plain `malloc`
+  chains) and map/array mutation in `kosh_stdlib.c` do plain `malloc`
   with no locking either — real memory-corruption risk on top of the
   control-flow problem above.
 
@@ -218,7 +218,7 @@ Keep `webi_run(app, port)` / `webi_run_host(app, host, port)` exactly as
 they are today — no behavior change from the app author's perspective;
 their existing apps get the threading transparently. Kosh doesn't
 support default/optional parameters (confirmed: `fn_declaration` in
-`parser.c` has no default-value syntax, and `khan_call_fn` enforces
+`parser.c` has no default-value syntax, and `kosh_call_fn` enforces
 strict arity), so rather than trying to bolt an optional `workers`/
 `max_conns` parameter onto the existing functions, add new explicit
 variants the same way `webi_run_host` already sits alongside

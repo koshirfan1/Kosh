@@ -21,7 +21,7 @@ fn suite_stdlib_collections():
     t = test_eq(t, "map_each transforms every element", doubled[1], 4)
 
     # NOTE: named with a leading underscore, not `add`, because nested `fn`
-    # still defines a GLOBAL in Khan (see docs/classes.md / vm.c), and this
+    # still defines a GLOBAL in Kosh (see docs/classes.md / vm.c), and this
     # suite's functions all get CALLED (from tests/run_all.kh) after every
     # suite file has already been IMPORTED — so an unprefixed `add` here
     # would silently clobber any other top-level `add` a later-imported

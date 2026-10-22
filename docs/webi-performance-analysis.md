@@ -78,7 +78,7 @@ The most impactful fix is to move `str_replace()` from interpreted Kosh code to 
 
 ### Implementation Plan
 
-#### Step 1: Add `str_replace` to `src/khan_stdlib.c`
+#### Step 1: Add `str_replace` to `src/kosh_stdlib.c`
 
 Add a native C implementation:
 

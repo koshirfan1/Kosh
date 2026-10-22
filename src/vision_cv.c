@@ -331,8 +331,10 @@ void fn_vision_rotate(Value *result, Interpreter *interp, int argc, Value *args)
         double dx = corners_x[i] - cx, dy = corners_y[i] - cy;
         double rx = dx * cos_a - dy * sin_a + cx;
         double ry = dx * sin_a + dy * cos_a + cy;
-        if (rx < min_x) min_x = rx; if (rx > max_x) max_x = rx;
-        if (ry < min_y) min_y = ry; if (ry > max_y) max_y = ry;
+        if (rx < min_x) min_x = rx;
+        if (rx > max_x) max_x = rx;
+        if (ry < min_y) min_y = ry;
+        if (ry > max_y) max_y = ry;
     }
     int dw = (int)ceil(max_x - min_x);
     int dh = (int)ceil(max_y - min_y);

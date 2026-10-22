@@ -1,4 +1,4 @@
-# Khan nn package -- a minimal neural-network module built entirely on
+# Kosh nn package -- a minimal neural-network module built entirely on
 # top of packages/tensor/tensor.kh's Tensor class (no new VM primitives
 # beyond the activation natives tensor.kh already wraps). Matches the
 # "Neural Network Module" / "Loss Functions" items in
@@ -110,7 +110,7 @@ fn mse_loss(pred, target):
     let diff = pred.sub(target)
     return diff.mul(diff).mean()
 
-# target is a plain Khan array of N class indices (0..C-1), NOT a one-hot
+# target is a plain Kosh array of N class indices (0..C-1), NOT a one-hot
 # tensor -- e.g. for a 3-class problem, target = [0, 2, 1, 0]. Fuses
 # softmax + cross-entropy into a single graph node with a closed-form
 # gradient, the same reason real frameworks fuse these two -- see

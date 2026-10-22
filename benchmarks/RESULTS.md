@@ -109,7 +109,7 @@ own numbers were stable within ~10% run to run.)
   `src/value.c` — no length field). Fixing this properly means giving
   strings a cached length (or a full rope/builder type) — a change that
   touches every string-creating/reading site across `value.c`, `vm.c`,
-  `khan_stdlib.c`, `json_lib.c`, and every native library that touches
+  `kosh_stdlib.c`, `json_lib.c`, and every native library that touches
   `VAL_STRING` directly. That's a real, invasive Value-system change
   (roadmap items #9/#10), not a two-line fix, and it deserves its own
   careful pass rather than being rushed in alongside a benchmarking
@@ -162,7 +162,7 @@ own numbers were stable within ~10% run to run.)
 Not part of `run.py`'s standard suite (these three scripts are a matched
 trio meant to be compared against *each other*, not against another
 language) — `benchmarks/call_overhead.kh` /
-`call_overhead_khan_fn.kh` / `call_overhead_no_call.kh`, full writeup in
+`call_overhead_kosh_fn.kh` / `call_overhead_no_call.kh`, full writeup in
 `docs/call-overhead-audit.md`. Short version: calling `len()` 3 million
 times is ~17-22% slower than not calling anything, and — the
 interesting part — calling a trivial **Kosh-level** function costs

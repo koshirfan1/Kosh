@@ -265,7 +265,7 @@ this is now fixed and verified (`make clean && make` succeeds, `kosh` runs).
     functions so nesting more than one level deep works correctly
     (verified: 3-level nesting, independent closure instances from
     repeated calls to the same factory function).
-  - Runtime: a small ref-counted `KhanClosure` (captured-values array)
+  - Runtime: a small ref-counted `KoshClosure` (captured-values array)
     gets attached to a function `Value` at the moment a nested `fn`
     statement executes, and threaded through `CallFrame` on `OP_CALL`.
   - **Known limitation, by design (documented, not hidden):** capture
@@ -392,7 +392,7 @@ documented above and in `docs/memory-notes.md`.)
   parser/AST teardown bookkeeping — nothing attributable to arrays,
   maps, or this collector. **Known limitation, documented, not fixed:**
   functions/closures aren't covered (a separate refcount in `chunk.c`'s
-  `KhanClosure`) — a closure capturing a variable that indirectly holds
+  `KoshClosure`) — a closure capturing a variable that indirectly holds
   the same closure would still leak. Not observed in this codebase's
   own tests/examples, flagged honestly rather than silently scoped out.
 
@@ -401,7 +401,7 @@ documented above and in `docs/memory-notes.md`.)
 - ✅ **(this session)** Traced and documented the actual VM function
   value representation for the first time (it's not written down
   anywhere): a `VAL_FUNCTION` Value's `.as.function.body` field is
-  type-punned to hold a raw `KhanFunction*` (not an `AstNode*`, despite
+  type-punned to hold a raw `KoshFunction*` (not an `AstNode*`, despite
   the field's declared type — a leftover from the shared tree-walk-
   interpreter `Value` struct). This is safe as currently used (the
   tree-walk interpreter is dead code — see #12/#13 below) but is the

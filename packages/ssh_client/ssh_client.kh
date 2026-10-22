@@ -1,4 +1,4 @@
-# Khan SSH Client Package
+# Kosh SSH Client Package
 # Usage: import "ssh_client"
 
 fn ssh_client(host, user, pass):

@@ -107,7 +107,7 @@ running the same script at 200 and 400 loop iterations and getting
 byte-for-byte identical leak totals both times. These come from:
 
 - Parser: AST nodes for the compiled program (never freed after compile)
-- Compiler: `KhanFunction` registry entries, constant-pool string
+- Compiler: `KoshFunction` registry entries, constant-pool string
   interning (`strdup` calls in `emit_global_get`/`emit_const` etc.)
 - `vm_register_builtins()` / `*_register_all_vm()`: each native
   function's name string, `strdup`'d once at startup and never freed
@@ -164,11 +164,11 @@ build's 10-50x slowdown would make impractical to run on every push.
 gcc -std=c11 -g -O0 -Isrc -D_POSIX_C_SOURCE=200809L \
   -Wno-implicit-function-declaration -Wno-builtin-declaration-mismatch -Wno-cast-function-type \
   src/lexer.c src/parser.c src/ast.c src/chunk.c src/value.c src/compiler.c src/vm.c \
-  src/vm_libs.c src/interpreter.c src/khan_stdlib.c src/json_lib.c src/datetime_lib.c \
+  src/vm_libs.c src/interpreter.c src/kosh_stdlib.c src/json_lib.c src/datetime_lib.c \
   src/requests_lib.c src/webi_lib.c src/sqlite_lib.c src/vision_lib.c src/vision_cv.c \
-  src/vision_cascade.c src/main.c -o khan_dbg -lm
+  src/vision_cascade.c src/main.c -o kosh_dbg -lm
 
-valgrind --leak-check=full --show-leak-kinds=all ./khan_dbg your_script.kh
+valgrind --leak-check=full --show-leak-kinds=all ./kosh_dbg your_script.kh
 ```
 
 To confirm whether a reported leak scales with runtime rather than being

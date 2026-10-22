@@ -1,4 +1,4 @@
-# Khan KBrain - Simple AI/ML Package
+# Kosh KBrain - Simple AI/ML Package
 # Usage: import "kbrain"
 
 fn linear_regression():

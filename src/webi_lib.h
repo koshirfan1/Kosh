@@ -1,17 +1,17 @@
-#ifndef KHAN_WEBI_LIB_H
-#define KHAN_WEBI_LIB_H
+#ifndef KOSH_WEBI_LIB_H
+#define KOSH_WEBI_LIB_H
 
 #include "interpreter.h"
 
 struct VM;
 
 // ===========================================================================
-// webi_lib — native HTTP server backend for the webi Khan package
+// webi_lib — native HTTP server backend for the webi Kosh package
 //
 // Registers:
 //   http_serve(port, app)
 //       Starts a blocking HTTP server on the given port.
-//       For each incoming request it calls webi_handle(app, ...) in Khan-space
+//       For each incoming request it calls webi_handle(app, ...) in Kosh-space
 //       and writes the returned response map back to the socket.
 //
 // Additional natives registered here (v1.1 requests extensions):

@@ -16,13 +16,13 @@ let IMG = "../examples/ocr_test.png"
 let text = read_text(IMG)
 t = test_not_nil(t, "read_text() recognizes the sample image", text)
 if text != nil:
-    t = test_contains_str(t, "recognized text matches what's in the image", text, "Khan OCR Test")
+    t = test_contains_str(t, "recognized text matches what's in the image", text, "Kosh OCR Test")
 
 # --- confidence path -----------------------------------------------------
 let result = read_text_with_confidence(IMG)
 t = test_not_nil(t, "read_text_with_confidence() returns a result", result)
 if result != nil:
-    t = test_contains_str(t, "result text matches what's in the image", result["text"], "Khan OCR Test")
+    t = test_contains_str(t, "result text matches what's in the image", result["text"], "Kosh OCR Test")
     t = test_gt(t, "confidence is above 0", result["confidence"], 0)
 
 # --- graceful failure ----------------------------------------------------
@@ -38,7 +38,7 @@ t = test_not_nil(t, "ocr_init(\"eng\") succeeds", engine)
 if engine != nil:
     let img = vision_load(_webi_resolve_path(IMG))
     let text2 = ocr_recognize(engine, img)
-    t = test_contains_str(t, "low-level ocr_recognize() works", text2, "Khan OCR Test")
+    t = test_contains_str(t, "low-level ocr_recognize() works", text2, "Kosh OCR Test")
 
     let conf = ocr_confidence(engine)
     t = test_gt(t, "ocr_confidence() is above 0 after a recognize() call", conf, 0)
@@ -46,7 +46,7 @@ if engine != nil:
     # same engine, second call - confirms an engine is reusable across
     # multiple images rather than being one-shot only
     let text3 = ocr_recognize(engine, img)
-    t = test_contains_str(t, "engine is reusable for a second recognize() call", text3, "Khan OCR Test")
+    t = test_contains_str(t, "engine is reusable for a second recognize() call", text3, "Kosh OCR Test")
 
     ocr_free(engine)
     vision_free(img)
@@ -57,7 +57,7 @@ let img2 = vision_load(_webi_resolve_path(IMG))
 let words = ocr_recognize_words(engine2, img2)
 t = test_len(t, "ocr_recognize_words() finds 4 words", words, 4)
 if len(words) > 0:
-    t = test_eq(t, "first word is 'Khan'", words[0]["text"], "Khan")
+    t = test_eq(t, "first word is 'Kosh'", words[0]["text"], "Kosh")
     t = test_gt(t, "first word has a confidence above 0", words[0]["confidence"], 0)
     t = test_gt(t, "first word has a positive width", words[0]["width"], 0)
 ocr_free(engine2)
@@ -88,7 +88,7 @@ if rotated_orient != nil:
 # orientation call happened
 let plain_img = vision_load(_webi_resolve_path(IMG))
 let plain_text = ocr_recognize(engine3, plain_img)
-t = test_contains_str(t, "PSM is restored after ocr_detect_orientation() (no leftover AUTO_OSD)", plain_text, "Khan OCR Test")
+t = test_contains_str(t, "PSM is restored after ocr_detect_orientation() (no leftover AUTO_OSD)", plain_text, "Kosh OCR Test")
 vision_free(plain_img)
 
 ocr_free(engine3)
@@ -116,7 +116,7 @@ if multi_engine != nil:
 
 # --- searchable PDF export ----------------------------------------------------
 let pdf_engine = ocr_init("eng")
-let pdf_ok = ocr_save_pdf(pdf_engine, _webi_resolve_path(IMG), "/tmp/khan_test_ocr_pdf")
+let pdf_ok = ocr_save_pdf(pdf_engine, _webi_resolve_path(IMG), "/tmp/kosh_test_ocr_pdf")
 t = test_true(t, "ocr_save_pdf() succeeds", pdf_ok)
 ocr_free(pdf_engine)
 

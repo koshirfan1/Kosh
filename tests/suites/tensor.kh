@@ -1,11 +1,11 @@
 # tests/suites/tensor.kh -- native tensor engine + autograd Tensor class.
 #
-# NOTE: Khan arrays compare by identity (`==` is `a.as.obj == b.as.obj`
+# NOTE: Kosh arrays compare by identity (`==` is `a.as.obj == b.as.obj`
 # in src/value.c), same as classes/instances/maps -- two separately
 # built arrays with identical contents are never `==`. _tensor_to_nested(),
-# shape(), and .data() all return plain Khan arrays, so every comparison
+# shape(), and .data() all return plain Kosh arrays, so every comparison
 # here against an array literal goes through arrays_equal() below instead
-# of test_eq(). VAL_TENSOR itself is the one container type in Khan with
+# of test_eq(). VAL_TENSOR itself is the one container type in Kosh with
 # real value equality (see values_equal's VAL_TENSOR case in value.c), so
 # tensor-to-tensor `==` further down is tested with test_true/test_false
 # directly, same as in tests/suites/classes.kh.
@@ -163,7 +163,7 @@ fn suite_tensor_autograd():
     t = test_eq(t, "REGRESSION: 2000 forward/backward passes stay numerically correct", total, 20000)
 
     # backward-compatible free functions still work and now go through
-    # the native engine instead of pure-Khan O(n^3) loops
+    # the native engine instead of pure-Kosh O(n^3) loops
     t = test_arr_eq(t, "matmul() free function", matmul([[1, 2], [3, 4]], [[5, 6], [7, 8]]), [[19, 22], [43, 50]])
     t = test_eq(t, "dot() free function", dot([1, 2, 3], [4, 5, 6]), 32)
     t = test_arr_eq(t, "add() free function", add([1, 2, 3], [4, 5, 6]), [5, 7, 9])

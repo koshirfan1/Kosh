@@ -1,7 +1,7 @@
-# JSON Library for Khan
+# JSON Library for Kosh
 # json_encode(value) and json_decode(string)
 #
-# NOTE: Khan functions capture the environment at definition time, so
+# NOTE: Kosh functions capture the environment at definition time, so
 # recursive function calls don't work. json_encode iterates manually
 # over array/map elements without calling itself recursively.
 

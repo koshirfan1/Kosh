@@ -113,7 +113,7 @@ this is now fixed and verified (`make clean && make` succeeds, `kosh` runs).
     functions so nesting more than one level deep works correctly
     (verified: 3-level nesting, independent closure instances from
     repeated calls to the same factory function).
-  - Runtime: a small ref-counted `KhanClosure` (captured-values array)
+  - Runtime: a small ref-counted `KoshClosure` (captured-values array)
     gets attached to a function `Value` at the moment a nested `fn`
     statement executes, and threaded through `CallFrame` on `OP_CALL`.
   - **Known limitation, by design (documented, not hidden):** capture
@@ -141,7 +141,7 @@ this is now fixed and verified (`make clean && make` succeeds, `kosh` runs).
 - No leak audit
 - No fragmentation testing
 - ✅ **(this session)** The new closure mechanism (#6) is ref-counted
-  (`khanclosure_retain`/`khanclosure_release`, mirroring existing
+  (`koshclosure_retain`/`koshclosure_release`, mirroring existing
   `value_copy`/`value_free` conventions) specifically to avoid adding a
   new leak/double-free surface — but this has only been exercised by
   the test suite below, not stress-tested independently.
@@ -160,7 +160,7 @@ runtime-error swallow — but that's not a systematic audit.)
 - ✅ **(this session)** Traced and documented the actual VM function
   value representation for the first time (it's not written down
   anywhere): a `VAL_FUNCTION` Value's `.as.function.body` field is
-  type-punned to hold a raw `KhanFunction*` (not an `AstNode*`, despite
+  type-punned to hold a raw `KoshFunction*` (not an `AstNode*`, despite
   the field's declared type — a leftover from the shared tree-walk-
   interpreter `Value` struct). This is safe as currently used (the
   tree-walk interpreter is dead code — see #12/#13 below) but is the

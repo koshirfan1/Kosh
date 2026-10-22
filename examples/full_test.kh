@@ -19,7 +19,7 @@ fn greet(name):
     print "Hello!"
 
 greet("Irfan")
-greet("Khan")
+greet("Kosh")
 
 print true and false
 print not true

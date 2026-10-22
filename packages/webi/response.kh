@@ -38,7 +38,7 @@ fn res_html(html):
 
 # ---------------------------------------------------------------------------
 # res_json(data) -> response
-# JSON response (200) — auto-encodes a Khan map/array
+# JSON response (200) — auto-encodes a Kosh map/array
 # ---------------------------------------------------------------------------
 fn res_json(data):
     return _res_base(200, json_encode(data), "application/json")

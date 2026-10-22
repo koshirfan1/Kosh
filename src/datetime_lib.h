@@ -1,5 +1,5 @@
-#ifndef KHAN_DATETIME_LIB_H
-#define KHAN_DATETIME_LIB_H
+#ifndef KOSH_DATETIME_LIB_H
+#define KOSH_DATETIME_LIB_H
 
 #include "interpreter.h"
 

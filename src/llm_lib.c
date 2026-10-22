@@ -8,7 +8,7 @@
  * Model slots
  *
  * Same pattern as ocr_lib.c's engine table: a small fixed-size array of
- * native handles, addressed from Khan by index. Each Khan-visible "model"
+ * native handles, addressed from Kosh by index. Each Kosh-visible "model"
  * map just carries its slot number back to us.
  * ========================================================================= */
 
@@ -27,7 +27,7 @@ static int llm_alloc_slot(void) {
     return -1;
 }
 
-/* Resolve a Khan-level model map back to its native slot, or -1 if the
+/* Resolve a Kosh-level model map back to its native slot, or -1 if the
  * argument isn't a live model (wrong type, freed already, corrupt id). */
 static int llm_resolve_slot(Value *m) {
     if (m->type != VAL_MAP) return -1;

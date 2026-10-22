@@ -1,5 +1,5 @@
-#ifndef KHAN_LLM_LIB_H
-#define KHAN_LLM_LIB_H
+#ifndef KOSH_LLM_LIB_H
+#define KOSH_LLM_LIB_H
 
 #include "interpreter.h"
 #include "vm.h"
@@ -10,12 +10,12 @@
  * tools.
  *
  * This is a genuine bridge, not a mock: it links against llama.cpp's public
- * C API (llama.h) and runs real forward passes through ggml. Khan does not
+ * C API (llama.h) and runs real forward passes through ggml. Kosh does not
  * implement any tensor math, attention, or quantization itself here — the
  * whole point of bridging is that GGUF files are already quantized upstream
  * (llama.cpp's k-quant schemes: Q4_K_M, Q5_K_M, Q8_0, etc. — calibrated,
  * per-block scaled) by whoever produced them, so accuracy-vs-size is solved
- * *before* Khan ever sees the file. Khan's job is only to load the file and
+ * *before* Kosh ever sees the file. Kosh's job is only to load the file and
  * run inference on it.
  *
  * Requires libllama.a / libggml*.a to be built (see docs/llm.md) and linked
@@ -26,7 +26,7 @@
  * with -lstdc++ added) even though this wrapper file itself is plain C —
  * see docs/llm.md for the exact makefile change.
  *
- * A "model" at the Khan level is a plain map:
+ * A "model" at the Kosh level is a plain map:
  *   {"__llm_id": <handle>}
  * The underlying llama_model and llama_context pair lives in a native-side
  * table indexed by __llm_id. Always call llm_free() on models you no longer

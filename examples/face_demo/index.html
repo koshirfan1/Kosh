@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Khan face detection — real Haar-cascade detection, one native binary</title>
+<title>Kosh face detection — real Haar-cascade detection, one native binary</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -35,7 +35,7 @@
   .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate); margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
   .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 8px var(--sage); }
   h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 12px; line-height: 1.05; }
-  h1 .khan { color: var(--ember); }
+  h1 .kosh { color: var(--ember); }
   .lede { font-size: 15.5px; color: var(--text-dim); line-height: 1.55; margin: 0; max-width: 620px; }
   .lede strong { color: var(--text); font-weight: 600; }
 
@@ -96,7 +96,7 @@
 <div class="wrap">
   <header>
     <p class="eyebrow"><span class="dot"></span> webi (native http server) + vision (real haar-cascade detector) — one binary</p>
-    <h1>Face detection, <span class="khan">from scratch</span></h1>
+    <h1>Face detection, <span class="kosh">from scratch</span></h1>
     <p class="lede">This page is served by <strong>webi</strong>, a web framework its author built from nothing. The detection is real Viola-Jones cascade matching in <strong>vision</strong> — the same package whose earlier version faked this exact feature by returning hardcoded boxes. This is the rebuild.</p>
   </header>
 
@@ -108,7 +108,7 @@
   </div>
 
   <div class="stage" id="stage">
-    <p class="empty">Nothing loaded yet — start your webcam or upload a photo above.<br>Detection runs server-side, in real Khan code.</p>
+    <p class="empty">Nothing loaded yet — start your webcam or upload a photo above.<br>Detection runs server-side, in real Kosh code.</p>
     <video id="video" autoplay playsinline muted></video>
     <div id="stageWrap">
       <canvas class="display" id="displayCanvas"></canvas>
@@ -125,8 +125,8 @@
   </div>
 
   <footer>
-    <span>Khan — built from scratch in C11 by Irfan Khan</span>
-    <span><a href="https://github.com/khandev1211-cpu/Khan">source on GitHub</a></span>
+    <span>Kosh — built from scratch in C11 by Irfan Khan</span>
+    <span><a href="https://github.com/koshirfan1/Kosh">source on GitHub</a></span>
   </footer>
 </div>
 

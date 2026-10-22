@@ -1,13 +1,13 @@
-# Khan Portfolio Project
+# Kosh Portfolio Project
 
-This project is a small personal portfolio website built with the Khan language and the `webi` web framework.
+This project is a small personal portfolio website built with the Kosh language and the `webi` web framework.
 
 ## Features
 
 - Modern single-page portfolio layout
 - Hero section, about section, skills, and contact area
 - Responsive design for desktop and mobile devices
-- Runs as a local web app using Khan + webi
+- Runs as a local web app using Kosh + webi
 - Accessible from other devices on the same network using the host machine IP address
 
 ## Run it
@@ -15,7 +15,7 @@ This project is a small personal portfolio website built with the Khan language 
 From this folder:
 
 ```powershell
-khan server.kh
+kosh server.kh
 ```
 
 Then open:

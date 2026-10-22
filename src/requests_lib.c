@@ -3,7 +3,7 @@
 // "TokenType" (part of _TOKEN_INFORMATION_CLASS, used by the Win32 security
 // token APIs). That collides with a type name, not just another constant,
 // so no #include ordering can fix it — one of the two names has to change.
-// Khan's own lexer token-kind enum was renamed to TokenKind (see token.h)
+// Kosh's own lexer token-kind enum was renamed to TokenKind (see token.h)
 // specifically to avoid this clash permanently, regardless of include order.
 // ===========================================================================
 #ifdef _WIN32
@@ -143,7 +143,7 @@ static Value winhttp_request(Interpreter *interp,
     INTERNET_PORT port = use_https ? INTERNET_DEFAULT_HTTPS_PORT
                                    : INTERNET_DEFAULT_HTTP_PORT;
 
-    HINTERNET hSession = WinHttpOpen(L"Khan/1.1",
+    HINTERNET hSession = WinHttpOpen(L"Kosh/1.1",
                                       WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                       NULL, NULL, 0);
     if (!hSession) {
@@ -307,7 +307,7 @@ static char *run_curl(const char **args, int nargs) {
     // Build shell command: curl -s <args...>
     size_t cmd_len = 16;
     for (int i = 0; i < nargs; i++)
-        cmd_len += strlen(args[i]) * 2 + 4;
+        cmd_len += strlen(args[i]) * 4 + 4;   /* worst case: every char is a quote -> 4 bytes ('\'') */
 
     char *cmd = malloc(cmd_len);
     strcpy(cmd, "curl -s");
@@ -353,7 +353,7 @@ static Value curl_request(const char *method, const char *url,
     int n = 0;
 
     args[n++] = "-w";
-    args[n++] = "\n__KHAN_STATUS__%{http_code}";
+    args[n++] = "\n__KOSH_STATUS__%{http_code}";
 
     if (method && strcmp(method, "GET") != 0) {
         args[n++] = "-X";
@@ -395,7 +395,7 @@ static Value curl_request(const char *method, const char *url,
     for (int i = 0; i < hcount; i++) free(hstrings[i]);
     free(hstrings);
 
-    const char *marker = strstr(raw, "\n__KHAN_STATUS__");
+    const char *marker = strstr(raw, "\n__KOSH_STATUS__");
     long status = 0;
     char *body_str;
     if (marker) {
@@ -403,7 +403,7 @@ static Value curl_request(const char *method, const char *url,
         body_str = malloc(blen + 1);
         memcpy(body_str, raw, blen);
         body_str[blen] = '\0';
-        status = atol(marker + (int)strlen("\n__KHAN_STATUS__"));
+        status = atol(marker + (int)strlen("\n__KOSH_STATUS__"));
     } else {
         body_str = strdup(raw);
     }

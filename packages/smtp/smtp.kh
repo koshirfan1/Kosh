@@ -1,4 +1,4 @@
-# Khan SMTP (Email) Package
+# Kosh SMTP (Email) Package
 # Usage: import "smtp"
 
 import "requests"

@@ -12,7 +12,7 @@
 #   organization: "" (unset)
 #
 # Note: `timeout` is stored on the client for API forward-compatibility,
-# but Khan's native HTTP layer (requests_lib.c) doesn't currently expose a
+# but Kosh's native HTTP layer (requests_lib.c) doesn't currently expose a
 # per-request timeout knob, so it isn't enforced yet — a slow request will
 # block for as long as the underlying WinHTTP/curl call takes.
 # ---------------------------------------------------------------------------
