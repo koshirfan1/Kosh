@@ -1,6 +1,6 @@
 name: Deploy Playground to GitHub Pages
 
-# Deploys the static files in playground/ (index.html, kosh.js, kosh.wasm)
+# Deploys the static files in playground/ (index.html, khan.js, khan.wasm)
 # to GitHub Pages, unchanged, on every push to main that touches that
 # directory. No build step at deploy time — the WASM/JS artifacts are
 # already committed (see playground/build.sh if they ever need

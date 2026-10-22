@@ -1,0 +1,10 @@
+# benchmarks/call_overhead_khan_fn.kh — same shape, calling a trivial
+# Khan-level function instead of a native one. See call_overhead.kh.
+fn get_five():
+    return 5
+let total = 0
+let i = 0
+while i < 3000000:
+    total = total + get_five()
+    i = i + 1
+print total

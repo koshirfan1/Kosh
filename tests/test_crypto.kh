@@ -1,0 +1,44 @@
+# Tests for the native crypto builtins (src/crypto_lib.c).
+#
+# Vectors: SHA-256 from FIPS 180-4, HMAC-SHA256 from RFC 4231 test case 2,
+# and a PBKDF2-HMAC-SHA256 stored hash generated independently with
+# Python's hashlib.pbkdf2_hmac (cross-implementation check).
+import "../packages/test/test.kh"
+
+let t = test_suite("Crypto Suite")
+
+# --- SHA-256 ---------------------------------------------------------------
+t = test_eq(t, "sha256 of empty string", sha256(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+t = test_eq(t, "sha256 of abc", sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+t = test_len(t, "sha256 output is 64 hex chars", sha256("anything"), 64)
+
+# --- HMAC-SHA256 (RFC 4231, test case 2) ------------------------------------
+t = test_eq(t, "hmac_sha256 RFC 4231 case 2", hmac_sha256("Jefe", "what do ya want for nothing?"), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+
+# --- constant_time_equals ---------------------------------------------------
+t = test_true(t, "equal strings compare equal", constant_time_equals("secret-key", "secret-key"))
+t = test_false(t, "different last char", constant_time_equals("secret-key", "secret-kez"))
+t = test_false(t, "different first char", constant_time_equals("secret-key", "Xecret-key"))
+t = test_false(t, "prefix of the other", constant_time_equals("secret", "secret-key"))
+t = test_false(t, "longer than the other", constant_time_equals("secret-key", "secret"))
+t = test_true(t, "two empty strings", constant_time_equals("", ""))
+t = test_false(t, "non-string argument is false, not a crash", constant_time_equals("a", 5))
+
+# --- password_hash / password_verify ----------------------------------------
+let stored = "pbkdf2_sha256$100000$000102030405060708090a0b0c0d0e0f$57f2c2f0739748d516419b062a884666323c583ea4ae165504a81f7b53c62a09"
+t = test_true(t, "verifies a hash made by Python hashlib (cross-impl)", password_verify("correct horse", stored))
+t = test_false(t, "rejects the wrong password for that hash", password_verify("correct horsf", stored))
+
+let h1 = password_hash("hunter2")
+let h2 = password_hash("hunter2")
+t = test_contains_str(t, "hash uses the pbkdf2_sha256 scheme", h1, "pbkdf2_sha256$100000$")
+t = test_neq(t, "same password gets a different random salt each time", h1, h2)
+t = test_true(t, "own hash verifies", password_verify("hunter2", h1))
+t = test_true(t, "second hash verifies too", password_verify("hunter2", h2))
+t = test_false(t, "wrong password is rejected", password_verify("hunter3", h1))
+t = test_false(t, "malformed stored hash is rejected", password_verify("x", "not-a-hash"))
+t = test_false(t, "unknown scheme is rejected", password_verify("x", "md5$1$00$00"))
+t = test_false(t, "absurd iteration count is rejected (no CPU burn)", password_verify("x", "pbkdf2_sha256$2000000000$000102030405060708090a0b0c0d0e0f$57f2c2f0739748d516419b062a884666323c583ea4ae165504a81f7b53c62a09"))
+t = test_false(t, "zero iteration count is rejected", password_verify("x", "pbkdf2_sha256$0$000102030405060708090a0b0c0d0e0f$57f2c2f0739748d516419b062a884666323c583ea4ae165504a81f7b53c62a09"))
+
+test_run(t)

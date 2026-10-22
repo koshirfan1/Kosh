@@ -98,7 +98,7 @@ fn mw_logger(req):
 fn contains_str_in_list(list, s):
     let i = 0
     while i < len(list):
-        if list[i] == s:
+        if constant_time_equals(list[i], s):
             return true
         i = i + 1
     return false

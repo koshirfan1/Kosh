@@ -5,7 +5,7 @@ kosh
 kh
 
 
-
+*.db
 
 *.exe
 # Build artifacts

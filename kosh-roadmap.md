@@ -12,40 +12,97 @@ language with known O(n²) string concat gets torn apart on Hacker News.
 Ordered by **impact on "can someone actually use this."**
 
 ### Phase 1 — Foundational correctness (do first, blocks everything else)
-1. **Hash table for `{}` maps** — currently O(n) linear-scan array.
-   This is the single highest-impact fix: almost any real Kosh program
-   uses maps, and this is the thing that will make Kosh feel "broken"
-   to a new user the moment their data grows past a few dozen keys.
-   - Implement open-addressing or chaining hash table in `value.c`/new
-     `hashtable.c`, wire into VM map ops.
-   - Benchmark before/after with `benchmarks/map_scale.kh`.
-2. **String concatenation O(n²) fix** — redundant `strlen()` per append
-   in a loop. Cache length or move to a rope/builder pattern for `+=`
-   in loops, or at minimum stop the repeated strlen.
-   - Re-run `benchmarks/string_concat.kh` after.
+1. ✅ **DONE — Hash table for `{}` maps.** Was an O(n) linear-scan
+   array; now a real open-addressing hash index (FNV-1a, linear
+   probing, ~70% load-factor growth) sitting alongside the existing
+   insertion-ordered `entries[]` array, so every one of the 20+
+   existing `map_set`/`map_get` callers and every direct
+   `AS_MAP_ENTRIES` reader (JSON encoding, `keys()`, header iteration)
+   needed zero changes. Measured: `map_scale.kh` (4,000 keys) 0.031s →
+   0.005s; a 50,000-key stress case 8.99s → 0.012s (~725x). Full test
+   suites pass unchanged. Files: `src/interpreter.h`, `src/value.c`,
+   writeup in `docs/hash-table-audit.md`, status in
+   `ROADMAP_STATUS_UPDATED.md` item 11.
+2. 🟡 **PARTIAL — String concatenation O(n²) fix.** Removed the
+   redundant `strlen()` rescan on the growing accumulator (cached
+   length via a hidden header, same technique as Redis's SDS strings) —
+   real, verified ~2.4x win (100k-iteration `s = s + "x"`: 2.42s →
+   1.0s). **But the O(n²) is not fully gone** — traced the remaining
+   cause to `OP_SET_LOCAL`/`OP_SET_GLOBAL`/`OP_SET_UPVALUE` in `vm.c`,
+   which deep-copy the assigned value on every write by design (avoids
+   aliasing bugs). Closing this fully means giving strings spare
+   capacity *and* changing assignment to move ownership instead of
+   copying when the source is a dead stack temporary — a real change
+   to the VM's copy discipline, scoped but not done yet. Files:
+   `src/value.c`, `src/value.h`, `src/interpreter.h`, `src/vm.c`,
+   writeup in `benchmarks/RESULTS.md`'s `string_concat` section.
 
 ### Phase 2 — Safety/robustness (needed before anyone trusts it with real programs)
-3. **`try`/`catch`** — currently absent entirely. Define error-value
-   propagation or exception unwinding in the VM; needs opcode(s) and
-   compiler support for `try`/`catch`/`finally` blocks.
-4. **GC or a documented mitigation** — full GC is a big lift. Cheaper
-   interim step: detect + document/warn on common circular-reference
-   patterns, or provide a `weakref`-style escape hatch, while a real
-   mark-and-sweep or cycle collector is designed separately.
+3. ✅ **DONE — `try`/`catch`/`throw`.** Full lexer/parser/AST/compiler/
+   VM implementation, catching both user `throw`s and every existing
+   built-in runtime error. Handles nesting, re-throw, and exceptions
+   crossing recursive calls. A real bug was found and fixed mid-
+   implementation (a `continue` trapped inside a `do{}while(0)` macro
+   — see `docs/trycatch-implementation.md` for the full story, kept
+   deliberately detailed since it's a C pitfall worth remembering).
+   One documented known limitation: exceptions from inside a native-
+   callback context (e.g. an `array.map()` callback) aren't catchable
+   by an enclosing handler — fails safe, not silently. Files:
+   `src/token.h`, `src/lexer.c`, `src/ast.h`, `src/ast.c`,
+   `src/parser.c`, `src/chunk.h`, `src/vm.h`, `src/vm.c`,
+   `src/compiler.c`; roadmap status in `ROADMAP_STATUS_UPDATED.md`
+   item 13.
+4. ✅ **DONE — Cycle collector for circular references.** Implemented
+   a Bacon-Rajan trial-deletion collector (scoped to arrays/maps,
+   not a full tracing GC — never needs to enumerate the VM's stack/
+   frames/globals as roots, only walks the array/map object graph
+   itself). Two real bugs found and fixed during testing (a
+   reentrancy-guard field collision causing a self-reference stack
+   overflow, and a stale-pointer use-after-free on two-node cycles) —
+   full story in `docs/gc-notes.md`. Verified under AddressSanitizer:
+   self-reference, 2- and 3-node cycles, map cycles, mixed cycles,
+   500-cycle batches, live-child survival, acyclic-data safety, plus
+   the full existing suite — zero regressions. Leak measurement:
+   5,000-iteration cycle workload went from 403,548 leaked bytes to
+   3,581 (>99% reduction), remainder all pre-existing/unrelated.
+   Known, documented limitation: closures aren't covered (separate
+   refcount in `chunk.c`). Files: `src/interpreter.h`, `src/value.c`,
+   `src/kosh_stdlib.c`/`.h`, `src/vm_libs.c`; roadmap status in
+   `ROADMAP_STATUS_UPDATED.md` item 8.
 
 ### Phase 3 — Performance (only after correctness, so numbers are meaningful)
-5. **Dispatch loop**: switch → computed goto in `vm.c`. This is flagged
-   in your own `benchmarks/RESULTS.md` as the most likely lever on the
-   `loop` benchmark (194x gap vs. C).
+5. ✅ **DONE (negative result) — Dispatch loop.** Converted all 44
+   opcodes to computed-goto (`goto *dispatch_table[...]`), benchmarked
+   against the existing switch, and the switch turned out FASTER
+   (5-15% depending on benchmark) — reverted. Full measurement, why
+   (GCC already jump-tables a dense switch at `-O2`; these benchmarks'
+   regular dispatch patterns favor a shared predictor slot), and three
+   real bugs found while converting (documented so nobody re-attempts
+   this blind) in `docs/dispatch-perf.md`. Dispatch mechanism is
+   confirmed NOT where Kosh's per-op overhead comes from — the
+   `value_copy()`-per-operation cost flagged in `benchmarks/RESULTS.md`
+   remains the most promising next thing to actually profile.
 6. Re-run all 5 benchmarks after each of the above, update
    `benchmarks/RESULTS.md` with new numbers — this file is also a
    content asset (see Track B).
 
-### Phase 4 — Process/infra (roadmap item #17, currently ❌)
-7. **CI build matrix** (Linux/macOS/Windows) — you already had a
-   "didn't compile on Linux" bug ship silently; CI is what prevents
-   that class of bug going forward. This is also a credibility signal
-   for anyone evaluating the repo.
+### Phase 4 — Process/infra
+7. ✅ **DONE — CI build matrix.** Turns out this already existed from
+   a prior session (`.github/workflows/c-cpp.yml`) — Linux/macOS/
+   Windows, gating on the full test suite (not just "does it
+   compile"), a valgrind memory-check job, and two regression tests
+   for previously-fixed bugs (div/mod-by-zero constant-folding, stack-
+   overflow clean-failure). This session re-verified every one of its
+   gates by hand against a build containing all of this session's
+   changes (hash map, string fix, try/catch, GC, dispatch experiment)
+   — all pass unchanged, plus a leak-count comparison (pristine vs.
+   this session's build, same test suite) confirming zero new leaks
+   introduced by any of the four features. One gap remains and can't
+   be closed from here: the workflow YAML itself has never actually
+   been run through GitHub Actions (no access to verify that end-to-
+   end) — flagged in `ROADMAP_STATUS_UPDATED.md` item 17 across
+   multiple sessions now; pushing this once and watching it run would
+   be the highest-value single action left on the whole technical list.
 
 **Not in this plan yet, deliberately parked:** full precise GC,
 Unicode/UTF-8 lexer support, v1.0 release criteria as a whole — these
@@ -111,11 +168,12 @@ Pick from these, each is a standalone post/thread:
 
 | Step | Track A | Track B |
 |---|---|---|
-| 1 | Hash table for maps | README polish + host playground |
-| 2 | String concat fix | Post: face-detection mock→real story |
-| 3 | try/catch | Post: JSON benchmark win |
-| 4 | Dispatch loop perf | Show HN (after map fix is live) |
-| 5 | CI matrix | Post: VM/bytecode deep-dive |
+| 1 | ✅ Hash table for maps (done) | README polish + host playground |
+| 1b | 🟡 String concat partial fix (~2.4x, root cause still open) | Post: face-detection mock→real story |
+| 3 | ✅ try/catch (done) | Post: JSON benchmark win |
+| 3b | ✅ GC / cycle collector (done) | — |
+| 4 | ✅ Dispatch loop — tried, measured slower, reverted | Show HN (after map fix is live) |
+| 5 | ✅ CI matrix — already existed, re-verified this session | Post: VM/bytecode deep-dive |
 
 Start with Step 1 on both sides — it's the highest-leverage fix
 (unblocks real programs) and the highest-leverage story (an already-
