@@ -69,6 +69,7 @@ SRCS = \
     src/vision_cascade.c \
     src/tensor_lib.c    \
     src/crypto_lib.c    \
+    src/crypto_aead.c   \
     src/main.c
 
 KH_SRCS = src/kh.c

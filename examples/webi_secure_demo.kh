@@ -1,0 +1,43 @@
+# webi_secure_demo.kh - live demo of the encrypted channel (needs TLS in
+# production; this demo runs over plain localhost HTTP).
+#
+#   terminal 1:  ./kosh examples/webi_secure_demo.kh server
+#   terminal 2:  ./kosh examples/webi_secure_demo.kh client
+#
+# Watch the traffic (e.g. `tcpdump -A -i lo port 18099`): the page text and the
+# real URL never appear on the wire, only POST /_webi/secure with opaque data.
+import "../packages/webi/webi.kh"
+
+let PORT = 18099
+let BASE = "http://127.0.0.1:18099"
+
+fn h_secret(req):
+    return res_html("<h1>top secret page</h1>")
+
+fn run_server():
+    let app = webi_app()
+    app = route(app, "GET", "/secret", h_secret)
+    app = webi_enable_secure(app, {})
+    webi_run_host(app, "127.0.0.1", PORT)
+
+fn run_client():
+    let c = wsec_client_start()
+    let hs = http_post_json(BASE + "/_webi/handshake", wsec_client_hello(c))
+    let sess = wsec_client_finish(c, json_decode(hs["body"]))
+    if sess == nil:
+        print "handshake failed"
+        return nil
+    let packet = wsec_client_request(sess, "GET", "/secret", "", {}, "")
+    let r = http_post(BASE + "/_webi/secure", packet)
+    let res = wsec_client_read_response(sess, r["body"])
+    print "outer status : " + str(r["status"])
+    print "inner status : " + str(res["status"])
+    print "inner body   : " + res["body"]
+
+let mode = "client"
+if len(argv) > 0:
+    mode = argv[0]
+if mode == "server":
+    run_server()
+else:
+    run_client()

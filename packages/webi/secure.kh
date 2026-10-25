@@ -1,0 +1,327 @@
+# webi/secure.kh — encrypted channel: handshake, key schedule, sealed
+# packets with replay protection (v1.2.0, milestones M1 + M2 core)
+#
+# READ docs/webi-threat-model.md FIRST. In short:
+#
+#   * This layer runs ON TOP of TLS. It is defense in depth (hides bodies
+#     from TLS-terminating proxies/CDNs, adds request-level replay
+#     protection). It is NOT a replacement for HTTPS and the handshake is
+#     NOT authenticated by itself: server identity comes from TLS.
+#   * Not "100% secure". The primitives are ChaCha20-Poly1305 (RFC 8439),
+#     X25519 (RFC 7748) and HKDF-SHA256 (RFC 5869), but the protocol built
+#     from them has not had an external review.
+#
+# Protocol (version 1)
+# --------------------
+#   client                                   server
+#   c = ephemeral X25519 key
+#   hello = {v:1, pub:C}        ---------->  s = ephemeral X25519 key
+#                                            shared = X25519(s, C)
+#                               <----------  reply = {v:1, sid, pub:S}
+#   shared = X25519(c, S)
+#
+#   salt = SHA-256("kosh-webi/1" || C || S)          (binds both public keys)
+#   okm  = HKDF(shared, salt, "kosh-webi v1 key schedule", 64 bytes)
+#   key_c2s = okm[0..32]    key_s2c = okm[32..64]    (one key per direction)
+#
+# Each packet is sealed with ChaCha20-Poly1305:
+#   nonce = 4-byte direction id || 8-byte big-endian counter   (12 bytes)
+#   aad   = "kosh-webi/1|<sid>|<dir>|<counter>|<caller aad>"
+# The sender's counter only ever increases (a (key, nonce) pair can never
+# repeat). The receiver keeps the highest counter seen plus a 64-entry
+# sliding window, so a replayed, duplicated or very old packet is rejected
+# with O(1) memory per session — there is no nonce database to fill up.
+#
+# Wire format of a packet (one ASCII string):  v1.<sid>.<counter>.<ct_hex>
+#
+# Public API
+#   wsec_new_store(max_sessions, ttl_seconds)  -> store          (server)
+#   wsec_client_start()                        -> client state    (client)
+#   wsec_client_hello(client)                  -> hello map
+#   wsec_server_accept(store, hello)           -> reply map | nil (server)
+#   wsec_client_finish(client, reply)          -> session | nil   (client)
+#   wsec_seal(session, aad, plaintext)         -> packet | nil
+#   wsec_open(session, packet, aad)            -> plaintext | nil
+#   wsec_server_open(store, packet, aad)       -> plaintext | nil (server)
+#   wsec_server_session(store, packet)         -> session | nil   (server)
+#   wsec_server_seal(store, sid, aad, plaintext) -> packet | nil  (server)
+#
+# Every function that takes data from the network returns nil on ANY
+# problem (bad format, unknown session, expired, replay, bad tag) — it never
+# raises and never returns partial data.
+
+let WSEC_VERSION = 1
+let WSEC_WINDOW = 64
+let WSEC_MAX_COUNTER = 281474976710655
+let WSEC_DIR_C2S = "00000001"
+let WSEC_DIR_S2C = "00000002"
+let WSEC_HEX = "0123456789abcdef"
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+# True if s is a string of exactly n lowercase hex characters.
+fn wsec_is_hex(s, n):
+    if type(s) != "string":
+        return false
+    if len(s) != n:
+        return false
+    let i = 0
+    while i < n:
+        if not contains(WSEC_HEX, substring(s, i, 1)):
+            return false
+        i = i + 1
+    return true
+
+# True if s is a non-empty string of at most 15 decimal digits.
+fn wsec_is_decimal(s):
+    if type(s) != "string":
+        return false
+    if len(s) < 1 or len(s) > 15:
+        return false
+    let i = 0
+    while i < len(s):
+        if not contains("0123456789", substring(s, i, 1)):
+            return false
+        i = i + 1
+    return true
+
+# 8-byte big-endian counter as 16 hex chars.
+fn wsec_hex16(n):
+    let out = ""
+    let v = n
+    let i = 0
+    while i < 16:
+        let d = v % 16
+        out = substring(WSEC_HEX, d, 1) + out
+        v = floor(v / 16)
+        i = i + 1
+    return out
+
+fn wsec_dir_name(dir):
+    if dir == WSEC_DIR_C2S:
+        return "c2s"
+    return "s2c"
+
+fn wsec_aad(sid, dir, ctr, aad):
+    return "kosh-webi/1|" + sid + "|" + wsec_dir_name(dir) + "|" + str(ctr) + "|" + aad
+
+# Derives {"c2s": hex32bytes, "s2c": hex32bytes} from the X25519 shared
+# secret and both public keys (transcript binding).
+fn wsec_derive(shared, client_pub, server_pub):
+    let salt = sha256("kosh-webi/1" + client_pub + server_pub)
+    let okm = hkdf_sha256(shared, salt, "kosh-webi v1 key schedule", 64)
+    if okm == nil:
+        return nil
+    return {"c2s": substring(okm, 0, 64), "s2c": substring(okm, 64, 64)}
+
+fn wsec_make_session(sid, send_key, recv_key, send_dir, recv_dir):
+    let now_s = timestamp()
+    return {
+        "sid": sid,
+        "send_key": send_key,
+        "recv_key": recv_key,
+        "send_dir": send_dir,
+        "recv_dir": recv_dir,
+        "send_ctr": 0,
+        "recv_max": -1,
+        "recv_seen": {},
+        "created": now_s,
+        "last": now_s
+    }
+
+# ---------------------------------------------------------------------------
+# server store
+# ---------------------------------------------------------------------------
+
+fn wsec_new_store(max_sessions, ttl_seconds):
+    return {"sessions": {}, "count": 0, "max": max_sessions, "ttl": ttl_seconds}
+
+# Drops expired sessions (Kosh maps have no delete, so the live ones are
+# copied into a fresh map).
+fn wsec_sweep(store):
+    let now_s = timestamp()
+    let live = {}
+    let n = 0
+    for sid in keys(store["sessions"]):
+        let s = store["sessions"][sid]
+        if now_s - s["last"] <= store["ttl"]:
+            live[sid] = s
+            n = n + 1
+    store["sessions"] = live
+    store["count"] = n
+
+# ---------------------------------------------------------------------------
+# handshake
+# ---------------------------------------------------------------------------
+
+fn wsec_client_start():
+    let priv = secure_token(32)
+    return {"priv": priv, "pub": x25519_public(priv)}
+
+fn wsec_client_hello(client):
+    return {"v": WSEC_VERSION, "pub": client["pub"]}
+
+# Server side. Returns the reply map, or nil if the hello is malformed, the
+# version is unsupported, the peer key is a low-order point, or the store is
+# full (capacity cap = handshake-flood protection).
+fn wsec_server_accept(store, hello):
+    if type(hello) != "map":
+        return nil
+    if not has(hello, "v") or not has(hello, "pub"):
+        return nil
+    if hello["v"] != WSEC_VERSION:
+        return nil
+    if not wsec_is_hex(hello["pub"], 64):
+        return nil
+
+    if store["count"] >= store["max"]:
+        wsec_sweep(store)
+        if store["count"] >= store["max"]:
+            return nil
+
+    let priv = secure_token(32)
+    let spub = x25519_public(priv)
+    let shared = x25519_shared(priv, hello["pub"])
+    if shared == nil:
+        return nil
+    let keys_ = wsec_derive(shared, hello["pub"], spub)
+    if keys_ == nil:
+        return nil
+
+    let sid = secure_token(16)
+    store["sessions"][sid] = wsec_make_session(sid, keys_["s2c"], keys_["c2s"], WSEC_DIR_S2C, WSEC_DIR_C2S)
+    store["count"] = store["count"] + 1
+    return {"v": WSEC_VERSION, "sid": sid, "pub": spub}
+
+# Client side. Returns the client's session, or nil on a bad reply.
+fn wsec_client_finish(client, reply):
+    if type(reply) != "map":
+        return nil
+    if not has(reply, "v") or not has(reply, "sid") or not has(reply, "pub"):
+        return nil
+    if reply["v"] != WSEC_VERSION:
+        return nil
+    if not wsec_is_hex(reply["sid"], 32) or not wsec_is_hex(reply["pub"], 64):
+        return nil
+    let shared = x25519_shared(client["priv"], reply["pub"])
+    if shared == nil:
+        return nil
+    let keys_ = wsec_derive(shared, client["pub"], reply["pub"])
+    if keys_ == nil:
+        return nil
+    return wsec_make_session(reply["sid"], keys_["c2s"], keys_["s2c"], WSEC_DIR_C2S, WSEC_DIR_S2C)
+
+# ---------------------------------------------------------------------------
+# sealing and opening packets
+# ---------------------------------------------------------------------------
+
+fn wsec_seal(session, aad, plaintext):
+    if session == nil:
+        return nil
+    if type(aad) != "string" or type(plaintext) != "string":
+        return nil
+    let ctr = session["send_ctr"]
+    if ctr > WSEC_MAX_COUNTER:
+        return nil
+    let nonce = session["send_dir"] + wsec_hex16(ctr)
+    let ct = chacha20poly1305_encrypt(session["send_key"], nonce, wsec_aad(session["sid"], session["send_dir"], ctr, aad), plaintext)
+    if ct == nil:
+        return nil
+    # Increment only after a successful seal; a counter is never reused.
+    session["send_ctr"] = ctr + 1
+    return "v1." + session["sid"] + "." + str(ctr) + "." + ct
+
+# Parses "v1.<sid>.<ctr>.<ct>" -> {"sid","ctr","ct"} or nil.
+fn wsec_parse(packet):
+    if type(packet) != "string":
+        return nil
+    if len(packet) > 1048576:
+        return nil
+    let parts = split(packet, ".")
+    if len(parts) != 4:
+        return nil
+    if parts[0] != "v1":
+        return nil
+    if not wsec_is_hex(parts[1], 32):
+        return nil
+    if not wsec_is_decimal(parts[2]):
+        return nil
+    let ctr = num(parts[2])
+    if ctr > WSEC_MAX_COUNTER:
+        return nil
+    return {"sid": parts[1], "ctr": ctr, "ct": parts[3]}
+
+fn wsec_prune_seen(session):
+    let floor_ctr = session["recv_max"] - WSEC_WINDOW + 1
+    let kept = {}
+    for k in keys(session["recv_seen"]):
+        if num(k) >= floor_ctr:
+            kept[k] = true
+    session["recv_seen"] = kept
+
+# Replay-window check WITHOUT changing state (state only changes after the
+# tag verifies, so forged packets cannot move the window).
+fn wsec_counter_ok(session, ctr):
+    if ctr > session["recv_max"]:
+        return true
+    if ctr <= session["recv_max"] - WSEC_WINDOW:
+        return false
+    return not has(session["recv_seen"], str(ctr))
+
+fn wsec_open(session, packet, aad):
+    if session == nil:
+        return nil
+    if type(aad) != "string":
+        return nil
+    let p = wsec_parse(packet)
+    if p == nil:
+        return nil
+    if p["sid"] != session["sid"]:
+        return nil
+    if not wsec_counter_ok(session, p["ctr"]):
+        return nil
+
+    let nonce = session["recv_dir"] + wsec_hex16(p["ctr"])
+    let pt = chacha20poly1305_decrypt(session["recv_key"], nonce, wsec_aad(session["sid"], session["recv_dir"], p["ctr"], aad), p["ct"])
+    if pt == nil:
+        return nil
+
+    # Authenticated: now (and only now) record the counter.
+    session["recv_seen"][str(p["ctr"])] = true
+    if p["ctr"] > session["recv_max"]:
+        session["recv_max"] = p["ctr"]
+    if len(keys(session["recv_seen"])) > WSEC_WINDOW * 2:
+        wsec_prune_seen(session)
+    session["last"] = timestamp()
+    return pt
+
+# ---------------------------------------------------------------------------
+# server convenience wrappers
+# ---------------------------------------------------------------------------
+
+# Looks the session up from the packet's sid; nil if unknown or expired.
+fn wsec_server_session(store, packet):
+    let p = wsec_parse(packet)
+    if p == nil:
+        return nil
+    if not has(store["sessions"], p["sid"]):
+        return nil
+    let s = store["sessions"][p["sid"]]
+    if timestamp() - s["last"] > store["ttl"]:
+        return nil
+    return s
+
+fn wsec_server_open(store, packet, aad):
+    let s = wsec_server_session(store, packet)
+    if s == nil:
+        return nil
+    return wsec_open(s, packet, aad)
+
+fn wsec_server_seal(store, sid, aad, plaintext):
+    if not wsec_is_hex(sid, 32):
+        return nil
+    if not has(store["sessions"], sid):
+        return nil
+    return wsec_seal(store["sessions"][sid], aad, plaintext)

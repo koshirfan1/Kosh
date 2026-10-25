@@ -4,7 +4,7 @@
 # webi_version() -> string
 # ---------------------------------------------------------------------------
 fn webi_version():
-    return "webi/1.1.3 (Kosh)"
+    return "webi/1.2.0 (Kosh)"
 
 # ---------------------------------------------------------------------------
 # webi_routes(app) -> array of route info strings

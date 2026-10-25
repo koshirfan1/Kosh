@@ -1,0 +1,148 @@
+# Tests for packages/webi/secure.kh: handshake, key schedule, sealed packets,
+# replay window, tamper/forgery handling, store limits.
+import "../packages/test/test.kh"
+import "../packages/webi/secure.kh"
+
+let t = test_suite("Webi secure channel")
+
+fn flip_last(s):
+    let last = substring(s, len(s) - 1, 1)
+    let repl = "0"
+    if last == "0":
+        repl = "1"
+    return substring(s, 0, len(s) - 1) + repl
+
+fn new_pair(store):
+    let c = wsec_client_start()
+    let reply = wsec_server_accept(store, wsec_client_hello(c))
+    let cs = wsec_client_finish(c, reply)
+    return {"client": cs, "sid": reply["sid"], "reply": reply, "c": c}
+
+let store = wsec_new_store(100, 3600)
+let pair = new_pair(store)
+let cs = pair["client"]
+
+# --- handshake -------------------------------------------------------------
+t = test_not_nil(t, "server accepts a valid hello", pair["reply"])
+t = test_not_nil(t, "client finishes the handshake", cs)
+t = test_eq(t, "session id is 32 hex chars", len(pair["sid"]), 32)
+t = test_eq(t, "both sides derive the matching key pair", cs["send_key"], store["sessions"][pair["sid"]]["recv_key"])
+t = test_eq(t, "and the opposite direction too", cs["recv_key"], store["sessions"][pair["sid"]]["send_key"])
+t = test_neq(t, "the two directions use different keys", cs["send_key"], cs["recv_key"])
+
+let pair2 = new_pair(store)
+t = test_neq(t, "a second handshake gets a different session id", pair["sid"], pair2["sid"])
+t = test_neq(t, "and different keys (fresh ephemeral keys)", cs["send_key"], pair2["client"]["send_key"])
+
+# --- round trip --------------------------------------------------------------
+let p0 = wsec_seal(cs, "GET /a", "<h1>hello</h1>")
+t = test_not_nil(t, "client seals a packet", p0)
+t = test_contains_str(t, "packet carries the v1 prefix", p0, "v1.")
+t = test_eq(t, "server opens it", wsec_server_open(store, p0, "GET /a"), "<h1>hello</h1>")
+t = test_nil(t, "replaying the same packet is rejected", wsec_server_open(store, p0, "GET /a"))
+
+let r0 = wsec_server_seal(store, pair["sid"], "200 /a", "<p>reply</p>")
+t = test_eq(t, "client opens the server's reply", wsec_open(cs, r0, "200 /a"), "<p>reply</p>")
+t = test_nil(t, "replayed reply is rejected on the client too", wsec_open(cs, r0, "200 /a"))
+
+let same1 = wsec_seal(cs, "x", "same plaintext")
+let same2 = wsec_seal(cs, "x", "same plaintext")
+t = test_neq(t, "same plaintext never produces the same packet twice", same1, same2)
+t = test_eq(t, "both still open (fresh counters)", wsec_server_open(store, same1, "x"), "same plaintext")
+t = test_eq(t, "second one too", wsec_server_open(store, same2, "x"), "same plaintext")
+t = test_eq(t, "empty plaintext works", wsec_server_open(store, wsec_seal(cs, "e", ""), "e"), "")
+
+# --- tamper, wrong context -----------------------------------------------------
+let q = wsec_seal(cs, "POST /pay", "amount=10")
+t = test_nil(t, "tampered ciphertext is rejected", wsec_server_open(store, flip_last(q), "POST /pay"))
+t = test_nil(t, "wrong caller aad is rejected", wsec_server_open(store, q, "POST /refund"))
+t = test_eq(t, "the genuine packet still opens afterwards", wsec_server_open(store, q, "POST /pay"), "amount=10")
+
+let q2 = wsec_seal(cs, "a", "data")
+t = test_nil(t, "packet for another session is rejected", wsec_open(pair2["client"], q2, "a"))
+let s2c = wsec_server_seal(store, pair["sid"], "a", "server says")
+t = test_nil(t, "a server->client packet is not accepted by the server (direction)", wsec_server_open(store, s2c, "a"))
+t = test_eq(t, "but the client accepts it", wsec_open(cs, s2c, "a"), "server says")
+
+# --- replay window -----------------------------------------------------------------
+let w = new_pair(store)
+let wc = w["client"]
+let pk = []
+let i = 0
+while i < 5:
+    pk = push(pk, wsec_seal(wc, "w", "m" + str(i)))
+    i = i + 1
+t = test_eq(t, "out-of-order: newest first", wsec_server_open(store, pk[4], "w"), "m4")
+t = test_eq(t, "older packet inside the window is accepted", wsec_server_open(store, pk[2], "w"), "m2")
+t = test_nil(t, "but only once", wsec_server_open(store, pk[2], "w"))
+t = test_eq(t, "oldest in window", wsec_server_open(store, pk[0], "w"), "m0")
+t = test_eq(t, "gap filler", wsec_server_open(store, pk[1], "w"), "m1")
+t = test_eq(t, "last gap", wsec_server_open(store, pk[3], "w"), "m3")
+t = test_nil(t, "every one of them is now spent", wsec_server_open(store, pk[3], "w"))
+
+let old = new_pair(store)
+let oc = old["client"]
+let first = wsec_seal(oc, "o", "first")
+let n = 0
+let lastp = ""
+while n < 70:
+    lastp = wsec_seal(oc, "o", "filler")
+    n = n + 1
+t = test_eq(t, "jump far ahead is accepted", wsec_server_open(store, lastp, "o"), "filler")
+t = test_nil(t, "a packet older than the 64-packet window is rejected", wsec_server_open(store, first, "o"))
+
+# --- forged packets must not move the window ------------------------------------
+let f = new_pair(store)
+let fc = f["client"]
+let good1 = wsec_seal(fc, "f", "good1")
+let forged = "v1." + f["sid"] + ".999999." + "ab" + "cd"
+t = test_nil(t, "forged packet with a huge counter is rejected", wsec_server_open(store, forged, "f"))
+t = test_eq(t, "and did not advance the replay window", wsec_server_open(store, good1, "f"), "good1")
+
+# --- malformed input never crashes ------------------------------------------------
+t = test_nil(t, "empty packet", wsec_server_open(store, "", "a"))
+t = test_nil(t, "garbage packet", wsec_server_open(store, "hello world", "a"))
+t = test_nil(t, "wrong version prefix", wsec_server_open(store, "v2." + pair["sid"] + ".1.aabb", "a"))
+t = test_nil(t, "too few fields", wsec_server_open(store, "v1.abc", "a"))
+t = test_nil(t, "too many fields", wsec_server_open(store, "v1." + pair["sid"] + ".1.aa.bb", "a"))
+t = test_nil(t, "non-hex sid", wsec_server_open(store, "v1.zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.1.aabb", "a"))
+t = test_nil(t, "unknown sid", wsec_server_open(store, "v1.00000000000000000000000000000000.1.aabb", "a"))
+t = test_nil(t, "negative counter", wsec_server_open(store, "v1." + pair["sid"] + ".-1.aabb", "a"))
+t = test_nil(t, "counter beyond 2^48", wsec_server_open(store, "v1." + pair["sid"] + ".999999999999999.aabb", "a"))
+t = test_nil(t, "non-string packet", wsec_server_open(store, 12345, "a"))
+t = test_nil(t, "nil packet", wsec_server_open(store, nil, "a"))
+let big = "aa"
+let d = 0
+while d < 20:
+    big = big + big
+    d = d + 1
+t = test_nil(t, "packet over 1 MB is refused before any parsing work", wsec_server_open(store, "v1." + pair["sid"] + ".1." + big, "a"))
+
+# --- bad hellos -----------------------------------------------------------------------
+let c3 = wsec_client_start()
+let good = wsec_client_hello(c3)
+t = test_nil(t, "hello with unsupported version", wsec_server_accept(store, {"v": 2, "pub": good["pub"]}))
+t = test_nil(t, "hello with short public key", wsec_server_accept(store, {"v": 1, "pub": "abcd"}))
+t = test_nil(t, "hello with non-hex public key", wsec_server_accept(store, {"v": 1, "pub": "zz" + substring(good["pub"], 2, 62)}))
+t = test_nil(t, "hello with all-zero (low-order) public key", wsec_server_accept(store, {"v": 1, "pub": "0000000000000000000000000000000000000000000000000000000000000000"}))
+t = test_nil(t, "hello missing fields", wsec_server_accept(store, {"v": 1}))
+t = test_nil(t, "hello that is not a map", wsec_server_accept(store, "hi"))
+t = test_nil(t, "client rejects a reply with a bad public key", wsec_client_finish(c3, {"v": 1, "sid": pair["sid"], "pub": "00"}))
+t = test_nil(t, "client rejects a reply with a bad version", wsec_client_finish(c3, {"v": 9, "sid": pair["sid"], "pub": good["pub"]}))
+
+# --- store limits ------------------------------------------------------------------------
+let small = wsec_new_store(2, 3600)
+t = test_not_nil(t, "capacity: first session", wsec_server_accept(small, wsec_client_hello(wsec_client_start())))
+t = test_not_nil(t, "capacity: second session", wsec_server_accept(small, wsec_client_hello(wsec_client_start())))
+t = test_nil(t, "capacity: third is refused (flood protection)", wsec_server_accept(small, wsec_client_hello(wsec_client_start())))
+
+let shortlived = wsec_new_store(10, -1)
+let sp = new_pair(shortlived)
+t = test_nil(t, "expired session cannot be used", wsec_server_open(shortlived, wsec_seal(sp["client"], "a", "x"), "a"))
+
+# --- counter exhaustion ---------------------------------------------------------------------
+let ex = new_pair(store)
+ex["client"]["send_ctr"] = 281474976710656
+t = test_nil(t, "sealing past 2^48 packets refuses (rekey needed)", wsec_seal(ex["client"], "a", "x"))
+
+test_run(t)

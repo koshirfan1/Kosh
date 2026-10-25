@@ -391,7 +391,7 @@ static char *wb_build_http_response(Value *res_map) {
     wb_buf_str(&out, &olen, &ocap, line);
 
     // Standard headers
-    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.1.3 (Kosh)\r\n");
+    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.2.0 (Kosh)\r\n");
     wb_buf_str(&out, &olen, &ocap, "Connection: close\r\n");
     snprintf(line, sizeof(line), "Content-Type: %s\r\n", ct);
     wb_buf_str(&out, &olen, &ocap, line);

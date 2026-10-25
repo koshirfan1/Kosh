@@ -422,7 +422,7 @@ print "\n=== Utility Functions ==="
 # webi_version
 let ver = webi_version()
 test("webi_version returns string", type(ver) == "string")
-test("webi_version contains version", contains(ver, "1.1.3"))
+test("webi_version contains version", contains(ver, "1.2.0"))
 test("webi_version contains Kosh", contains(ver, "Kosh"))
 
 # webi_routes

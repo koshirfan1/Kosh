@@ -147,6 +147,42 @@ jobs:
       shell: msys2 {0}
       run: ./kosh.exe examples/webi_from_import_test.kh
 
+    - name: Run crypto test suite — SHA-256/HMAC/PBKDF2 vectors (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_crypto.kh
+
+    - name: Run crypto test suite — SHA-256/HMAC/PBKDF2 vectors (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_crypto.kh
+
+    - name: Run AEAD/X25519/HKDF test suite — RFC + OpenSSL vectors (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_aead.kh
+
+    - name: Run AEAD/X25519/HKDF test suite — RFC + OpenSSL vectors (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_aead.kh
+
+    - name: Run Webi secure-channel test suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_webi_secure.kh
+
+    - name: Run Webi secure-channel test suite (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_webi_secure.kh
+
+    - name: Run Webi secure-channel HTTP test suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_webi_secure_http.kh
+
+    - name: Run Webi secure-channel HTTP test suite (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_webi_secure_http.kh
+
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: ./kosh tests/test_vision.kh
@@ -319,6 +355,10 @@ jobs:
         ./kosh_asan tests/run_all.kh
         ./kosh_asan tests/regression_curl_quote_overflow.kh
         ./kosh_asan tests/test_vision.kh
+        ./kosh_asan tests/test_crypto.kh
+        ./kosh_asan tests/test_aead.kh
+        ./kosh_asan tests/test_webi_secure.kh
+        ./kosh_asan tests/test_webi_secure_http.kh
 
     - name: Upload Artifacts (Linux)
       if: matrix.os == 'ubuntu-latest'

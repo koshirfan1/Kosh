@@ -1,0 +1,95 @@
+# Tests for ChaCha20-Poly1305 (RFC 8439), X25519 (RFC 7748) and HKDF (RFC 5869)
+# in src/crypto_aead.c / src/crypto_lib.c.
+#
+# Expected values are the RFC test vectors plus cases generated independently
+# with Python's `cryptography` (OpenSSL) library - cross-implementation checks.
+import "../packages/test/test.kh"
+
+let t = test_suite("AEAD / X25519 / HKDF Suite")
+
+# --- ChaCha20-Poly1305 -----------------------------------------------------
+let k0 = "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9"
+let n0 = "000000000000000000000000"
+t = test_eq(t, "encrypt: empty plaintext, empty aad", chacha20poly1305_encrypt(k0, n0, "", ""), "2d38413c20417dc7d3cd7742dd556d1a")
+t = test_eq(t, "decrypt: empty plaintext, empty aad", chacha20poly1305_decrypt(k0, n0, "", "2d38413c20417dc7d3cd7742dd556d1a"), "")
+let k1 = "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da"
+let n1 = "010101010101010101010101"
+t = test_eq(t, "encrypt: 1 byte", chacha20poly1305_encrypt(k1, n1, "", "a"), "ec56c80d1b5bb048d19d2fad95d4cc3b96")
+t = test_eq(t, "decrypt: 1 byte", chacha20poly1305_decrypt(k1, n1, "", "ec56c80d1b5bb048d19d2fad95d4cc3b96"), "a")
+let k2 = "020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4db"
+let n2 = "020202020202020202020202"
+t = test_eq(t, "encrypt: 15 bytes", chacha20poly1305_encrypt(k2, n2, "hdr", "0123456789abcde"), "038d104092c3f22842bd7a1e74f051734d038adf1854350f59bce16358ad2f")
+t = test_eq(t, "decrypt: 15 bytes", chacha20poly1305_decrypt(k2, n2, "hdr", "038d104092c3f22842bd7a1e74f051734d038adf1854350f59bce16358ad2f"), "0123456789abcde")
+let k3 = "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc"
+let n3 = "030303030303030303030303"
+t = test_eq(t, "encrypt: 16 bytes (block boundary)", chacha20poly1305_encrypt(k3, n3, "aad-16", "0123456789abcdef"), "9702675cbcb65c5fae9594f61568a6541ea77499d23e150d6e307062786ff086")
+t = test_eq(t, "decrypt: 16 bytes (block boundary)", chacha20poly1305_decrypt(k3, n3, "aad-16", "9702675cbcb65c5fae9594f61568a6541ea77499d23e150d6e307062786ff086"), "0123456789abcdef")
+let k4 = "040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dd"
+let n4 = "040404040404040404040404"
+t = test_eq(t, "encrypt: 17 bytes", chacha20poly1305_encrypt(k4, n4, "x", "0123456789abcdefg"), "abf98f53b987005060da0f1bdab25eed999367619b02450501cbab6b7858e9afce")
+t = test_eq(t, "decrypt: 17 bytes", chacha20poly1305_decrypt(k4, n4, "x", "abf98f53b987005060da0f1bdab25eed999367619b02450501cbab6b7858e9afce"), "0123456789abcdefg")
+let k5 = "050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7de"
+let n5 = "050505050505050505050505"
+t = test_eq(t, "encrypt: 64 bytes (chacha block boundary)", chacha20poly1305_encrypt(k5, n5, "POST /login", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl"), "aeab9e49a061cba5ee7cc51e7942506200107ab084bce0473cb81f34743604d9ef4cf43da2be449bdb793090286142a5df75d26296e5be397f8a053aa1416b2a4157dd162b78f14692928f7140bb4f31")
+t = test_eq(t, "decrypt: 64 bytes (chacha block boundary)", chacha20poly1305_decrypt(k5, n5, "POST /login", "aeab9e49a061cba5ee7cc51e7942506200107ab084bce0473cb81f34743604d9ef4cf43da2be449bdb793090286142a5df75d26296e5be397f8a053aa1416b2a4157dd162b78f14692928f7140bb4f31"), "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl")
+let k6 = "060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df"
+let n6 = "060606060606060606060606"
+t = test_eq(t, "encrypt: 65 bytes", chacha20poly1305_encrypt(k6, n6, "POST /login", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm"), "1107f02019e2e0d6cf89de0079b728ca38ec6ecc91b7eb6723160d261f3dfc3c47ccab464da0deebd00b0ed4ae7328a283fddd234788f96fb38050f64e15554234056a5c360451a9f952b96248c4979f6e")
+t = test_eq(t, "decrypt: 65 bytes", chacha20poly1305_decrypt(k6, n6, "POST /login", "1107f02019e2e0d6cf89de0079b728ca38ec6ecc91b7eb6723160d261f3dfc3c47ccab464da0deebd00b0ed4ae7328a283fddd234788f96fb38050f64e15554234056a5c360451a9f952b96248c4979f6e"), "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm")
+let k7 = "070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0"
+let n7 = "070707070707070707070707"
+t = test_eq(t, "encrypt: sunscreen sentence", chacha20poly1305_encrypt(k7, n7, "ASCII-header-1234", "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."), "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6")
+t = test_eq(t, "decrypt: sunscreen sentence", chacha20poly1305_decrypt(k7, n7, "ASCII-header-1234", "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6"), "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.")
+let k8 = "080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1"
+let n8 = "080808080808080808080808"
+t = test_eq(t, "encrypt: 200 bytes html", chacha20poly1305_encrypt(k8, n8, "GET /index", "<html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h"), "7dc36c78231f97dfb3c421e0c701160989476ea30d08a87f2e765d4cdd826ed0a5a41ea550dc22431a1e66bef9a0504d9fab3ea21e19628f3cdfcf6edc6485ae3e57c1c0b09e3b3042052b7c8d32823680bc8b3c8b37d4fbdf5ab4523d7203406c225900d02ce47128fb124ee443dfce123dc0b2b1248524d2194984fe838232078a8fe89051e09e703caaa281a3770a678279a99ef725b610c1b72fa4fbc38979e6b6afd9d783f8ce6bcb1d36249f4a70165918e644ba6ab46af27be1eb23501de78c7fef2427c9d636d0585aa0a182318ce0517f422416")
+t = test_eq(t, "decrypt: 200 bytes html", chacha20poly1305_decrypt(k8, n8, "GET /index", "7dc36c78231f97dfb3c421e0c701160989476ea30d08a87f2e765d4cdd826ed0a5a41ea550dc22431a1e66bef9a0504d9fab3ea21e19628f3cdfcf6edc6485ae3e57c1c0b09e3b3042052b7c8d32823680bc8b3c8b37d4fbdf5ab4523d7203406c225900d02ce47128fb124ee443dfce123dc0b2b1248524d2194984fe838232078a8fe89051e09e703caaa281a3770a678279a99ef725b610c1b72fa4fbc38979e6b6afd9d783f8ce6bcb1d36249f4a70165918e644ba6ab46af27be1eb23501de78c7fef2427c9d636d0585aa0a182318ce0517f422416"), "<html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h1>Hello Kosh</h1><html><body><h")
+let k9 = "0910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2"
+let n9 = "090909090909090909090909"
+t = test_eq(t, "encrypt: aad only differs in length class", chacha20poly1305_encrypt(k9, n9, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "payload"), "a5eac43bbc6878c20b4f0bf51d762248372902a27307de")
+t = test_eq(t, "decrypt: aad only differs in length class", chacha20poly1305_decrypt(k9, n9, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "a5eac43bbc6878c20b4f0bf51d762248372902a27307de"), "payload")
+
+# --- tamper / misuse must fail closed (nil), never return garbage ----------
+t = test_nil(t, "flipped ciphertext bit is rejected", chacha20poly1305_decrypt(k7, n7, "ASCII-header-1234", "2c11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6"))
+t = test_nil(t, "flipped tag bit is rejected", chacha20poly1305_decrypt(k7, n7, "ASCII-header-1234", "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce7"))
+t = test_nil(t, "wrong aad is rejected", chacha20poly1305_decrypt(k7, n7, "ASCII-header-9999", "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6"))
+t = test_nil(t, "wrong nonce is rejected", chacha20poly1305_decrypt(k7, "090909090909090909090909", "ASCII-header-1234", "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6"))
+t = test_nil(t, "wrong key is rejected", chacha20poly1305_decrypt("0000000000000000000000000000000000000000000000000000000000000000", n7, "ASCII-header-1234", "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6"))
+t = test_nil(t, "truncated (shorter than tag) is rejected", chacha20poly1305_decrypt(k7, n7, "ASCII-header-1234", "abcd"))
+t = test_nil(t, "non-hex ciphertext is rejected", chacha20poly1305_decrypt(k7, n7, "ASCII-header-1234", "zz11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce6"))
+t = test_nil(t, "odd-length hex is rejected", chacha20poly1305_decrypt(k7, n7, "ASCII-header-1234", "2d11aee82c63b3a1222585d5f88a91c2df1020f9549d57899c6af206a7261eda9e741254dccc83d0fe52f104bfeed8e268bd1e742a5855970109de71627352182070d7f39fe3f657bad00f81930897639c10e014fcc3e9095576365cb07011143454586fae68611e1434f781673393d6a27b94b52662386afa6bcd59a741b1287ce"))
+
+# --- X25519 (RFC 7748 section 6.1 + generated pairs) ------------------------
+t = test_eq(t, "RFC 7748 Alice public key", x25519_public("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"), "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a")
+t = test_eq(t, "RFC 7748 Bob public key", x25519_public("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"), "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
+t = test_eq(t, "RFC 7748 shared secret (Alice side)", x25519_shared("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f"), "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742")
+t = test_eq(t, "RFC 7748 shared secret (Bob side)", x25519_shared("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"), "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742")
+t = test_eq(t, "generated pair 0 shared secret matches OpenSSL", x25519_shared("0cc6e3b6ee4a8809156cd26d472d65e4a78b2f54e424efaa162b7f020a7e7c91", "6302b250a239821904cedd09717c543376e250c3ea9d322163b7ffab53dab327"), "95500c51f721fa097c8f08f9d9c5641a497d0b46dfd4b425981c5378a4aafc6e")
+t = test_eq(t, "generated pair 1 shared secret matches OpenSSL", x25519_shared("02b2bd0b39bc11ff677fe264576b1c5e73897efb9e12376c2e59ba33b348d82d", "a24fd37db94f941b5d63dcbcfcf1aa940c6027293a9f71a00ea8ec353bf04d7a"), "7d923ebe52bc97d0e6aac83a8c6b0fb8dd7cf834b5c71e84a91e506d74925a4d")
+t = test_eq(t, "generated pair 2 shared secret matches OpenSSL", x25519_shared("301afb1a1103f538c7a9741410c5af02f3fd5593801478eefff375f35473843f", "7c53dea7e3579aafd2095bc24725c65f8f2ea2e0acb785728a9442943747246d"), "4dc2f68b1d54ea47fab287d03df7c2d3f0b4b944f8bbd349a64f5f0f97d4af45")
+t = test_eq(t, "generated pair 3 shared secret matches OpenSSL", x25519_shared("74753a73b0a088d4d3892f6388af496b68ed6fc9d3df6c1125b01760a096da00", "0dacab54a24015bb54b7b0923933411f9a6f644c09ff9ffe08a22d23b2271f1a"), "62e8121e2568aedc33e42e71c0abf2bcc388e472b7a4a8f90fb674cc64d80531")
+t = test_nil(t, "all-zero (low-order) peer key is refused", x25519_shared("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", "0000000000000000000000000000000000000000000000000000000000000000"))
+t = test_nil(t, "low-order point 1 is refused", x25519_shared("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", "0100000000000000000000000000000000000000000000000000000000000000"))
+
+# --- HKDF-SHA256 (RFC 5869) --------------------------------------------------
+t = test_eq(t, "HKDF salted, 16 bytes", hkdf_sha256("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "000102030405060708090a0b0c0d0e0f", "kosh webi session key v1", 16), "243dcb14e6bb6645ebb3c9d82d512a00")
+t = test_eq(t, "HKDF salted, 32 bytes", hkdf_sha256("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "000102030405060708090a0b0c0d0e0f", "kosh webi session key v1", 32), "243dcb14e6bb6645ebb3c9d82d512a008d2a699a0823143ecbf7dd10a745eceb")
+t = test_eq(t, "HKDF salted, 42 bytes", hkdf_sha256("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "000102030405060708090a0b0c0d0e0f", "kosh webi session key v1", 42), "243dcb14e6bb6645ebb3c9d82d512a008d2a699a0823143ecbf7dd10a745ecebb5efaabd5457b7419836")
+t = test_eq(t, "HKDF salted, 64 bytes", hkdf_sha256("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "000102030405060708090a0b0c0d0e0f", "kosh webi session key v1", 64), "243dcb14e6bb6645ebb3c9d82d512a008d2a699a0823143ecbf7dd10a745ecebb5efaabd5457b7419836cd99f6a92c4f89f8efd4d4f7ba5623e039ada102fb40")
+t = test_eq(t, "HKDF empty salt + empty info (RFC 5869 case 3)", hkdf_sha256("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", "", "", 32), "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d")
+t = test_nil(t, "HKDF length 0 is rejected", hkdf_sha256("0b0b", "", "", 0))
+
+# --- end-to-end: two parties derive the same key and talk -------------------
+let alice_priv = secure_token(32)
+let bob_priv = secure_token(32)
+let alice_pub = x25519_public(alice_priv)
+let bob_pub = x25519_public(bob_priv)
+let alice_key = hkdf_sha256(x25519_shared(alice_priv, bob_pub), "", "kosh webi v1", 32)
+let bob_key = hkdf_sha256(x25519_shared(bob_priv, alice_pub), "", "kosh webi v1", 32)
+t = test_eq(t, "both sides derive the same session key", alice_key, bob_key)
+let nonce = secure_token(12)
+let sealed = chacha20poly1305_encrypt(alice_key, nonce, "GET /secret", "<h1>top secret page</h1>")
+t = test_eq(t, "Bob decrypts what Alice sealed", chacha20poly1305_decrypt(bob_key, nonce, "GET /secret", sealed), "<h1>top secret page</h1>")
+t = test_nil(t, "eavesdropper with a different key gets nothing", chacha20poly1305_decrypt(secure_token(32), nonce, "GET /secret", sealed))
+
+test_run(t)

@@ -25,6 +25,8 @@
  *       password directly, which would be unsuitable for password
  *       storage (fast hashes are brute-forceable; this deliberately
  *       is not fast).
+ *   hmac_sha256(key, message)         -> hex string (64 chars)
+ *   constant_time_equals(a, b)        -> bool, timing-safe (use for secrets)
  *   password_verify(password, stored) -> bool - re-derives with the
  *       salt/iteration count embedded in `stored` and compares.
  *

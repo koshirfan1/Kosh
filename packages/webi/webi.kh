@@ -1,4 +1,4 @@
-# Kosh webi package v1.1.3
+# Kosh webi package v1.2.0
 # Usage: import "webi"
 #
 # webi is a lightweight web framework for Kosh — inspired by Flask.
@@ -70,3 +70,5 @@ import "security.kh"
 import "server.kh"
 import "template.kh"
 import "meta.kh"
+import "secure.kh"
+import "secure_http.kh"

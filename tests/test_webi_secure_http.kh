@@ -1,0 +1,205 @@
+# End-to-end tests of the encrypted channel inside the webi HTTP stack,
+# driven in-process through webi_handle() (no sockets).
+import "../packages/test/test.kh"
+import "../packages/webi/webi.kh"
+
+let t = test_suite("Webi secure channel over HTTP")
+
+# ---- an app with a few routes and a middleware ----------------------------------
+fn h_hello(req):
+    return res_html("<h1>Hello secret world</h1>")
+
+fn h_echo(req):
+    let r = res_json({"got": req["body"], "q": query_get(req, "x", "none")})
+    return res_with_header(r, "X-Echo", "yes")
+
+fn h_private(req):
+    return res_text("private data")
+
+fn h_cookie(req):
+    return res_with_cookie(res_text("cookie set"), "sid", "abc123")
+
+fn mw_need_header(req):
+    if req["path"] == "/private":
+        if not has(req["headers"], "X-Test") or req["headers"]["X-Test"] != "ok":
+            req["_webi_short_circuit"] = res_forbidden("missing X-Test")
+    return req
+
+let app = webi_app()
+app = route(app, "GET", "/hello", h_hello)
+app = route(app, "POST", "/echo", h_echo)
+app = route(app, "GET", "/private", h_private)
+app = route(app, "GET", "/cookie", h_cookie)
+app = use(app, mw_need_header)
+
+# ---- secure mode OFF: the endpoints do not exist -----------------------------------
+let off = webi_handle(app, "POST", "/_webi/handshake", "", "", "{\"v\":1,\"pub\":\"00\"}", "10.0.0.1")
+t = test_eq(t, "handshake endpoint is 404 until secure mode is enabled", off["status"], 404)
+
+app = webi_enable_secure(app, {"max_sessions": 50, "handshake_per_min": 1000, "requests_per_min": 100000})
+
+# ---- helpers -------------------------------------------------------------------------
+fn connect(app, ip):
+    let c = wsec_client_start()
+    let r = webi_handle(app, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(c), ip)
+    if r["status"] != 200:
+        return nil
+    return wsec_client_finish(c, json_decode(r["body"]))
+
+fn call(app, sess, ip, method, path, query, headers, body):
+    let packet = wsec_client_request(sess, method, path, query, headers, body)
+    let outer = webi_handle(app, "POST", "/_webi/secure", "", "", packet, ip)
+    return {"outer": outer, "packet": packet}
+
+let ip = "10.1.1.1"
+let sess = connect(app, ip)
+t = test_not_nil(t, "handshake over HTTP succeeds", sess)
+t = test_eq(t, "session id has 32 hex chars", len(sess["sid"]), 32)
+
+# ---- encrypted round trip ----------------------------------------------------------------
+let a = call(app, sess, ip, "GET", "/hello", "", {}, "")
+t = test_eq(t, "outer status is 200", a["outer"]["status"], 200)
+t = test_false(t, "outer body does NOT contain the page text", contains(a["outer"]["body"], "Hello"))
+t = test_false(t, "outer body does NOT contain any HTML", contains(a["outer"]["body"], "<h1>"))
+t = test_false(t, "request packet does NOT contain the path", contains(a["packet"], "hello"))
+let inner = wsec_client_read_response(sess, a["outer"]["body"])
+t = test_not_nil(t, "client authenticates and reads the response", inner)
+t = test_eq(t, "inner status", inner["status"], 200)
+t = test_eq(t, "inner body is the real page", inner["body"], "<h1>Hello secret world</h1>")
+t = test_contains_str(t, "inner content type survives", inner["content_type"], "text/html")
+t = test_eq(t, "outer content type is plain text packet", a["outer"]["content_type"], "text/plain; charset=utf-8")
+t = test_eq(t, "outer response is not cacheable", a["outer"]["headers"]["Cache-Control"], "no-store")
+
+let b = call(app, sess, ip, "POST", "/echo", "x=42", {"Content-Type": "text/plain"}, "payload-123")
+let bi = wsec_client_read_response(sess, b["outer"]["body"])
+t = test_eq(t, "POST body and query arrive intact", json_decode(bi["body"])["got"], "payload-123")
+t = test_eq(t, "query string is delivered", json_decode(bi["body"])["q"], "42")
+t = test_eq(t, "response headers survive the seal", bi["headers"]["X-Echo"], "yes")
+
+let ck = wsec_client_read_response(sess, call(app, sess, ip, "GET", "/cookie", "", {}, "")["outer"]["body"])
+t = test_eq(t, "cookies survive the seal", len(ck["cookies"]), 1)
+
+# ---- middleware and routing apply to the INNER request --------------------------------------
+let denied = wsec_client_read_response(sess, call(app, sess, ip, "GET", "/private", "", {}, "")["outer"]["body"])
+t = test_eq(t, "inner request without the header is rejected by app middleware", denied["status"], 403)
+let allowed = wsec_client_read_response(sess, call(app, sess, ip, "GET", "/private", "", {"X-Test": "ok"}, "")["outer"]["body"])
+t = test_eq(t, "inner request WITH the header passes", allowed["status"], 200)
+t = test_eq(t, "and reaches the handler", allowed["body"], "private data")
+let nf = wsec_client_read_response(sess, call(app, sess, ip, "GET", "/nope", "", {}, "")["outer"]["body"])
+t = test_eq(t, "unknown inner route gives a sealed 404", nf["status"], 404)
+
+# ---- authenticated-but-invalid inner requests get a sealed 400 --------------------------------
+let nest = wsec_client_read_response(sess, call(app, sess, ip, "POST", "/_webi/handshake", "", {}, "{}")["outer"]["body"])
+t = test_eq(t, "nested /_webi/ path is refused (no recursion)", nest["status"], 400)
+let badm = wsec_client_read_response(sess, call(app, sess, ip, "TRACE", "/hello", "", {}, "")["outer"]["body"])
+t = test_eq(t, "unsupported method is refused", badm["status"], 400)
+let badp = wsec_client_read_response(sess, call(app, sess, ip, "GET", "hello", "", {}, "")["outer"]["body"])
+t = test_eq(t, "path without leading slash is refused", badp["status"], 400)
+
+# ---- attacks on the outer endpoint all get the same bare 403 ------------------------------------
+let r1 = call(app, sess, ip, "GET", "/hello", "", {}, "")
+t = test_eq(t, "first delivery works", r1["outer"]["status"], 200)
+let replay = webi_handle(app, "POST", "/_webi/secure", "", "", r1["packet"], ip)
+t = test_eq(t, "replaying a captured request is 403", replay["status"], 403)
+t = test_eq(t, "403 body is the generic one", replay["body"], "rejected")
+
+let r2 = wsec_client_request(sess, "GET", "/hello", "", {}, "")
+let last = substring(r2, len(r2) - 1, 1)
+let flipped = substring(r2, 0, len(r2) - 1)
+if last == "0":
+    flipped = flipped + "1"
+else:
+    flipped = flipped + "0"
+let tampered = webi_handle(app, "POST", "/_webi/secure", "", "", flipped, ip)
+t = test_eq(t, "tampered packet is 403", tampered["status"], 403)
+t = test_eq(t, "tampered body is the same generic one", tampered["body"], "rejected")
+let genuine = webi_handle(app, "POST", "/_webi/secure", "", "", r2, ip)
+t = test_eq(t, "the untampered packet still works afterwards", genuine["status"], 200)
+
+let garbage = webi_handle(app, "POST", "/_webi/secure", "", "", "not a packet", ip)
+t = test_eq(t, "garbage is 403", garbage["status"], 403)
+t = test_eq(t, "garbage gets the identical body", garbage["body"], "rejected")
+let unknown = webi_handle(app, "POST", "/_webi/secure", "", "", "v1.00000000000000000000000000000000.1.aabb", ip)
+t = test_eq(t, "unknown session is 403 (same as any other failure)", unknown["status"], 403)
+
+let other = connect(app, "10.1.1.2")
+let cross = wsec_client_request(other, "GET", "/hello", "", {}, "")
+let sneaky = "v1." + sess["sid"] + substring(cross, 35, len(cross) - 35)
+let xs = webi_handle(app, "POST", "/_webi/secure", "", "", sneaky, ip)
+t = test_eq(t, "a packet re-addressed to another session is 403", xs["status"], 403)
+
+let gm = webi_handle(app, "GET", "/_webi/secure", "", "", "", ip)
+t = test_eq(t, "GET on the secure endpoint is 405", gm["status"], 405)
+let gh = webi_handle(app, "GET", "/_webi/handshake", "", "", "", ip)
+t = test_eq(t, "GET on the handshake endpoint is 405", gh["status"], 405)
+
+# ---- handshake abuse -------------------------------------------------------------------------------
+let hb = webi_handle(app, "POST", "/_webi/handshake", "", "", "not json", ip)
+t = test_eq(t, "handshake with a non-JSON body is 400", hb["status"], 400)
+let hb2 = webi_handle(app, "POST", "/_webi/handshake", "", "", "{\"v\":1,\"pub\":\"0000000000000000000000000000000000000000000000000000000000000000\"}", ip)
+t = test_eq(t, "handshake with a low-order key is 400", hb2["status"], 400)
+let hb3 = webi_handle(app, "POST", "/_webi/handshake", "", "", "{\"v\":7,\"pub\":\"00\"}", ip)
+t = test_eq(t, "handshake with an unknown version is 400", hb3["status"], 400)
+
+let limited = webi_enable_secure(webi_app(), {"handshake_per_min": 3, "max_sessions": 100})
+let codes = []
+let n = 0
+while n < 5:
+    let cc = wsec_client_start()
+    let rr = webi_handle(limited, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(cc), "10.9.9.9")
+    codes = push(codes, rr["status"])
+    n = n + 1
+t = test_eq(t, "handshake rate limit: 3 allowed", codes[2], 200)
+t = test_eq(t, "handshake rate limit: 4th is 429", codes[3], 429)
+t = test_eq(t, "handshake rate limit: 5th is 429", codes[4], 429)
+let diffip = webi_handle(limited, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(wsec_client_start()), "10.9.9.10")
+t = test_eq(t, "a different IP is not affected", diffip["status"], 200)
+
+let tiny = webi_enable_secure(webi_app(), {"max_sessions": 1, "handshake_per_min": 1000})
+let t1 = webi_handle(tiny, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(wsec_client_start()), "10.8.8.1")
+let t2 = webi_handle(tiny, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(wsec_client_start()), "10.8.8.2")
+t = test_eq(t, "session cap: first handshake ok", t1["status"], 200)
+t = test_eq(t, "session cap: second is refused", t2["status"], 400)
+
+# ---- sessions are independent --------------------------------------------------------------------------
+let s2 = connect(app, "10.1.1.3")
+let c1 = wsec_client_read_response(s2, call(app, s2, "10.1.1.3", "GET", "/hello", "", {}, "")["outer"]["body"])
+t = test_eq(t, "a second session works independently", c1["body"], "<h1>Hello secret world</h1>")
+t = test_nil(t, "a session cannot read another session's response", wsec_client_read_response(s2, a["outer"]["body"]))
+
+# ---- require_secure: plain requests are refused, public paths and the channel still work ------------
+fn h_home(req):
+    return res_html("<h1>public home</h1>")
+
+fn h_robots(req):
+    return res_text("User-agent: *")
+
+fn h_assets(req):
+    return res_text("asset")
+
+let strict = webi_app()
+strict = route(strict, "GET", "/", h_home)
+strict = route(strict, "GET", "/robots.txt", h_robots)
+strict = route(strict, "GET", "/assets/logo.txt", h_assets)
+strict = route(strict, "GET", "/hello", h_hello)
+strict = webi_enable_secure(strict, {"require_secure": true, "public": ["/", "/robots.txt", "/assets/"], "handshake_per_min": 1000})
+
+let plain1 = webi_handle(strict, "GET", "/hello", "", "", "", "10.5.5.5")
+t = test_eq(t, "require_secure: plain request to a private route is 426", plain1["status"], 426)
+t = test_false(t, "require_secure: and the page text is not leaked", contains(plain1["body"], "Hello"))
+t = test_eq(t, "public exact path stays in the clear", webi_handle(strict, "GET", "/", "", "", "", "10.5.5.5")["status"], 200)
+t = test_eq(t, "public file stays in the clear", webi_handle(strict, "GET", "/robots.txt", "", "", "", "10.5.5.5")["status"], 200)
+t = test_eq(t, "public prefix covers files below it", webi_handle(strict, "GET", "/assets/logo.txt", "", "", "", "10.5.5.5")["status"], 200)
+t = test_eq(t, "exact entry does not match as a prefix", webi_handle(strict, "GET", "/robots.txt.bak", "", "", "", "10.5.5.5")["status"], 426)
+t = test_eq(t, "a path merely containing a public prefix is not public", webi_handle(strict, "GET", "/x/assets/logo.txt", "", "", "", "10.5.5.5")["status"], 426)
+t = test_eq(t, "an unknown path is 426, not 404 (does not reveal which routes exist)", webi_handle(strict, "GET", "/nope", "", "", "", "10.5.5.5")["status"], 426)
+
+let ss = connect(strict, "10.5.5.6")
+t = test_not_nil(t, "require_secure: handshake still works", ss)
+let pr = wsec_client_read_response(ss, call(strict, ss, "10.5.5.6", "GET", "/hello", "", {}, "")["outer"]["body"])
+t = test_eq(t, "require_secure: the private route works through the channel", pr["body"], "<h1>Hello secret world</h1>")
+let again = wsec_client_read_response(ss, call(strict, ss, "10.5.5.6", "GET", "/hello", "", {}, "")["outer"]["body"])
+t = test_eq(t, "the gate stays correct after a channel request (no flag leak)", webi_handle(strict, "GET", "/hello", "", "", "", "10.5.5.5")["status"], 426)
+
+
+test_run(t)

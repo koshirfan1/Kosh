@@ -1,0 +1,255 @@
+# webi/secure_http.kh — plugs the encrypted channel (secure.kh) into the
+# webi HTTP server (v1.2.0, milestone M2).
+#
+# Enable it on an app:
+#
+#   app = webi_enable_secure(app, {})            # defaults
+#   app = webi_enable_secure(app, {"max_sessions": 500, "ttl": 1800})
+#   app = webi_enable_secure(app, {"require_secure": true, "public": ["/", "/static/", "/robots.txt"]})
+#
+# With "require_secure": true every plain (non-channel) request is refused
+# with 426 Upgrade Required, except paths listed in "public" (an entry ending
+# in "/" matches that prefix - except "/" itself, which is the home page only -
+# anything else matches exactly) - this is what
+# keeps SEO pages, link previews and uptime checks working. Public routes are
+# served in the clear, so never put anything private on them.
+#
+# That adds two endpoints, handled BEFORE the app's middlewares:
+#
+#   POST /_webi/handshake   body: {"v":1,"pub":"<64 hex>"}
+#                           -> {"v":1,"sid":"<32 hex>","pub":"<64 hex>"}
+#   POST /_webi/secure      body: a sealed packet (see secure.kh)
+#                           -> a sealed packet (always HTTP 200)
+#
+# The sealed request carries the real request:
+#   {"method","path","query","headers","body"}
+# The server unseals it and runs it through webi_handle() exactly like a
+# normal request, so every middleware (CSRF, API keys, rate limiting, CORS,
+# ...) and every route handler applies to it unchanged. The real response
+# {"status","content_type","headers","cookies","body"} is sealed on the way
+# back. Anything watching the wire - or a TLS-terminating proxy - sees only
+# POST /_webi/secure with opaque bytes both ways, and an outer status of 200
+# regardless of the inner result.
+#
+# Anything that goes wrong BEFORE a packet authenticates (unknown session,
+# replay, bad tag, malformed) gets the same bare 403, so the endpoint is not
+# an oracle for which check failed.
+#
+# Limits (documented, not hidden):
+#   * Text bodies only - the inner message is JSON.
+#   * Runs on top of TLS (see docs/webi-threat-model.md); the handshake is
+#     not authenticated by itself.
+#   * Per-IP rate limits on both endpoints use the native rate limiter,
+#     which fails open if its table fills (see rate_limit_check()).
+#   * The /_webi/ prefix is reserved and cannot be requested through the
+#     channel (no nesting).
+#
+# Client helpers (for Kosh clients and tests):
+#   wsec_client_hello_body(client)                         -> JSON string
+#   wsec_client_request(sess, method, path, query, headers, body) -> packet
+#   wsec_client_read_response(sess, packet)                -> res map | nil
+
+let WSEC_AAD_REQ = "webi-req"
+let WSEC_AAD_RES = "webi-res"
+let WSEC_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
+
+# ---------------------------------------------------------------------------
+# enabling
+# ---------------------------------------------------------------------------
+
+# opts keys (all optional): max_sessions (1000), ttl seconds (3600),
+# handshake_per_min (30 per client IP), requests_per_min (1200 per client IP),
+# require_secure (false), public (array of paths served in the clear)
+fn webi_enable_secure(app, opts):
+    let max_sessions = 1000
+    let ttl = 3600
+    let hs = 30
+    let rq = 1200
+    let require = false
+    let public_paths = []
+    if type(opts) == "map":
+        if has(opts, "require_secure"):
+            require = opts["require_secure"] == true
+        if has(opts, "public") and type(opts["public"]) == "array":
+            public_paths = opts["public"]
+        if has(opts, "max_sessions"):
+            max_sessions = opts["max_sessions"]
+        if has(opts, "ttl"):
+            ttl = opts["ttl"]
+        if has(opts, "handshake_per_min"):
+            hs = opts["handshake_per_min"]
+        if has(opts, "requests_per_min"):
+            rq = opts["requests_per_min"]
+    let store = wsec_new_store(max_sessions, ttl)
+    store["hs_limit"] = hs
+    store["req_limit"] = rq
+    store["require"] = require
+    store["public"] = public_paths
+    store["_inside"] = false
+    app["_secure"] = store
+    return app
+
+# ---------------------------------------------------------------------------
+# server side
+# ---------------------------------------------------------------------------
+
+fn _wsec_plain_res(status, body):
+    let res = res_status(status, body)
+    return res_with_header(res, "Cache-Control", "no-store")
+
+# True if `path` may be served without the encrypted channel.
+fn _wsec_is_public(store, path):
+    let pubs = store["public"]
+    let i = 0
+    while i < len(pubs):
+        let e = pubs[i]
+        if type(e) == "string" and len(e) > 0:
+            # "/" alone is an exact match (the home page); matching it as a
+            # prefix would make every path public.
+            if e != "/" and substring(e, len(e) - 1, 1) == "/":
+                if len(path) >= len(e) and substring(path, 0, len(e)) == e:
+                    return true
+            else:
+                if path == e:
+                    return true
+        i = i + 1
+    return false
+
+# Called by webi_handle() for requests that arrive OUTSIDE the channel when
+# "require_secure" is on. Returns a 426 response, or nil to let it through.
+fn _wsec_gate(app, req):
+    let store = app["_secure"]
+    if store == nil or store["require"] != true or store["_inside"] == true:
+        return nil
+    if _wsec_is_public(store, req["path"]):
+        return nil
+    return _wsec_plain_res(426, "Secure channel required")
+
+# Called by webi_handle() for paths under /_webi/. Returns a response map if
+# it handled the request, nil if the path is not one of ours.
+fn _wsec_handle(app, req):
+    let store = app["_secure"]
+    if store == nil:
+        return nil
+    if req["path"] == "/_webi/handshake":
+        if req["method"] != "POST":
+            return _wsec_plain_res(405, "Method Not Allowed")
+        if not rate_limit_check("wsec_hs:" + req["ip"], store["hs_limit"], 60):
+            return _wsec_plain_res(429, "Too Many Requests")
+        return _wsec_http_handshake(store, req)
+    if req["path"] == "/_webi/secure":
+        if req["method"] != "POST":
+            return _wsec_plain_res(405, "Method Not Allowed")
+        if not rate_limit_check("wsec_rq:" + req["ip"], store["req_limit"], 60):
+            return _wsec_plain_res(429, "Too Many Requests")
+        return _wsec_http_secure(app, store, req)
+    return nil
+
+fn _wsec_http_handshake(store, req):
+    let reply = wsec_server_accept(store, req["body_json"])
+    if reply == nil:
+        return _wsec_plain_res(400, "handshake rejected")
+    return res_with_header(res_json(reply), "Cache-Control", "no-store")
+
+# The sealed inner request, validated. Returns a map of strings or nil.
+fn _wsec_parse_inner(plain):
+    let inner = json_decode(plain)
+    if type(inner) != "map":
+        return nil
+    if not has(inner, "method") or not has(inner, "path"):
+        return nil
+    if type(inner["method"]) != "string" or type(inner["path"]) != "string":
+        return nil
+    let method = upper(inner["method"])
+    if not contains_str_in_list(WSEC_HTTP_METHODS, method):
+        return nil
+    let path = inner["path"]
+    if len(path) < 1 or len(path) > 2048 or substring(path, 0, 1) != "/":
+        return nil
+    if len(path) >= 7 and substring(path, 0, 7) == "/_webi/":
+        return nil
+    if path == "/_webi":
+        return nil
+    let query = ""
+    if has(inner, "query"):
+        if type(inner["query"]) != "string":
+            return nil
+        query = inner["query"]
+    let headers = ""
+    if has(inner, "headers"):
+        if type(inner["headers"]) != "string":
+            return nil
+        headers = inner["headers"]
+    let body = ""
+    if has(inner, "body"):
+        if type(inner["body"]) != "string":
+            return nil
+        body = inner["body"]
+    return {"method": method, "path": path, "query": query, "headers": headers, "body": body}
+
+fn _wsec_http_secure(app, store, req):
+    let packet = req["body"]
+    let p = wsec_parse(packet)
+    if p == nil:
+        return _wsec_plain_res(403, "rejected")
+    let plain = wsec_server_open(store, packet, WSEC_AAD_REQ)
+    if plain == nil:
+        return _wsec_plain_res(403, "rejected")
+
+    # From here on the packet is authentic, so errors get a proper sealed reply.
+    let inner = _wsec_parse_inner(plain)
+    let res = nil
+    if inner == nil:
+        res = res_bad_request("malformed secure request")
+    else:
+        # The nested request is already inside the channel: let it past the
+        # require_secure gate (the server is single-threaded, so this flag
+        # cannot leak into another request).
+        store["_inside"] = true
+        res = webi_handle(app, inner["method"], inner["path"], inner["query"], inner["headers"], inner["body"], req["ip"])
+        store["_inside"] = false
+
+    let out = json_encode({
+        "status": res["status"],
+        "content_type": res["content_type"],
+        "headers": res["headers"],
+        "cookies": res["cookies"],
+        "body": res["body"]
+    })
+    let sealed = wsec_server_seal(store, p["sid"], WSEC_AAD_RES, out)
+    if sealed == nil:
+        return _wsec_plain_res(500, "could not seal response")
+    return res_with_header(res_text(sealed), "Cache-Control", "no-store")
+
+# ---------------------------------------------------------------------------
+# client side
+# ---------------------------------------------------------------------------
+
+fn wsec_client_hello_body(client):
+    return json_encode(wsec_client_hello(client))
+
+# headers: map of string -> string (or nil).
+fn wsec_client_request(sess, method, path, query, headers, body):
+    let hs = ""
+    if type(headers) == "map":
+        for k in keys(headers):
+            hs = hs + k + ": " + str(headers[k]) + "\n"
+    let plain = json_encode({
+        "method": method,
+        "path": path,
+        "query": query,
+        "headers": hs,
+        "body": body
+    })
+    return wsec_seal(sess, WSEC_AAD_REQ, plain)
+
+# The body of the /_webi/secure HTTP response -> {"status","content_type",
+# "headers","cookies","body"}, or nil if it does not authenticate.
+fn wsec_client_read_response(sess, packet):
+    let plain = wsec_open(sess, packet, WSEC_AAD_RES)
+    if plain == nil:
+        return nil
+    let res = json_decode(plain)
+    if type(res) != "map":
+        return nil
+    return res

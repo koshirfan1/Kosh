@@ -136,8 +136,19 @@ fn webi_handle(app, method, path, query_str, headers_str, body, ip):
         "_start_clock": start_clock
     }
 
-    let res = _webi_dispatch(app, req)
-    res = _webi_run_after_hooks(app, req, res)
+    # v1.2.0 - encrypted channel endpoints (/_webi/handshake, /_webi/secure).
+    # Handled before the app's middlewares: they carry their own protection
+    # (per-IP rate limits, AEAD authentication) and the REAL request inside
+    # a sealed packet goes through the full middleware chain via a nested
+    # webi_handle(). Only active after webi_enable_secure(app, ...).
+    let res = nil
+    if has(app, "_secure") and app["_secure"] != nil and len(path) >= 7 and substring(path, 0, 7) == "/_webi/":
+        res = _wsec_handle(app, req)
+    if res == nil and has(app, "_secure") and app["_secure"] != nil:
+        res = _wsec_gate(app, req)     # "require_secure": refuse plain requests
+    if res == nil:
+        res = _webi_dispatch(app, req)
+        res = _webi_run_after_hooks(app, req, res)
     _webi_log(app, req, res, start_clock)
     return res
 

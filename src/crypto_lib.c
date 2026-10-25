@@ -4,6 +4,12 @@
 #include <stdint.h>
 #include <time.h>
 #include "crypto_lib.h"
+#include "crypto_aead.h"
+
+#ifdef _WIN32
+#  include <windows.h>
+#  include <wincrypt.h>
+#endif
 
 /* ===========================================================================
  * SHA-256 (FIPS 180-4) - written directly, no external crypto library.
@@ -205,6 +211,44 @@ static void pbkdf2_hmac_sha256(const unsigned char *password, size_t pwd_len,
  * Native functions
  * ========================================================================= */
 
+/* OS CSPRNG: /dev/urandom on POSIX, CryptGenRandom on Windows.
+ * Returns 1 on success, 0 on failure (callers must NOT fall back to rand()). */
+static int crypto_random_bytes(unsigned char *buf, size_t n) {
+#ifdef _WIN32
+    HCRYPTPROV hProv = 0;
+    if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) return 0;
+    BOOL ok = CryptGenRandom(hProv, (DWORD)n, buf);
+    CryptReleaseContext(hProv, 0);
+    return ok ? 1 : 0;
+#else
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (!f) return 0;
+    size_t got = fread(buf, 1, n, f);
+    fclose(f);
+    return got == n;
+#endif
+}
+
+/* Constant-time equality of two byte strings. The length difference is
+ * folded into the result, and the loop always walks the longer input, so
+ * timing depends only on the longer length, never on where they differ. */
+static int ct_equal(const unsigned char *a, size_t alen, const unsigned char *b, size_t blen) {
+    size_t n = alen > blen ? alen : blen;
+    unsigned char diff = (unsigned char)(alen != blen);
+    for (size_t i = 0; i < n; i++) {
+        unsigned char x = i < alen ? a[i] : 0;
+        unsigned char y = i < blen ? b[i] : 0;
+        diff |= (unsigned char)(x ^ y);
+    }
+    return diff == 0;
+}
+
+/* PBKDF2 iteration bounds accepted from a stored hash string: the count is
+ * attacker-influenced data (it comes out of the database), so reject
+ * absurd values instead of burning CPU for minutes. */
+#define PBKDF2_MIN_ITERATIONS 1
+#define PBKDF2_MAX_ITERATIONS 10000000
+
 #define PBKDF2_ITERATIONS 100000
 
 void fn_sha256(Value *result, Interpreter *interp, int argc, Value *args) {
@@ -221,19 +265,15 @@ void fn_sha256(Value *result, Interpreter *interp, int argc, Value *args) {
 }
 
 void fn_password_hash(Value *result, Interpreter *interp, int argc, Value *args) {
-    (void)interp;
     *result = value_nil();
     if (argc < 1 || args[0].type != VAL_STRING) return;
 
     unsigned char salt[16];
-    /* Not cryptographically-secure randomness (no /dev/urandom read here) -
-     * seeded from real wall-clock time + address entropy. Good enough to
-     * make rainbow-table precomputation impractical (the actual job of a
-     * password salt); if Kosh later gets a real CSPRNG source, swap this
-     * one line, nothing else about the format needs to change. */
-    static int seeded = 0;
-    if (!seeded) { srand((unsigned int)time(NULL) ^ (unsigned int)(size_t)&seeded); seeded = 1; }
-    for (int i = 0; i < 16; i++) salt[i] = (unsigned char)(rand() & 0xff);
+    if (!crypto_random_bytes(salt, sizeof(salt))) {
+        fprintf(stderr, "Runtime error: password_hash() could not read system randomness\n");
+        interp->had_runtime_error = 1;
+        return;
+    }
 
     unsigned char derived[32];
     pbkdf2_hmac_sha256((const unsigned char*)args[0].as.string, strlen(args[0].as.string),
@@ -262,6 +302,10 @@ void fn_password_verify(Value *result, Interpreter *interp, int argc, Value *arg
         fprintf(stderr, "Runtime error: password_verify() - malformed stored hash\n");
         return;
     }
+    if (iterations < PBKDF2_MIN_ITERATIONS || iterations > PBKDF2_MAX_ITERATIONS) {
+        fprintf(stderr, "Runtime error: password_verify() - iteration count out of range\n");
+        return;
+    }
     if (strcmp(scheme, "pbkdf2_sha256") != 0) {
         fprintf(stderr, "Runtime error: password_verify() - unknown scheme \"%s\"\n", scheme);
         return;
@@ -274,21 +318,109 @@ void fn_password_verify(Value *result, Interpreter *interp, int argc, Value *arg
     unsigned char derived[32];
     pbkdf2_hmac_sha256((const unsigned char*)password, strlen(password), salt, 16, iterations, derived);
 
-    /* Constant-time compare - don't let string comparison's early-exit
-     * leak how many leading bytes matched via timing. */
-    unsigned char diff = 0;
-    for (int i = 0; i < 32; i++) diff |= (derived[i] ^ expected[i]);
-    *result = value_bool(diff == 0);
+    *result = value_bool(ct_equal(derived, 32, expected, 32));
+}
+
+/* hmac_sha256(key, message) -> hex string (64 chars) */
+void fn_hmac_sha256(Value *result, Interpreter *interp, int argc, Value *args) {
+    (void)interp;
+    *result = value_nil();
+    if (argc < 2 || args[0].type != VAL_STRING || args[1].type != VAL_STRING) return;
+    unsigned char mac[32];
+    hmac_sha256((const unsigned char*)args[0].as.string, strlen(args[0].as.string),
+                (const unsigned char*)args[1].as.string, strlen(args[1].as.string), mac);
+    char hex[65];
+    bytes_to_hex(mac, 32, hex);
+    *result = value_string(hex);
+}
+
+/* constant_time_equals(a, b) -> bool. Use this (not ==) to compare secrets
+ * such as API keys, tokens and MACs, so response timing can't reveal how
+ * many leading characters matched. */
+void fn_constant_time_equals(Value *result, Interpreter *interp, int argc, Value *args) {
+    (void)interp;
+    *result = value_bool(0);
+    if (argc < 2 || args[0].type != VAL_STRING || args[1].type != VAL_STRING) return;
+    *result = value_bool(ct_equal((const unsigned char*)args[0].as.string, strlen(args[0].as.string),
+                                  (const unsigned char*)args[1].as.string, strlen(args[1].as.string)));
+}
+
+/* hkdf_sha256(ikm_hex, salt_hex, info, length) -> hex string of `length` bytes.
+ * RFC 5869 extract-then-expand. salt_hex may be "" (treated as 32 zero bytes).
+ * length: 1..255 (so output stays within one RFC 5869 limit of 255*32 bytes). */
+static int hex_nibble(int c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+static int hex_to_buf(const char *hex, unsigned char *out, size_t max, size_t *n) {
+    size_t l = strlen(hex);
+    if (l % 2 != 0 || l / 2 > max) return 0;
+    for (size_t i = 0; i < l / 2; i++) {
+        int hi = hex_nibble(hex[2*i]), lo = hex_nibble(hex[2*i+1]);
+        if (hi < 0 || lo < 0) return 0;
+        out[i] = (unsigned char)((hi << 4) | lo);
+    }
+    *n = l / 2;
+    return 1;
+}
+
+void fn_hkdf_sha256(Value *result, Interpreter *interp, int argc, Value *args) {
+    *result = value_nil();
+    if (argc < 4 || args[0].type != VAL_STRING || args[1].type != VAL_STRING ||
+        args[2].type != VAL_STRING || args[3].type != VAL_NUMBER) {
+        fprintf(stderr, "Runtime error: hkdf_sha256(ikm_hex, salt_hex, info, length) expects 3 strings and a number\n");
+        interp->had_runtime_error = 1; return;
+    }
+    unsigned char ikm[1024], salt[1024];
+    size_t ikm_n = 0, salt_n = 0;
+    int len = (int)args[3].as.number;
+    if (!hex_to_buf(args[0].as.string, ikm, sizeof(ikm), &ikm_n) || ikm_n == 0 ||
+        !hex_to_buf(args[1].as.string, salt, sizeof(salt), &salt_n) || len < 1 || len > 255) {
+        fprintf(stderr, "Runtime error: hkdf_sha256() invalid hex input or length (1-255)\n");
+        interp->had_runtime_error = 1; return;
+    }
+    unsigned char zero_salt[32] = {0};
+    unsigned char prk[32];
+    if (salt_n == 0) hmac_sha256(zero_salt, 32, ikm, ikm_n, prk);
+    else             hmac_sha256(salt, salt_n, ikm, ikm_n, prk);
+
+    const char *info = args[2].as.string;
+    size_t info_n = strlen(info);
+    if (info_n > 512) { interp->had_runtime_error = 1; return; }
+
+    unsigned char okm[255 + 32], t[32], buf[32 + 512 + 1];
+    size_t t_len = 0, o = 0;
+    for (int i = 1; o < (size_t)len; i++) {
+        size_t bl = 0;
+        memcpy(buf, t, t_len); bl += t_len;
+        memcpy(buf + bl, info, info_n); bl += info_n;
+        buf[bl++] = (unsigned char)i;
+        hmac_sha256(prk, 32, buf, bl, t);
+        t_len = 32;
+        memcpy(okm + o, t, 32); o += 32;
+    }
+    char hex[255 * 2 + 1];
+    bytes_to_hex(okm, (size_t)len, hex);
+    *result = value_string(hex);
+    memset(prk, 0, sizeof(prk)); memset(okm, 0, sizeof(okm));
 }
 
 void crypto_register_all(Environment *env) {
     env_define(env, "sha256",          value_native("sha256",          fn_sha256));
     env_define(env, "password_hash",   value_native("password_hash",   fn_password_hash));
     env_define(env, "password_verify", value_native("password_verify", fn_password_verify));
+    env_define(env, "hmac_sha256",     value_native("hmac_sha256",     fn_hmac_sha256));
+    env_define(env, "constant_time_equals", value_native("constant_time_equals", fn_constant_time_equals));
 }
 
 void crypto_register_all_vm(VM *vm) {
     vm_global_set_native(vm, "sha256",          fn_sha256);
     vm_global_set_native(vm, "password_hash",   fn_password_hash);
     vm_global_set_native(vm, "password_verify", fn_password_verify);
+    vm_global_set_native(vm, "hmac_sha256",     fn_hmac_sha256);
+    vm_global_set_native(vm, "constant_time_equals", fn_constant_time_equals);
+    vm_global_set_native(vm, "hkdf_sha256",     fn_hkdf_sha256);
+    crypto_aead_register_all_vm(vm);
 }

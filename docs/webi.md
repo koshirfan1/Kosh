@@ -381,7 +381,7 @@ it's exposed mainly so tests can dispatch a request without actually
 opening a socket (see `examples/webi_phase3_test.kh` for an example).
 
 ```kosh
-print webi_version()    # "webi/1.1.3 (Kosh)"
+print webi_version()    # "webi/1.2.0 (Kosh)"
 print webi_routes(app)  # list every registered route, for debugging
 ```
 
@@ -409,3 +409,57 @@ print webi_routes(app)  # list every registered route, for debugging
   code rather than on the Kosh map. If you need shared mutable state
   (a request counter, an in-memory cache), it has to live outside Kosh's
   normal value semantics for now.
+
+## Encrypted channel (`secure.kh`, v1.2.0)
+
+An opt-in layer **on top of TLS** (not a replacement for HTTPS): X25519
+handshake, HKDF key schedule, ChaCha20-Poly1305 packets, replay protection
+with a 64-entry sliding window. Read [webi-threat-model.md](webi-threat-model.md)
+before relying on it.
+
+```
+import "webi"
+
+# server
+let store = wsec_new_store(1000, 3600)          # max sessions, TTL seconds
+let reply = wsec_server_accept(store, hello)    # hello arrives from the client
+
+# client
+let client = wsec_client_start()
+let hello  = wsec_client_hello(client)          # send to the server
+let sess   = wsec_client_finish(client, reply)  # reply from the server
+
+let packet = wsec_seal(sess, "GET /page", "<h1>hi</h1>")
+let html   = wsec_server_open(store, packet, "GET /page")   # nil on any problem
+```
+
+Every function returns `nil` on malformed, replayed, expired or tampered input.
+
+### Using it with the HTTP server
+
+```
+import "webi"
+
+let app = webi_app()
+app = route(app, "GET", "/account", h_account)
+app = webi_enable_secure(app, {
+    "require_secure": true,                  # refuse plain requests (426)...
+    "public": ["/", "/robots.txt", "/assets/"]   # ...except these (served in the clear)
+})
+webi_run(app, 8080)
+```
+
+`webi_enable_secure` adds `POST /_webi/handshake` and `POST /_webi/secure`.
+The real request travels sealed inside the second one and runs through the full
+middleware chain and your handlers unchanged; the real response comes back
+sealed. On the wire there is only an opaque `POST /_webi/secure` and an outer
+status of 200. Client helpers: `wsec_client_hello_body`, `wsec_client_request`,
+`wsec_client_read_response` (see `examples/webi_secure_demo.kh`).
+
+Options: `max_sessions` (1000), `ttl` seconds (3600), `handshake_per_min` (30 per
+IP), `requests_per_min` (1200 per IP), `require_secure` (false), `public` (array;
+an entry ending in `/` is a prefix, except `"/"` which is the home page only).
+
+Limits: text bodies only; runs on top of TLS; public paths are served in the
+clear, so never put anything private on them; the native per-IP rate limiter
+fails open if its table fills; the `/_webi/` prefix is reserved.
