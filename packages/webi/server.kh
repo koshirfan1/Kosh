@@ -149,6 +149,10 @@ fn webi_handle(app, method, path, query_str, headers_str, body, ip):
     if res == nil:
         res = _webi_dispatch(app, req)
         res = _webi_run_after_hooks(app, req, res)
+        # A plain response served to a verified crawler must never be cached
+        # and replayed to other clients by a CDN / proxy.
+        if has(req, "verified_bot") and not has(res["headers"], "Cache-Control"):
+            res["headers"]["Cache-Control"] = "private, no-store"
     _webi_log(app, req, res, start_clock)
     return res
 

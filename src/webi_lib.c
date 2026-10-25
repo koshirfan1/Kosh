@@ -33,6 +33,7 @@ typedef SOCKET wb_sock_t;
 #  include <arpa/inet.h>
 #  include <unistd.h>
 #  include <fcntl.h>
+#  include <netdb.h>
 typedef int wb_sock_t;
 #endif
 
@@ -1340,20 +1341,25 @@ void fn_secure_token(Value *result, Interpreter *interp, int argc, Value *args) 
 // a real process-lifetime C global, so counts actually persist across
 // requests the way a rate limiter needs them to.
 //
-// Limitations (documented, not silent): fixed-size table (1024 keys) with
-// no eviction — under a very large number of distinct keys it can fill up,
-// at which point it fails OPEN (allows the request) rather than locking
-// everyone out. Resets on server restart. Not shared across multiple
-// server processes/machines. Good enough for a single-instance app;
+// Limitations (documented, not silent): fixed-size table (4096 keys).
+// Entries whose window has expired are reused, so ordinary traffic never
+// fills the table. If more than 4096 DISTINCT keys are live at once (a
+// flood from many addresses), the entry with the lowest count (oldest on a
+// tie) is evicted to make room: keys that are already over the limit have
+// the highest counts and stay blocked, while flood entries (count 1) are
+// the ones that get dropped. The limiter never fails open for everyone.
+// Resets on server restart. Not shared across multiple server
+// processes/machines. Good enough for a single-instance app;
 // swap for a real store (Redis etc.) if you scale beyond that.
 // ===========================================================================
-#define WB_RATE_LIMIT_BUCKETS 1024
+#define WB_RATE_LIMIT_BUCKETS 4096
 #define WB_RATE_LIMIT_KEY_LEN 128
 
 typedef struct {
     char key[WB_RATE_LIMIT_KEY_LEN];
     int in_use;
     int count;
+    int window;            // window_seconds this entry was created with
     time_t window_start;
 } wb_rate_entry_t;
 
@@ -1376,13 +1382,19 @@ static int wb_rate_limit_check(const char *key, int max_requests, int window_sec
     unsigned long h = wb_hash_str(key) % WB_RATE_LIMIT_BUCKETS;
     time_t now = time(NULL);
 
+    int reuse = -1;          // first expired slot seen on the probe chain
+    int empty = -1;          // first never-used slot (end of the chain)
+
     for (int i = 0; i < WB_RATE_LIMIT_BUCKETS; i++) {
         int idx = (int)((h + (unsigned long)i) % WB_RATE_LIMIT_BUCKETS);
         wb_rate_entry_t *e = &g_rate_table[idx];
 
-        if (e->in_use && strncmp(e->key, key, WB_RATE_LIMIT_KEY_LEN) == 0) {
+        if (!e->in_use) { empty = idx; break; }
+
+        if (strncmp(e->key, key, WB_RATE_LIMIT_KEY_LEN - 1) == 0) {
             if ((long)(now - e->window_start) >= window_seconds) {
                 e->window_start = now;
+                e->window = window_seconds;
                 e->count = 1;
                 return 1;
             }
@@ -1390,16 +1402,32 @@ static int wb_rate_limit_check(const char *key, int max_requests, int window_sec
             e->count++;
             return 1;
         }
-        if (!e->in_use) {
-            e->in_use = 1;
-            strncpy(e->key, key, WB_RATE_LIMIT_KEY_LEN - 1);
-            e->key[WB_RATE_LIMIT_KEY_LEN - 1] = '\0';
-            e->window_start = now;
-            e->count = 1;
-            return 1;
-        }
+        if (reuse < 0 && (long)(now - e->window_start) >= e->window) reuse = idx;
     }
-    // Table is completely full — fail open rather than block everyone.
+
+    // Key not in the table: pick a slot for it. Entries are never removed
+    // (that would break probe chains), only overwritten, so a chain stays
+    // intact.
+    int slot = -1;
+    if (reuse >= 0)      slot = reuse;      // an expired entry
+    else if (empty >= 0) slot = empty;      // a never-used slot
+    else {
+        // Table full of live entries: evict the least significant one.
+        int best = 0;
+        for (int i = 1; i < WB_RATE_LIMIT_BUCKETS; i++) {
+            wb_rate_entry_t *c = &g_rate_table[i], *b2 = &g_rate_table[best];
+            if (c->count < b2->count ||
+                (c->count == b2->count && c->window_start < b2->window_start)) best = i;
+        }
+        slot = best;
+    }
+    wb_rate_entry_t *e = &g_rate_table[slot];
+    e->in_use = 1;
+    strncpy(e->key, key, WB_RATE_LIMIT_KEY_LEN - 1);
+    e->key[WB_RATE_LIMIT_KEY_LEN - 1] = '\0';
+    e->window = window_seconds;
+    e->window_start = now;
+    e->count = 1;
     return 1;
 }
 
@@ -1420,6 +1448,99 @@ void fn_rate_limit_check(Value *result, Interpreter *interp, int argc, Value *ar
     *result = value_bool(allowed);
 }
 
+// ===========================================================================
+// DNS helpers for verifying search-engine crawlers (forward-confirmed
+// reverse DNS). A claim in the User-Agent header proves nothing; the
+// crawler's *address* has to reverse-resolve to a hostname in the search
+// engine's domain, and that hostname has to resolve back to the same
+// address. These two natives are the building blocks; the policy (which
+// domains, caching, budgets) lives in packages/webi/bot.kh.
+//
+// NOTE: getnameinfo()/getaddrinfo() block. webi's server is single-threaded,
+// so bot.kh only calls them for unverified crawler claims, behind a cache
+// and a lookup budget.
+// ===========================================================================
+
+static void wb_net_init(void) {
+#ifdef _WIN32
+    static int done = 0;
+    if (!done) { WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa); done = 1; }
+#endif
+}
+
+// Parses a textual IPv4/IPv6 address. Returns 1 on success.
+static int wb_parse_ip(const char *s, struct sockaddr_storage *ss, socklen_t *len) {
+    if (!s || strlen(s) == 0 || strlen(s) > 45) return 0;
+    memset(ss, 0, sizeof(*ss));
+    struct sockaddr_in *a4 = (struct sockaddr_in *)ss;
+    if (inet_pton(AF_INET, s, &a4->sin_addr) == 1) {
+        a4->sin_family = AF_INET; *len = (socklen_t)sizeof(*a4); return 1;
+    }
+    struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)ss;
+    memset(ss, 0, sizeof(*ss));
+    if (inet_pton(AF_INET6, s, &a6->sin6_addr) == 1) {
+        a6->sin6_family = AF_INET6; *len = (socklen_t)sizeof(*a6); return 1;
+    }
+    return 0;
+}
+
+// Hostnames are checked before they reach the resolver or come back to Kosh:
+// letters, digits, '.', '-', '_' only, at most 253 chars.
+static int wb_valid_hostname(const char *h) {
+    size_t n = strlen(h);
+    if (n == 0 || n > 253) return 0;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)h[i];
+        if (!(isalnum(c) || c == '.' || c == '-' || c == '_')) return 0;
+    }
+    return 1;
+}
+
+// Kosh: dns_reverse(ip) -> hostname string | nil
+void fn_dns_reverse(Value *result, Interpreter *interp, int argc, Value *args) {
+    *result = value_nil();
+    if (!wb_check(interp, "dns_reverse", 1, argc)) return;
+    const char *ip;
+    if (!wb_str_arg(interp, "dns_reverse", 0, args[0], &ip)) return;
+    struct sockaddr_storage ss; socklen_t sl = 0;
+    if (!wb_parse_ip(ip, &ss, &sl)) return;
+    wb_net_init();
+    char host[1025];   // NI_MAXHOST is not exposed under strict -std=c11
+    if (getnameinfo((struct sockaddr *)&ss, sl, host, sizeof(host), NULL, 0, NI_NAMEREQD) != 0) return;
+    if (!wb_valid_hostname(host)) return;
+    *result = value_string(host);
+}
+
+// Kosh: dns_resolves_to(hostname, ip) -> bool
+void fn_dns_resolves_to(Value *result, Interpreter *interp, int argc, Value *args) {
+    *result = value_bool(0);
+    if (!wb_check(interp, "dns_resolves_to", 2, argc)) return;
+    const char *host, *ip;
+    if (!wb_str_arg(interp, "dns_resolves_to", 0, args[0], &host)) return;
+    if (!wb_str_arg(interp, "dns_resolves_to", 1, args[1], &ip)) return;
+    if (!wb_valid_hostname(host)) return;
+    struct sockaddr_storage want; socklen_t wl = 0;
+    if (!wb_parse_ip(ip, &want, &wl)) return;
+    wb_net_init();
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, NULL, &hints, &res) != 0 || !res) return;
+    int found = 0;
+    for (struct addrinfo *p = res; p && !found; p = p->ai_next) {
+        if (p->ai_family == AF_INET && want.ss_family == AF_INET) {
+            found = memcmp(&((struct sockaddr_in *)p->ai_addr)->sin_addr,
+                           &((struct sockaddr_in *)&want)->sin_addr, 4) == 0;
+        } else if (p->ai_family == AF_INET6 && want.ss_family == AF_INET6) {
+            found = memcmp(&((struct sockaddr_in6 *)p->ai_addr)->sin6_addr,
+                           &((struct sockaddr_in6 *)&want)->sin6_addr, 16) == 0;
+        }
+    }
+    freeaddrinfo(res);
+    *result = value_bool(found);
+}
+
 void webi_register_all(Environment *env) {
     // v1.1 extended request natives
     env_define(env, "http_get_h",      value_native("http_get_h",      fn_http_get_h));
@@ -1437,6 +1558,8 @@ void webi_register_all(Environment *env) {
     // security (v1.1.1)
     env_define(env, "secure_token",    value_native("secure_token",    fn_secure_token));
     env_define(env, "rate_limit_check",value_native("rate_limit_check",fn_rate_limit_check));
+    env_define(env, "dns_reverse",     value_native("dns_reverse",     fn_dns_reverse));
+    env_define(env, "dns_resolves_to", value_native("dns_resolves_to", fn_dns_resolves_to));
 
     // static file serving (v1.1.2 — Phase 3)
     env_define(env, "_webi_mime_type",         value_native("_webi_mime_type",         fn_webi_mime_type));

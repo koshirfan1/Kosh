@@ -461,5 +461,42 @@ IP), `requests_per_min` (1200 per IP), `require_secure` (false), `public` (array
 an entry ending in `/` is a prefix, except `"/"` which is the home page only).
 
 Limits: text bodies only; runs on top of TLS; public paths are served in the
-clear, so never put anything private on them; the native per-IP rate limiter
-fails open if its table fills; the `/_webi/` prefix is reserved.
+clear, so never put anything private on them; the per-IP rate limiter keeps
+its counters in process memory (a restart resets them; not shared between
+processes); the `/_webi/` prefix is reserved.
+
+### Search engines (crawler verification)
+
+Indexable pages that should not be readable by everyone go in `bot_paths`
+instead of `public`:
+
+```
+app = webi_enable_secure(app, {
+    "require_secure": true,
+    "public": ["/"],
+    "bot_paths": ["/blog/"]
+})
+```
+
+A request for a bot path is served in the clear **only** if it comes from a
+verified crawler. A `User-Agent: Googlebot` header proves nothing, so webi uses
+forward-confirmed reverse DNS: the client IP must reverse-resolve to a host
+inside the search engine's domain (e.g. `.googlebot.com`, matched on a label
+boundary) and that host must resolve back to the same IP. Everyone else gets
+`426` and uses the channel. A verified crawler is **not** let into private
+routes. The handler sees `req["verified_bot"]`, and the response is sent with
+`Cache-Control: private, no-store` so a CDN cannot cache the plain copy.
+
+Built in: googlebot, bingbot, applebot, yandexbot, baiduspider. Options:
+`bots` (names to allow), `extra_bots` (`{name: {"uas": [...], "suffixes": [".example.com"]}}`),
+`bot_lookups_per_min` (default 20).
+
+DNS lookups block the (single-threaded) server, so they happen only for a
+request that claims to be a known crawler, on a bot path, are cached (24 h
+verified, 1 h failed), and are limited to 3 per client IP per hour and
+`bot_lookups_per_min` overall; past that a request is simply treated as an
+ordinary client. The peer address is used as-is: behind a reverse proxy the
+crawler's address is not visible unless the proxy forwards the connection
+transparently. Only crawlers that publish an rDNS domain are supported
+(DuckDuckBot publishes IP lists only). Users who arrive from a search result
+still need the channel (the WASM client, M4) to read the page.

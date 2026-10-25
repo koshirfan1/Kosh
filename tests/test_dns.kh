@@ -1,15 +1,27 @@
-# Test for dns package
-import "../packages/dns/dns.kh"
+# Tests for the native DNS helpers used by crawler verification.
+# Only input validation and loopback behaviour are asserted, so the suite
+# does not depend on network access or on any particular resolver setup.
 import "../packages/test/test.kh"
 
-let t = test_suite("DNS Suite")
+let t = test_suite("DNS helpers")
 
-print "Looking up google.com..."
-let ip = dns_lookup("google.com")
-print "Result: " + str(ip)
+t = test_true(t, "localhost resolves to 127.0.0.1", dns_resolves_to("localhost", "127.0.0.1"))
+t = test_false(t, "localhost does not resolve to 8.8.8.8", dns_resolves_to("localhost", "8.8.8.8"))
+t = test_false(t, "an IPv6 address never matches an IPv4-only name", dns_resolves_to("localhost", "2001:db8::1"))
 
-t = test_not_nil(t, "IP should not be nil", ip)
-if ip != nil:
-    t = test_type(t, "IP should be string", ip, "string")
+let rev = dns_reverse("127.0.0.1")
+t = test_true(t, "reverse lookup of loopback returns a hostname or nil, never garbage", rev == nil or type(rev) == "string")
+
+t = test_nil(t, "reverse of a non-IP string is nil", dns_reverse("not an ip"))
+t = test_nil(t, "reverse of an empty string is nil", dns_reverse(""))
+t = test_nil(t, "reverse of an out-of-range IPv4 is nil", dns_reverse("999.1.1.1"))
+t = test_nil(t, "reverse of a hostname (not an IP) is nil", dns_reverse("localhost"))
+t = test_nil(t, "reverse of an over-long string is nil", dns_reverse("1111111111111111111111111111111111111111111111111111111"))
+t = test_false(t, "invalid hostname characters are refused before resolving", dns_resolves_to("bad host!", "127.0.0.1"))
+t = test_false(t, "shell metacharacters in the hostname are refused", dns_resolves_to("a;b", "127.0.0.1"))
+t = test_false(t, "empty hostname is refused", dns_resolves_to("", "127.0.0.1"))
+t = test_false(t, "over-long hostname is refused", dns_resolves_to("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "127.0.0.1"))
+t = test_false(t, "invalid IP argument is refused", dns_resolves_to("localhost", "999.1.1.1"))
+t = test_false(t, "empty IP argument is refused", dns_resolves_to("localhost", ""))
 
 test_run(t)

@@ -18,6 +18,7 @@
     "template.kh",
     "meta.kh",
     "secure.kh",
+    "bot.kh",
     "secure_http.kh",
     "requests.kh",
     "json.kh"

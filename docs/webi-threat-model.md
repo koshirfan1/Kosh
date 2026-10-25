@@ -58,8 +58,8 @@ server authentication (pinned key + Ed25519 signature) is future work.
 | T3 | Handshake MITM | Runs inside TLS; salt binds both public keys | Implemented (TLS required) |
 | T4 | Nonce reuse | Sender counter only increases; separate key and direction id per direction; refuse after 2^48 | Implemented, tested |
 | T5 | Session-store DoS | Counter instead of a nonce database (O(1) per session), session cap, TTL sweep | Implemented, tested |
-| T6 | Fake search-engine bot | Forward-confirmed rDNS + published IP ranges, negative caching, rate limit | Planned (M3) |
-| T7 | DNS flood via bot checks | Async lookups, negative cache, per-IP limit | Planned (M3) |
+| T6 | Fake search-engine bot | Forward-confirmed rDNS (host must be a subdomain of the engine's domain on a label boundary, and resolve back to the IP); a verified crawler only gets `bot_paths`, never private routes; plain responses are `private, no-store` | Implemented, tested (mocked DNS; mutation-checked) |
+| T7 | DNS flood via bot checks | Lookups only for crawler claims on bot paths; positive and negative caching; per-IP (3/h) and global (20/min) budgets; over budget = treated as ordinary client. Lookups still block the single-threaded server for their duration | Implemented, tested |
 | T8 | Plain-mode secret leak | `require_secure` refuses plain requests; only paths in the explicit `public` list are served in the clear (unknown paths also get 426, so route existence is not revealed) | Implemented, tested |
 | T9 | Downgrade | Version field bound into the AEAD aad; unknown versions rejected | Implemented, tested |
 | T10 | Key exposure to page JS | Strict CSP, key in memory only, short lifetime | Planned (M4) |
@@ -91,7 +91,7 @@ review**.
 
 - **M1 handshake + key schedule** - done (`secure.kh`, `tests/test_webi_secure.kh`).
 - **M2 sealed packets + replay window + HTTP integration** - done (`secure_http.kh`, `tests/test_webi_secure_http.kh`, `examples/webi_secure_demo.kh`).
-- **M3 bot verification** (forward-confirmed rDNS, cache, rate limit) - pending.
+- **M3 bot verification** (forward-confirmed rDNS, cache, budgets, `bot_paths`) - done (`bot.kh`, `tests/test_webi_bot.kh`, `tests/test_dns.kh`).
 - **M4 WASM client** (`webi.js`, < 20 KB) - pending.
 - **M5 `/webi/proof` page** - pending.
 - **M6 fuzzing + external crypto review before 1.0** - pending.
@@ -99,5 +99,5 @@ review**.
 ## 9. Open questions
 
 1. ~~Public pages~~ decided: explicit `public` path list in `webi_enable_secure`. Verified-bot plain mode (M3) is separate.
-2. Fallback for curl / old browsers: error or plain mode?
+2. Fallback for curl / old browsers: error or plain mode? (Verified crawlers are already handled by `bot_paths`.)
 3. Session lifetime and key-rotation interval.

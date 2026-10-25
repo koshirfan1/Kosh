@@ -14,6 +14,22 @@
 # keeps SEO pages, link previews and uptime checks working. Public routes are
 # served in the clear, so never put anything private on them.
 #
+# Search engines: a page that should be indexable but not readable by
+# everyone goes in "bot_paths" instead of "public":
+#
+#   app = webi_enable_secure(app, {"require_secure": true, "bot_paths": ["/blog/"]})
+#
+# A request for a bot path is served in the clear ONLY if it comes from a
+# verified crawler (forward-confirmed reverse DNS, see bot.kh) - a User-Agent
+# claim alone never counts. Everyone else gets 426 and must use the channel.
+# Verified crawlers get nothing else: a private route stays encrypted for them
+# too. The handler sees req["verified_bot"] (e.g. "googlebot"), and the
+# response is marked Cache-Control: private, no-store so a CDN cannot keep a
+# plain copy and hand it to others. Extra options: "bots" (names to allow;
+# default googlebot, bingbot, applebot, yandexbot, baiduspider), "extra_bots"
+# ({name: {"uas": [...], "suffixes": [".example.com"]}}) and
+# "bot_lookups_per_min" (20).
+#
 # That adds two endpoints, handled BEFORE the app's middlewares:
 #
 #   POST /_webi/handshake   body: {"v":1,"pub":"<64 hex>"}
@@ -39,8 +55,11 @@
 #   * Text bodies only - the inner message is JSON.
 #   * Runs on top of TLS (see docs/webi-threat-model.md); the handshake is
 #     not authenticated by itself.
-#   * Per-IP rate limits on both endpoints use the native rate limiter,
-#     which fails open if its table fills (see rate_limit_check()).
+#   * Per-IP rate limits on both endpoints use the native rate limiter
+#     (4096-key table; expired entries are reused and, under a flood of
+#     live keys, low-count entries are evicted - see rate_limit_check()).
+#     Counters live in process memory: a restart resets them, and they are
+#     not shared between server processes.
 #   * The /_webi/ prefix is reserved and cannot be requested through the
 #     channel (no nesting).
 #
@@ -67,11 +86,23 @@ fn webi_enable_secure(app, opts):
     let rq = 1200
     let require = false
     let public_paths = []
+    let bot_paths = []
+    let bot_names = nil
+    let bot_extra = nil
+    let bot_budget = 20
     if type(opts) == "map":
         if has(opts, "require_secure"):
             require = opts["require_secure"] == true
         if has(opts, "public") and type(opts["public"]) == "array":
             public_paths = opts["public"]
+        if has(opts, "bot_paths") and type(opts["bot_paths"]) == "array":
+            bot_paths = opts["bot_paths"]
+        if has(opts, "bots") and type(opts["bots"]) == "array":
+            bot_names = opts["bots"]
+        if has(opts, "extra_bots") and type(opts["extra_bots"]) == "map":
+            bot_extra = opts["extra_bots"]
+        if has(opts, "bot_lookups_per_min"):
+            bot_budget = opts["bot_lookups_per_min"]
         if has(opts, "max_sessions"):
             max_sessions = opts["max_sessions"]
         if has(opts, "ttl"):
@@ -85,6 +116,8 @@ fn webi_enable_secure(app, opts):
     store["req_limit"] = rq
     store["require"] = require
     store["public"] = public_paths
+    store["bot_paths"] = bot_paths
+    store["bot"] = wbot_new(bot_names, bot_extra, bot_budget)
     store["_inside"] = false
     app["_secure"] = store
     return app
@@ -97,15 +130,14 @@ fn _wsec_plain_res(status, body):
     let res = res_status(status, body)
     return res_with_header(res, "Cache-Control", "no-store")
 
-# True if `path` may be served without the encrypted channel.
-fn _wsec_is_public(store, path):
-    let pubs = store["public"]
+# True if `path` matches an entry of `list`: an entry ending in "/" is a
+# prefix, except "/" alone which is the home page only (matching it as a
+# prefix would match every path); anything else matches exactly.
+fn _wsec_path_in(list, path):
     let i = 0
-    while i < len(pubs):
-        let e = pubs[i]
+    while i < len(list):
+        let e = list[i]
         if type(e) == "string" and len(e) > 0:
-            # "/" alone is an exact match (the home page); matching it as a
-            # prefix would make every path public.
             if e != "/" and substring(e, len(e) - 1, 1) == "/":
                 if len(path) >= len(e) and substring(path, 0, len(e)) == e:
                     return true
@@ -121,8 +153,14 @@ fn _wsec_gate(app, req):
     let store = app["_secure"]
     if store == nil or store["require"] != true or store["_inside"] == true:
         return nil
-    if _wsec_is_public(store, req["path"]):
+    if _wsec_path_in(store["public"], req["path"]):
         return nil
+    # Crawler exception: ONLY on a listed bot path, ONLY if verified.
+    if _wsec_path_in(store["bot_paths"], req["path"]):
+        let name = wbot_check_request(store["bot"], req)
+        if name != nil:
+            req["verified_bot"] = name
+            return nil
     return _wsec_plain_res(426, "Secure channel required")
 
 # Called by webi_handle() for paths under /_webi/. Returns a response map if

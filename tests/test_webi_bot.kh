@@ -1,0 +1,211 @@
+# Tests for crawler verification (packages/webi/bot.kh) and the
+# `bot_paths` gate in secure_http.kh. DNS is mocked through the store's
+# "rdns"/"fwd" hooks, so the tests are deterministic and need no network.
+import "../packages/test/test.kh"
+import "../packages/webi/webi.kh"
+
+let t = test_suite("Crawler verification")
+
+# ---- mock DNS ----------------------------------------------------------------------
+let PTR = {
+    "66.249.66.1":  "crawl-66-249-66-1.googlebot.com",
+    "66.249.66.2":  "CRAWL-66-249-66-2.GOOGLEBOT.COM.",
+    "157.55.39.1":  "msnbot-157-55-39-1.search.msn.com",
+    "6.6.6.6":      "crawl-6-6-6-6.googlebot.com",
+    "7.7.7.7":      "googlebot.com.evil.com",
+    "8.8.8.8":      "evilgooglebot.com",
+    "9.9.9.9":      "host.example.org",
+    "11.11.11.11":  "crawl.googlebot.com.evil.com"
+}
+let FWD = {
+    "crawl-66-249-66-1.googlebot.com": ["66.249.66.1"],
+    "crawl-66-249-66-2.googlebot.com": ["66.249.66.2"],
+    "msnbot-157-55-39-1.search.msn.com": ["157.55.39.1"],
+    "crawl-6-6-6-6.googlebot.com": ["10.10.10.10"],
+    "googlebot.com.evil.com": ["7.7.7.7"],
+    "evilgooglebot.com": ["8.8.8.8"],
+    "crawl.googlebot.com.evil.com": ["11.11.11.11"]
+}
+let CALLS = {"rdns": 0, "fwd": 0}
+
+fn mock_rdns(ip):
+    CALLS["rdns"] = CALLS["rdns"] + 1
+    if has(PTR, ip):
+        return PTR[ip]
+    return nil
+
+fn mock_fwd(host, ip):
+    CALLS["fwd"] = CALLS["fwd"] + 1
+    let h = lower(host)
+    if substring(h, len(h) - 1, 1) == ".":
+        h = substring(h, 0, len(h) - 1)
+    if not has(FWD, h):
+        return false
+    let l = FWD[h]
+    let i = 0
+    while i < len(l):
+        if l[i] == ip:
+            return true
+        i = i + 1
+    return false
+
+fn fresh(budget):
+    let b = wbot_new(nil, nil, budget)
+    b["rdns"] = mock_rdns
+    b["fwd"] = mock_fwd
+    return b
+
+fn req_for(ip, ua):
+    return {"ip": ip, "headers": {"User-Agent": ua}, "path": "/blog/x", "method": "GET"}
+
+let GUA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+let BUA = "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)"
+
+# ---- host suffix rules -------------------------------------------------------------------
+let sfx = [".googlebot.com", ".google.com"]
+t = test_true(t, "subdomain of googlebot.com is accepted", wbot_host_ok("crawl-1.googlebot.com", sfx))
+t = test_true(t, "case and trailing dot are normalised", wbot_host_ok("CRAWL-1.GoogleBot.com.", sfx))
+t = test_false(t, "googlebot.com.evil.com is rejected", wbot_host_ok("googlebot.com.evil.com", sfx))
+t = test_false(t, "evilgooglebot.com (no label boundary) is rejected", wbot_host_ok("evilgooglebot.com", sfx))
+t = test_false(t, "crawl.googlebot.com.evil.com (domain only CONTAINS the suffix) is rejected", wbot_host_ok("crawl.googlebot.com.evil.com", sfx))
+t = test_false(t, "the bare domain without a host label is rejected", wbot_host_ok("googlebot.com", sfx))
+t = test_false(t, "nil host is rejected", wbot_host_ok(nil, sfx))
+t = test_false(t, "empty host is rejected", wbot_host_ok("", sfx))
+
+fn str_repeat_ua():
+    let s = "googlebot"
+    let i = 0
+    while i < 10:
+        s = s + s
+        i = i + 1
+    return s
+
+# ---- claims ---------------------------------------------------------------------------------
+let b0 = fresh(100)
+t = test_eq(t, "Googlebot UA is recognised", wbot_claimed(b0, GUA), "googlebot")
+t = test_eq(t, "bingbot UA is recognised", wbot_claimed(b0, BUA), "bingbot")
+t = test_eq(t, "UA match is case-insensitive", wbot_claimed(b0, "GOOGLEBOT"), "googlebot")
+t = test_nil(t, "ordinary browser UA claims nothing", wbot_claimed(b0, "Mozilla/5.0 (X11; Linux x86_64) Firefox/120.0"))
+t = test_nil(t, "missing UA claims nothing", wbot_claimed(b0, nil))
+t = test_nil(t, "absurdly long UA is ignored", wbot_claimed(b0, str_repeat_ua()))
+
+# ---- verification ---------------------------------------------------------------------------------
+let b = fresh(100)
+t = test_eq(t, "real Googlebot IP is verified", wbot_check_request(b, req_for("66.249.66.1", GUA)), "googlebot")
+t = test_eq(t, "uppercase PTR with trailing dot still verifies", wbot_check_request(b, req_for("66.249.66.2", GUA)), "googlebot")
+t = test_eq(t, "real Bingbot IP is verified", wbot_check_request(b, req_for("157.55.39.1", BUA)), "bingbot")
+t = test_nil(t, "spoofed UA from an ordinary IP is rejected", wbot_check_request(b, req_for("9.9.9.9", GUA)))
+t = test_nil(t, "unknown IP (no PTR) is rejected", wbot_check_request(b, req_for("1.2.3.4", GUA)))
+t = test_nil(t, "PTR claims googlebot.com but forward lookup does not match (rDNS spoof)", wbot_check_request(b, req_for("6.6.6.6", GUA)))
+t = test_nil(t, "PTR under googlebot.com.evil.com is rejected", wbot_check_request(b, req_for("7.7.7.7", GUA)))
+t = test_nil(t, "attacker-owned crawl.googlebot.com.evil.com that resolves back to the attacker is rejected", wbot_check_request(b, req_for("11.11.11.11", GUA)))
+t = test_nil(t, "PTR evilgooglebot.com is rejected", wbot_check_request(b, req_for("8.8.8.8", GUA)))
+t = test_nil(t, "a verified Google IP claiming to be Bingbot is rejected", wbot_check_request(b, req_for("66.249.66.1", BUA)))
+t = test_nil(t, "a verified Bing IP claiming to be Googlebot is rejected", wbot_check_request(b, req_for("157.55.39.1", GUA)))
+t = test_nil(t, "garbage IP string is rejected", wbot_check_request(b, req_for("not-an-ip", GUA)))
+t = test_nil(t, "nil bot store is rejected", wbot_check_request(nil, req_for("66.249.66.1", GUA)))
+
+let lc = {"ip": "66.249.66.1", "headers": {"user-agent": GUA}, "path": "/", "method": "GET"}
+t = test_eq(t, "header name is matched case-insensitively", wbot_check_request(fresh(100), lc), "googlebot")
+
+# ---- no lookups unless a crawler is claimed; caching -------------------------------------------------
+let c = fresh(100)
+CALLS["rdns"] = 0
+CALLS["fwd"] = 0
+wbot_check_request(c, req_for("5.5.5.5", "Mozilla/5.0 Firefox/120"))
+t = test_eq(t, "an ordinary browser never triggers a DNS lookup", CALLS["rdns"], 0)
+
+wbot_check_request(c, req_for("66.249.66.1", GUA))
+t = test_eq(t, "first verification does one reverse lookup", CALLS["rdns"], 1)
+t = test_eq(t, "and one forward lookup", CALLS["fwd"], 1)
+wbot_check_request(c, req_for("66.249.66.1", GUA))
+wbot_check_request(c, req_for("66.249.66.1", GUA))
+t = test_eq(t, "repeat requests are served from the cache (no new reverse lookup)", CALLS["rdns"], 1)
+t = test_eq(t, "nor a new forward lookup", CALLS["fwd"], 1)
+
+wbot_check_request(c, req_for("9.9.9.9", GUA))
+let after = CALLS["rdns"]
+wbot_check_request(c, req_for("9.9.9.9", GUA))
+wbot_check_request(c, req_for("9.9.9.9", GUA))
+t = test_eq(t, "failures are cached too (a fake bot cannot force repeated lookups)", CALLS["rdns"], after)
+
+# ---- lookup budget --------------------------------------------------------------------------------------
+let small = fresh(2)
+CALLS["rdns"] = 0
+wbot_check_request(small, req_for("66.249.66.1", GUA))
+wbot_check_request(small, req_for("157.55.39.1", BUA))
+let third = wbot_check_request(small, req_for("66.249.66.2", GUA))
+t = test_nil(t, "over the per-minute lookup budget: treated as unverified", third)
+t = test_eq(t, "and no DNS lookup is performed for it", CALLS["rdns"], 2)
+t = test_eq(t, "already-cached crawlers still verify when the budget is spent", wbot_check_request(small, req_for("66.249.66.1", GUA)), "googlebot")
+
+# ---- custom crawler ---------------------------------------------------------------------------------------
+let cb = wbot_new(["googlebot"], {"mybot": {"uas": ["mybot"], "suffixes": [".mycrawler.example"]}}, 100)
+cb["rdns"] = mock_rdns
+cb["fwd"] = mock_fwd
+t = test_nil(t, "bots not listed in `names` are not recognised", wbot_claimed(cb, BUA))
+t = test_eq(t, "extra bots are recognised", wbot_claimed(cb, "Mozilla/5.0 (compatible; MyBot/1.0)"), "mybot")
+
+# ======================================================================================================
+# Integration: bot_paths in the require_secure gate
+# ======================================================================================================
+fn h_post(req):
+    let who = "none"
+    if has(req, "verified_bot"):
+        who = req["verified_bot"]
+    return res_html("<h1>post</h1> bot=" + who)
+
+fn h_admin(req):
+    return res_html("<h1>admin</h1>")
+
+fn h_home(req):
+    return res_html("<h1>home</h1>")
+
+let app = webi_app()
+app = route(app, "GET", "/", h_home)
+app = route(app, "GET", "/blog/post", h_post)
+app = route(app, "GET", "/admin", h_admin)
+app = webi_enable_secure(app, {"require_secure": true, "public": ["/"], "bot_paths": ["/blog/"], "handshake_per_min": 1000, "requests_per_min": 100000})
+app["_secure"]["bot"]["rdns"] = mock_rdns
+app["_secure"]["bot"]["fwd"] = mock_fwd
+
+let GH = "User-Agent: " + GUA
+let real = webi_handle(app, "GET", "/blog/post", "", GH, "", "66.249.66.1")
+t = test_eq(t, "verified Googlebot gets the bot path in the clear", real["status"], 200)
+t = test_contains_str(t, "the handler sees req[\"verified_bot\"]", real["body"], "bot=googlebot")
+t = test_eq(t, "the clear response is marked private, no-store", real["headers"]["Cache-Control"], "private, no-store")
+
+let fake = webi_handle(app, "GET", "/blog/post", "", GH, "", "9.9.9.9")
+t = test_eq(t, "a fake Googlebot (spoofed UA) gets 426", fake["status"], 426)
+t = test_false(t, "and no page content", contains(fake["body"], "<h1>"))
+let human = webi_handle(app, "GET", "/blog/post", "", "User-Agent: Mozilla/5.0 Firefox/120.0", "", "5.5.5.5")
+t = test_eq(t, "an ordinary visitor gets 426 on a bot path", human["status"], 426)
+let nohdr = webi_handle(app, "GET", "/blog/post", "", "", "", "5.5.5.5")
+t = test_eq(t, "a request with no User-Agent gets 426", nohdr["status"], 426)
+
+let priv = webi_handle(app, "GET", "/admin", "", GH, "", "66.249.66.1")
+t = test_eq(t, "a VERIFIED Googlebot still gets 426 on a private route (no bypass)", priv["status"], 426)
+t = test_false(t, "and sees nothing of it", contains(priv["body"], "admin"))
+let prefix_trick = webi_handle(app, "GET", "/blogger/post", "", GH, "", "66.249.66.1")
+t = test_eq(t, "a path that merely starts like a bot path is not a bot path", prefix_trick["status"], 426)
+let home = webi_handle(app, "GET", "/", "", "", "", "5.5.5.5")
+t = test_eq(t, "public paths are unaffected", home["status"], 200)
+t = test_false(t, "public responses are not marked as bot responses", has(home["headers"], "Cache-Control"))
+
+# humans reach the same page through the encrypted channel
+let c1 = wsec_client_start()
+let hs = webi_handle(app, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(c1), "5.5.5.5")
+let sess = wsec_client_finish(c1, json_decode(hs["body"]))
+let pkt = wsec_client_request(sess, "GET", "/blog/post", "", {}, "")
+let outer = webi_handle(app, "POST", "/_webi/secure", "", "", pkt, "5.5.5.5")
+let inner = wsec_client_read_response(sess, outer["body"])
+t = test_eq(t, "a human reads the bot path through the channel", inner["status"], 200)
+t = test_contains_str(t, "and is not treated as a bot", inner["body"], "bot=none")
+t = test_nil(t, "channel responses carry no verified_bot marker", inner["headers"]["Cache-Control"])
+
+# a verified bot must not be able to use its status through the channel path either
+let bpkt = wsec_client_request(sess, "GET", "/admin", "", {"User-Agent": GUA}, "")
+let bi = wsec_client_read_response(sess, webi_handle(app, "POST", "/_webi/secure", "", "", bpkt, "5.5.5.5")["body"])
+t = test_false(t, "inside the channel the UA claim sets no verified_bot marker", contains(bi["body"], "bot="))
+
+test_run(t)

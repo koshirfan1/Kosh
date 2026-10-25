@@ -1,0 +1,183 @@
+# webi/bot.kh — verify search-engine crawlers (milestone M3).
+#
+# A User-Agent header proves nothing: anyone can send "Googlebot". The only
+# check that works is forward-confirmed reverse DNS (the method Google, Bing,
+# Apple, Yandex and Baidu document):
+#
+#   1. reverse-resolve the client's IP address to a hostname,
+#   2. the hostname must end in that search engine's domain
+#      (".googlebot.com", ".search.msn.com", ...) on a label boundary,
+#   3. resolve that hostname forward; the client's IP must be among the
+#      results.
+#
+# An attacker can set a PTR record on their own address to say anything, but
+# cannot make googlebot.com resolve back to it - step 3 is what stops spoofing.
+#
+# This module only answers "is this request from a verified crawler?". What
+# a verified crawler is allowed to see is decided in secure_http.kh
+# (the `bot_paths` option): never a private route.
+#
+# Because the webi server is single-threaded and DNS lookups block, lookups
+# are limited:
+#   * only done when the User-Agent claims a known crawler (and, via
+#     secure_http.kh, only on a path where a crawler would be let in),
+#   * results are cached: verified 24 h, failed 1 h,
+#   * at most 3 lookups per client IP per hour and `budget` lookups per
+#     minute overall (default 20); beyond that the request is simply treated
+#     as an ordinary, unverified client (nothing blocks, nothing is cached).
+#
+# Limits worth knowing: the peer address is used as-is, so behind a reverse
+# proxy the crawler's address is not visible unless the proxy forwards the
+# connection transparently; only crawlers that publish an rDNS domain are
+# supported (others, such as DuckDuckBot, publish IP lists only).
+
+let WBOT_DEFAULTS = {
+    "googlebot": {
+        "uas": ["googlebot", "google-inspectiontool", "googleother", "storebot-google"],
+        "suffixes": [".googlebot.com", ".google.com"]
+    },
+    "bingbot": {
+        "uas": ["bingbot", "adidxbot", "msnbot"],
+        "suffixes": [".search.msn.com"]
+    },
+    "applebot": {
+        "uas": ["applebot"],
+        "suffixes": [".applebot.apple.com"]
+    },
+    "yandexbot": {
+        "uas": ["yandexbot", "yandexmobilebot"],
+        "suffixes": [".yandex.ru", ".yandex.net", ".yandex.com"]
+    },
+    "baiduspider": {
+        "uas": ["baiduspider"],
+        "suffixes": [".baidu.com", ".baidu.jp"]
+    }
+}
+
+# names: array of bot names to allow (nil = all defaults).
+# extra:  map name -> {"uas": [...], "suffixes": [".example.com"]} (optional).
+fn wbot_new(names, extra, budget_per_min):
+    let bots = {}
+    for name in keys(WBOT_DEFAULTS):
+        let want = true
+        if type(names) == "array":
+            want = false
+            let i = 0
+            while i < len(names):
+                if names[i] == name:
+                    want = true
+                i = i + 1
+        if want:
+            bots[name] = WBOT_DEFAULTS[name]
+    if type(extra) == "map":
+        for name in keys(extra):
+            bots[name] = extra[name]
+    return {
+        "id": secure_token(8),
+        "bots": bots,
+        "cache": {},
+        "count": 0,
+        "cache_max": 5000,
+        "ttl_ok": 86400,
+        "ttl_bad": 3600,
+        "budget": budget_per_min,
+        "per_ip": 3,
+        "rdns": dns_reverse,
+        "fwd": dns_resolves_to
+    }
+
+# Which known crawler does this User-Agent claim to be? nil if none.
+fn wbot_claimed(bot, ua):
+    if type(ua) != "string" or len(ua) == 0 or len(ua) > 512:
+        return nil
+    let l = lower(ua)
+    for name in keys(bot["bots"]):
+        let uas = bot["bots"][name]["uas"]
+        let i = 0
+        while i < len(uas):
+            if contains(l, uas[i]):
+                return name
+            i = i + 1
+    return nil
+
+# True if `host` is a proper subdomain of one of `suffixes` (each starts
+# with "."): "crawl-1.googlebot.com" yes; "googlebot.com.evil.com" no;
+# "evilgooglebot.com" no.
+fn wbot_host_ok(host, suffixes):
+    if type(host) != "string":
+        return false
+    let h = lower(host)
+    if len(h) > 1 and substring(h, len(h) - 1, 1) == ".":
+        h = substring(h, 0, len(h) - 1)
+    let i = 0
+    while i < len(suffixes):
+        let s = suffixes[i]
+        if len(h) > len(s) and substring(h, len(h) - len(s), len(s)) == s:
+            return true
+        i = i + 1
+    return false
+
+fn wbot_cache_put(bot, ip, name, ttl):
+    if bot["count"] >= bot["cache_max"]:
+        let now_s = timestamp()
+        let live = {}
+        let n = 0
+        for k in keys(bot["cache"]):
+            let e = bot["cache"][k]
+            if e["until"] > now_s:
+                live[k] = e
+                n = n + 1
+        bot["cache"] = live
+        bot["count"] = n
+        if n >= bot["cache_max"]:
+            return nil
+    if not has(bot["cache"], ip):
+        bot["count"] = bot["count"] + 1
+    bot["cache"][ip] = {"bot": name, "until": timestamp() + ttl}
+    return nil
+
+# Verifies that `ip` really is crawler `claimed`. Returns the bot name or nil.
+fn wbot_verify_ip(bot, ip, claimed):
+    if type(ip) != "string" or len(ip) == 0 or len(ip) > 45:
+        return nil
+    if has(bot["cache"], ip):
+        let e = bot["cache"][ip]
+        if e["until"] > timestamp():
+            if e["bot"] == claimed:
+                return claimed
+            return nil
+
+    # lookup budget (never blocks anyone, just means "treat as unverified")
+    if not rate_limit_check("wbot_ip:" + bot["id"] + ":" + ip, bot["per_ip"], 3600):
+        return nil
+    if not rate_limit_check("wbot_all:" + bot["id"], bot["budget"], 60):
+        return nil
+
+    let suffixes = bot["bots"][claimed]["suffixes"]
+    let host = bot["rdns"](ip)
+    if host == nil or not wbot_host_ok(host, suffixes):
+        wbot_cache_put(bot, ip, "", bot["ttl_bad"])
+        return nil
+    if bot["fwd"](host, ip) != true:
+        wbot_cache_put(bot, ip, "", bot["ttl_bad"])
+        return nil
+    wbot_cache_put(bot, ip, claimed, bot["ttl_ok"])
+    return claimed
+
+# Case-insensitive request header lookup (header names arrive as sent).
+fn wbot_header(req, name):
+    if type(req["headers"]) != "map":
+        return nil
+    for k in keys(req["headers"]):
+        if lower(k) == name:
+            return req["headers"][k]
+    return nil
+
+# The one call the server makes: verified crawler name for this request, or nil.
+fn wbot_check_request(bot, req):
+    if bot == nil:
+        return nil
+    let claimed = wbot_claimed(bot, wbot_header(req, "user-agent"))
+    if claimed == nil:
+        return nil
+    return wbot_verify_ip(bot, req["ip"], claimed)

@@ -183,6 +183,28 @@ jobs:
       shell: msys2 {0}
       run: ./kosh.exe tests/test_webi_secure_http.kh
 
+    - name: Run rate limiter test suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_rate_limit.kh
+
+    - name: Run rate limiter test suite (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_rate_limit.kh
+
+    - name: Run crawler-verification and DNS test suites (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        ./kosh tests/test_dns.kh
+        ./kosh tests/test_webi_bot.kh
+
+    - name: Run crawler-verification and DNS test suites (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: |
+        ./kosh.exe tests/test_dns.kh
+        ./kosh.exe tests/test_webi_bot.kh
+
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: ./kosh tests/test_vision.kh
@@ -359,6 +381,9 @@ jobs:
         ./kosh_asan tests/test_aead.kh
         ./kosh_asan tests/test_webi_secure.kh
         ./kosh_asan tests/test_webi_secure_http.kh
+        ./kosh_asan tests/test_rate_limit.kh
+        ./kosh_asan tests/test_dns.kh
+        ./kosh_asan tests/test_webi_bot.kh
 
     - name: Upload Artifacts (Linux)
       if: matrix.os == 'ubuntu-latest'

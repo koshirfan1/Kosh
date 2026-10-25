@@ -80,6 +80,8 @@ void webi_register_all_vm(VM *vm) {
     vm_global_set_native(vm, "http_serve",      fn_http_serve);
     vm_global_set_native(vm, "secure_token",    fn_secure_token);
     vm_global_set_native(vm, "rate_limit_check",fn_rate_limit_check);
+    vm_global_set_native(vm, "dns_reverse",     fn_dns_reverse);
+    vm_global_set_native(vm, "dns_resolves_to", fn_dns_resolves_to);
     vm_global_set_native(vm, "_webi_mime_type",        fn_webi_mime_type);
     vm_global_set_native(vm, "_webi_safe_static_path", fn_webi_safe_static_path);
     vm_global_set_native(vm, "_webi_resolve_path",     fn_webi_resolve_path);

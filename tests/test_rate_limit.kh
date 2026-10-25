@@ -1,0 +1,59 @@
+# Tests for the native rate limiter (rate_limit_check).
+#
+# Regression for two bugs in the old implementation:
+#   1. expired entries were never reused, so ordinary traffic from 1024
+#      distinct addresses filled the table forever;
+#   2. a full table meant "allow everything" (fail open).
+import "../packages/test/test.kh"
+
+let t = test_suite("Rate limiter")
+
+# --- basic limiting -----------------------------------------------------------
+t = test_true(t, "1st request allowed", rate_limit_check("rl-a", 3, 3600))
+t = test_true(t, "2nd request allowed", rate_limit_check("rl-a", 3, 3600))
+t = test_true(t, "3rd request allowed", rate_limit_check("rl-a", 3, 3600))
+t = test_false(t, "4th request blocked", rate_limit_check("rl-a", 3, 3600))
+t = test_false(t, "5th request still blocked", rate_limit_check("rl-a", 3, 3600))
+t = test_true(t, "a different key is independent", rate_limit_check("rl-b", 3, 3600))
+
+# --- window expiry --------------------------------------------------------------
+t = test_true(t, "short window: 1st", rate_limit_check("rl-exp", 2, 1))
+t = test_true(t, "short window: 2nd", rate_limit_check("rl-exp", 2, 1))
+t = test_false(t, "short window: 3rd blocked", rate_limit_check("rl-exp", 2, 1))
+sleep(1300)
+t = test_true(t, "after the window the key is allowed again", rate_limit_check("rl-exp", 2, 1))
+
+# --- expired entries are reused (old code: table filled up for good) --------------------
+let i = 0
+while i < 5000:
+    rate_limit_check("short-" + str(i), 5, 1)
+    i = i + 1
+sleep(1300)
+let j = 0
+let all_ok = true
+while j < 5000:
+    if not rate_limit_check("second-wave-" + str(j), 5, 1):
+        all_ok = false
+    j = j + 1
+t = test_true(t, "5000 more distinct keys after expiry are all admitted", all_ok)
+t = test_true(t, "limiting still works afterwards: 1st", rate_limit_check("after-wave", 2, 3600))
+t = test_true(t, "limiting still works afterwards: 2nd", rate_limit_check("after-wave", 2, 3600))
+t = test_false(t, "limiting still works afterwards: 3rd BLOCKED (not failing open)", rate_limit_check("after-wave", 2, 3600))
+
+# --- flood of live keys: never fail open, blocked keys stay blocked ------------------------
+let k = 0
+while k < 4:
+    rate_limit_check("hot-key", 3, 3600)
+    k = k + 1
+t = test_false(t, "hot key is blocked before the flood", rate_limit_check("hot-key", 3, 3600))
+
+let f = 0
+while f < 9000:
+    rate_limit_check("flood-" + str(f), 5, 3600)
+    f = f + 1
+t = test_false(t, "hot key is STILL blocked after 9000 distinct live keys flooded the table", rate_limit_check("hot-key", 3, 3600))
+t = test_true(t, "a brand-new key is still admitted while the table is full", rate_limit_check("newcomer", 2, 3600))
+t = test_true(t, "newcomer 2nd", rate_limit_check("newcomer", 2, 3600))
+t = test_false(t, "newcomer is limited correctly too (no fail-open)", rate_limit_check("newcomer", 2, 3600))
+
+test_run(t)
