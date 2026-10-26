@@ -539,3 +539,38 @@ Things to know:
   Node's OpenSSL on randomised inputs, against a real Kosh server over sockets,
   and in jsdom. It has not been run in real browsers (Chrome/Firefox/Safari).
 
+### Live self-check (`/_webi/proof`)
+
+Opt in with `"proof": true`. Three public endpoints appear:
+
+| Path | What |
+|---|---|
+| `/_webi/proof` | A page that runs real checks in the visitor's browser against this server |
+| `/_webi/proof.js` | its script (hash in `X-Webi-Proof-SHA256`) |
+| `/_webi/proof.json` | configuration and counters (protocol, primitives, `require_secure`, sessions, handshakes, rejected requests, `external_review`) |
+
+The page performs: HTTPS check, X25519 handshake, an encrypted round trip with a
+random nonce, a check that the packet on the wire shows no path/query/method,
+replay rejection, tamper rejection, identical failure responses, the plain-access
+policy and a client-hash consistency check. It also lists, on the page itself,
+what it does **not** prove: no external review has happened (`external_review` is
+`false` in `proof.json`), it tests behaviour not code, a malicious server could
+serve a page that always says PASS, and a compromised browser can read the keys.
+It does not list your routes. Its CSP (`default-src 'none'; script-src 'self'`,
+no framing) is set by webi.
+
+`tests/js/test_webi_js_browser.js` runs the page in jsdom against a healthy server
+(no check fails) and against a server with replay protection deliberately
+disabled (the page must report a failure).
+
+A badge is available as an ordinary link, not a claim:
+
+```
+webi_badge_html()   # <a href="/_webi/proof" rel="noopener">Webi secure channel: verify live</a>
+```
+
+It is opt-in on purpose: forced, un-removable badges prove nothing (a fork removes
+them) and the live page is what lets a visitor check for themselves.
+`proof` also registers a probe route, `GET /.well-known/webi-proof`, which echoes
+a nonce; with `require_secure` it is reachable only through the channel.
+

@@ -38,6 +38,12 @@ fn h_page(req):
 fn h_json(req):
     return res_json({"ok": true})
 
+# argv[1] == "broken": deliberately disables replay protection, to prove that
+# the /_webi/proof self-check actually catches a broken server.
+if len(argv) > 1 and argv[1] == "broken":
+    fn wsec_counter_ok(session, ctr):
+        return true
+
 let app = webi_app()
 app = route(app, "GET", "/", h_home)
 app = route(app, "GET", "/hello", h_hello)
@@ -48,5 +54,5 @@ app = route(app, "POST", "/big", h_big)
 app = route(app, "GET", "/blog/post", h_post)
 app = route(app, "GET", "/page", h_page)
 app = route(app, "GET", "/data.json", h_json)
-app = webi_enable_secure(app, {"require_secure": true, "public": ["/"], "bot_paths": ["/blog/"], "bootstrap": true, "handshake_per_min": 100000, "requests_per_min": 1000000})
+app = webi_enable_secure(app, {"require_secure": true, "public": ["/"], "bot_paths": ["/blog/"], "bootstrap": true, "proof": true, "handshake_per_min": 100000, "requests_per_min": 1000000})
 webi_run_host(app, "127.0.0.1", num(argv[0]))

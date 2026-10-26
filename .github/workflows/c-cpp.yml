@@ -227,6 +227,21 @@ jobs:
         npm install --prefix "$RUNNER_TEMP/jsd" jsdom --no-audit --no-fund
         JSDOM_PATH="$RUNNER_TEMP/jsd/node_modules/jsdom" node tests/js/test_webi_js_browser.js
 
+    - name: Webi channel property fuzzer (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        ./kosh tests/fuzz/fuzz_webi.kh 1 1000
+        ./kosh tests/fuzz/fuzz_webi.kh 2 1000
+
+    - name: Webi channel property fuzzer (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/fuzz/fuzz_webi.kh 1 500
+
+    - name: JS client fuzz + differential vs OpenSSL and the real server (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: node tests/js/fuzz_webi_js.js 1 1
+
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: ./kosh tests/test_vision.kh
@@ -407,6 +422,8 @@ jobs:
         ./kosh_asan tests/test_dns.kh
         ./kosh_asan tests/test_webi_bot.kh
         ./kosh_asan tests/test_webi_client_serve.kh
+        ./kosh_asan tests/fuzz/fuzz_webi.kh 11 800
+        ./kosh_asan tests/fuzz/fuzz_webi.kh 12 800
 
     - name: Upload Artifacts (Linux)
       if: matrix.os == 'ubuntu-latest'

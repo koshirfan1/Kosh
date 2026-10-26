@@ -93,8 +93,8 @@ review**.
 - **M2 sealed packets + replay window + HTTP integration** - done (`secure_http.kh`, `tests/test_webi_secure_http.kh`, `examples/webi_secure_demo.kh`).
 - **M3 bot verification** (forward-confirmed rDNS, cache, budgets, `bot_paths`) - done (`bot.kh`, `tests/test_webi_bot.kh`, `tests/test_dns.kh`).
 - **M4 browser client** - done as plain JavaScript (`client/webi.js`, ~20 KB, no WASM: not needed for correctness, auditable, no load delay, and no WASM toolchain was available). Tested in Node (RFC + OpenSSL vectors), end-to-end against a real server, and in jsdom. **Not yet run in real browsers.**
-- **M5 `/webi/proof` page** - pending.
-- **M6 fuzzing + external crypto review before 1.0** - pending.
+- **M5 `/_webi/proof` live self-check** - done (opt-in, `"proof": true`). The badge is an optional link (`webi_badge_html()`), deliberately not force-injected: a forced badge is a claim, not proof, and any fork can remove it.
+- **M6 fuzzing** - done, see [webi-testing.md](webi-testing.md). **External crypto review before 1.0 - NOT done and cannot be done by the authors; still required.**
 
 ## 9. Open questions
 

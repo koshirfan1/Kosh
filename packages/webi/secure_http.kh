@@ -30,6 +30,13 @@
 # ({name: {"uas": [...], "suffixes": [".example.com"]}}) and
 # "bot_lookups_per_min" (20).
 #
+# Proof page (opt-in, "proof": true): GET /_webi/proof is a live self-check
+# that runs real tests in the visitor's browser (handshake, authenticated round
+# trip, wire opacity, replay and tamper rejection, plain-access policy) and
+# GET /_webi/proof.json publishes the configuration and counters. It states
+# plainly what it does NOT prove (no external review has been done). The
+# optional badge is just a link to that page: webi_badge_html().
+#
 # Browsers: GET /_webi/client.js serves the JavaScript client (always in the
 # clear, it is public code). With "bootstrap": true, a browser navigation
 # (GET with Accept: text/html) to a protected path gets a tiny shell page
@@ -99,6 +106,7 @@ fn webi_enable_secure(app, opts):
     let bot_extra = nil
     let bot_budget = 20
     let bootstrap = false
+    let proof = false
     if type(opts) == "map":
         if has(opts, "require_secure"):
             require = opts["require_secure"] == true
@@ -114,6 +122,8 @@ fn webi_enable_secure(app, opts):
             bot_budget = opts["bot_lookups_per_min"]
         if has(opts, "bootstrap"):
             bootstrap = opts["bootstrap"] == true
+        if has(opts, "proof"):
+            proof = opts["proof"] == true
         if has(opts, "max_sessions"):
             max_sessions = opts["max_sessions"]
         if has(opts, "ttl"):
@@ -129,10 +139,81 @@ fn webi_enable_secure(app, opts):
     store["public"] = public_paths
     store["bot_paths"] = bot_paths
     store["bootstrap"] = bootstrap
+    store["proof"] = proof
+    store["started"] = timestamp()
+    store["stats"] = {
+        "handshakes_ok": 0, "handshakes_refused": 0,
+        "secure_requests_ok": 0, "secure_requests_rejected": 0,
+        "plain_requests_refused": 0, "rate_limited": 0,
+        "crawlers_verified": 0, "shells_served": 0
+    }
     store["bot"] = wbot_new(bot_names, bot_extra, bot_budget)
     store["_inside"] = false
     app["_secure"] = store
+    if proof:
+        app = route(app, "GET", WSEC_PROBE_PATH, _wsec_probe)
     return app
+
+# Counter bump (counters feed /_webi/proof.json only).
+fn _wsec_stat(store, key):
+    store["stats"][key] = store["stats"][key] + 1
+
+# ---------------------------------------------------------------------------
+# proof page (opt-in)
+# ---------------------------------------------------------------------------
+
+let WSEC_PROBE_PATH = "/.well-known/webi-proof"
+
+# Echoes a nonce so the proof page can show an authenticated round trip.
+fn _wsec_probe(req):
+    let n = query_get(req, "n", "")
+    if len(n) > 64:
+        n = ""
+    return res_json({"ok": true, "nonce": n})
+
+let WSEC_PROOF_HTML = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>Webi secure channel - live self-check</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;color:#1b1f23}h1{font-size:1.4rem}h2{font-size:1.1rem;margin-top:2rem}ul{list-style:none;padding:0}li{margin:.5rem 0;padding:.5rem .75rem;border-left:4px solid #999;background:#f6f8fa}li.pass{border-color:#1a7f37}li.fail{border-color:#cf222e;background:#fff0f0}li.warn{border-color:#9a6700;background:#fff8e1}li.info{border-color:#0969da}.tag{font:600 .75rem monospace;margin-right:.4rem}.detail{font-size:.85rem;color:#57606a;word-break:break-all}dl{display:grid;grid-template-columns:max-content 1fr;gap:.2rem 1rem}dt{color:#57606a}dd{margin:0}#summary{font-weight:700;padding:.5rem .75rem;background:#eee}#summary.good{background:#dafbe1}#summary.bad{background:#ffebe9}#summary.meh{background:#fff8c5}.limits li{border-color:#999}</style></head><body><h1>Webi secure channel: live self-check</h1><p>These checks run right now, in your browser, against this server, using the same client code applications use.</p><div id=\"summary\">Running checks...</div><ul id=\"checks\"></ul><h2>Server configuration</h2><dl id=\"facts\"></dl><h2>What this does not prove</h2><ul class=\"limits\"><li>That the server software is free of bugs. These checks test behaviour, not code.</li><li>That the protocol has been independently reviewed. It has not; see \"External cryptographic review\" above.</li><li>That your browser or network is trustworthy. Script running in this page (an extension, XSS) could read the keys.</li><li>That this page itself is genuine. A malicious server could serve a page that always says PASS. Compare the client hash with one you pinned elsewhere, and prefer your own tests.</li><li>That plain HTTP is safe: the channel assumes TLS.</li></ul><noscript>This page needs JavaScript.</noscript><script src=\"/_webi/client.js\"></script><script src=\"/_webi/proof.js\"></script></body></html>"
+
+fn _wsec_proof_json(store):
+    return {
+        "protocol": "kosh-webi/1",
+        "webi_version": "1.2.0",
+        "primitives": {
+            "kex": "X25519 (RFC 7748), ephemeral",
+            "kdf": "HKDF-SHA256 (RFC 5869)",
+            "aead": "ChaCha20-Poly1305 (RFC 8439)"
+        },
+        "replay_window": WSEC_WINDOW,
+        "require_secure": store["require"],
+        "bootstrap": store["bootstrap"],
+        "bot_verification": len(store["bot_paths"]) > 0,
+        "sessions_active": store["count"],
+        "uptime_seconds": timestamp() - store["started"],
+        "stats": store["stats"],
+        "client_sha256": WEBI_CLIENT_JS_SHA256,
+        "external_review": false,
+        "runs_inside_tls_required": true
+    }
+
+fn _wsec_proof_res(path, store):
+    if path == "/_webi/proof":
+        let page = res_html(WSEC_PROOF_HTML)
+        page = res_with_header(page, "Cache-Control", "no-store")
+        page = res_with_header(page, "X-Content-Type-Options", "nosniff")
+        return res_with_header(page, "Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+    if path == "/_webi/proof.js":
+        let js = res_status(200, WEBI_PROOF_JS)
+        js["content_type"] = "application/javascript; charset=utf-8"
+        js = res_with_header(js, "Cache-Control", "public, max-age=300")
+        js = res_with_header(js, "X-Content-Type-Options", "nosniff")
+        return res_with_header(js, "X-Webi-Proof-SHA256", WEBI_PROOF_JS_SHA256)
+    if path == "/_webi/proof.json":
+        let j = res_json(_wsec_proof_json(store))
+        return res_with_header(j, "Cache-Control", "no-store")
+    return nil
+
+# Optional badge: an ordinary link to the live self-check, NOT a claim.
+fn webi_badge_html():
+    return "<a href=\"/_webi/proof\" rel=\"noopener\">Webi secure channel: verify live</a>"
 
 # ---------------------------------------------------------------------------
 # server side
@@ -172,11 +253,14 @@ fn _wsec_gate(app, req):
         let name = wbot_check_request(store["bot"], req)
         if name != nil:
             req["verified_bot"] = name
+            _wsec_stat(store, "crawlers_verified")
             return nil
     if store["bootstrap"] == true and req["method"] == "GET":
         let accept = wbot_header(req, "accept")
         if type(accept) == "string" and contains(lower(accept), "text/html"):
+            _wsec_stat(store, "shells_served")
             return _wsec_shell()
+    _wsec_stat(store, "plain_requests_refused")
     return _wsec_plain_res(426, "Secure channel required")
 
 # The page browsers get instead of 426 when "bootstrap" is on.
@@ -193,6 +277,13 @@ fn _wsec_handle(app, req):
     let store = app["_secure"]
     if store == nil:
         return nil
+    if store["proof"] == true and (req["path"] == "/_webi/proof" or req["path"] == "/_webi/proof.js" or req["path"] == "/_webi/proof.json"):
+        if req["method"] != "GET" and req["method"] != "HEAD":
+            return _wsec_plain_res(405, "Method Not Allowed")
+        if not rate_limit_check("wsec_js:" + req["ip"], store["req_limit"], 60):
+            _wsec_stat(store, "rate_limited")
+            return _wsec_plain_res(429, "Too Many Requests")
+        return _wsec_proof_res(req["path"], store)
     if req["path"] == "/_webi/client.js":
         if req["method"] != "GET" and req["method"] != "HEAD":
             return _wsec_plain_res(405, "Method Not Allowed")
@@ -207,12 +298,14 @@ fn _wsec_handle(app, req):
         if req["method"] != "POST":
             return _wsec_plain_res(405, "Method Not Allowed")
         if not rate_limit_check("wsec_hs:" + req["ip"], store["hs_limit"], 60):
+            _wsec_stat(store, "rate_limited")
             return _wsec_plain_res(429, "Too Many Requests")
         return _wsec_http_handshake(store, req)
     if req["path"] == "/_webi/secure":
         if req["method"] != "POST":
             return _wsec_plain_res(405, "Method Not Allowed")
         if not rate_limit_check("wsec_rq:" + req["ip"], store["req_limit"], 60):
+            _wsec_stat(store, "rate_limited")
             return _wsec_plain_res(429, "Too Many Requests")
         return _wsec_http_secure(app, store, req)
     return nil
@@ -220,7 +313,9 @@ fn _wsec_handle(app, req):
 fn _wsec_http_handshake(store, req):
     let reply = wsec_server_accept(store, req["body_json"])
     if reply == nil:
+        _wsec_stat(store, "handshakes_refused")
         return _wsec_plain_res(400, "handshake rejected")
+    _wsec_stat(store, "handshakes_ok")
     return res_with_header(res_json(reply), "Cache-Control", "no-store")
 
 # The sealed inner request, validated. Returns a map of strings or nil.
@@ -263,9 +358,11 @@ fn _wsec_http_secure(app, store, req):
     let packet = req["body"]
     let p = wsec_parse(packet)
     if p == nil:
+        _wsec_stat(store, "secure_requests_rejected")
         return _wsec_plain_res(403, "rejected")
     let plain = wsec_server_open(store, packet, WSEC_AAD_REQ)
     if plain == nil:
+        _wsec_stat(store, "secure_requests_rejected")
         return _wsec_plain_res(403, "rejected")
 
     # From here on the packet is authentic, so errors get a proper sealed reply.
@@ -291,6 +388,7 @@ fn _wsec_http_secure(app, store, req):
     let sealed = wsec_server_seal(store, p["sid"], WSEC_AAD_RES, out)
     if sealed == nil:
         return _wsec_plain_res(500, "could not seal response")
+    _wsec_stat(store, "secure_requests_ok")
     return res_with_header(res_text(sealed), "Cache-Control", "no-store")
 
 # ---------------------------------------------------------------------------
