@@ -30,6 +30,14 @@
 # ({name: {"uas": [...], "suffixes": [".example.com"]}}) and
 # "bot_lookups_per_min" (20).
 #
+# Browsers: GET /_webi/client.js serves the JavaScript client (always in the
+# clear, it is public code). With "bootstrap": true, a browser navigation
+# (GET with Accept: text/html) to a protected path gets a tiny shell page
+# instead of 426; the shell loads the client, which fetches the real page
+# through the channel and replaces the document with it. The shell reveals
+# nothing but the URL the browser already knows, is never cached, and carries
+# X-Robots-Tag: noindex. API clients (no text/html in Accept) still get 426.
+#
 # That adds two endpoints, handled BEFORE the app's middlewares:
 #
 #   POST /_webi/handshake   body: {"v":1,"pub":"<64 hex>"}
@@ -90,6 +98,7 @@ fn webi_enable_secure(app, opts):
     let bot_names = nil
     let bot_extra = nil
     let bot_budget = 20
+    let bootstrap = false
     if type(opts) == "map":
         if has(opts, "require_secure"):
             require = opts["require_secure"] == true
@@ -103,6 +112,8 @@ fn webi_enable_secure(app, opts):
             bot_extra = opts["extra_bots"]
         if has(opts, "bot_lookups_per_min"):
             bot_budget = opts["bot_lookups_per_min"]
+        if has(opts, "bootstrap"):
+            bootstrap = opts["bootstrap"] == true
         if has(opts, "max_sessions"):
             max_sessions = opts["max_sessions"]
         if has(opts, "ttl"):
@@ -117,6 +128,7 @@ fn webi_enable_secure(app, opts):
     store["require"] = require
     store["public"] = public_paths
     store["bot_paths"] = bot_paths
+    store["bootstrap"] = bootstrap
     store["bot"] = wbot_new(bot_names, bot_extra, bot_budget)
     store["_inside"] = false
     app["_secure"] = store
@@ -161,7 +173,19 @@ fn _wsec_gate(app, req):
         if name != nil:
             req["verified_bot"] = name
             return nil
+    if store["bootstrap"] == true and req["method"] == "GET":
+        let accept = wbot_header(req, "accept")
+        if type(accept) == "string" and contains(lower(accept), "text/html"):
+            return _wsec_shell()
     return _wsec_plain_res(426, "Secure channel required")
+
+# The page browsers get instead of 426 when "bootstrap" is on.
+let WSEC_SHELL = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>Loading</title></head><body><noscript>This page needs JavaScript to open a secure channel.</noscript><script src=\"/_webi/client.js\" data-webi-bootstrap></script></body></html>"
+
+fn _wsec_shell():
+    let res = res_html(WSEC_SHELL)
+    res = res_with_header(res, "Cache-Control", "no-store")
+    return res_with_header(res, "X-Robots-Tag", "noindex")
 
 # Called by webi_handle() for paths under /_webi/. Returns a response map if
 # it handled the request, nil if the path is not one of ours.
@@ -169,6 +193,16 @@ fn _wsec_handle(app, req):
     let store = app["_secure"]
     if store == nil:
         return nil
+    if req["path"] == "/_webi/client.js":
+        if req["method"] != "GET" and req["method"] != "HEAD":
+            return _wsec_plain_res(405, "Method Not Allowed")
+        if not rate_limit_check("wsec_js:" + req["ip"], store["req_limit"], 60):
+            return _wsec_plain_res(429, "Too Many Requests")
+        let js = res_status(200, WEBI_CLIENT_JS)
+        js["content_type"] = "application/javascript; charset=utf-8"
+        js = res_with_header(js, "Cache-Control", "public, max-age=300")
+        js = res_with_header(js, "X-Content-Type-Options", "nosniff")
+        return res_with_header(js, "X-Webi-Client-SHA256", WEBI_CLIENT_JS_SHA256)
     if req["path"] == "/_webi/handshake":
         if req["method"] != "POST":
             return _wsec_plain_res(405, "Method Not Allowed")

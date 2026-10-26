@@ -19,8 +19,10 @@
     "meta.kh",
     "secure.kh",
     "bot.kh",
+    "client_js.kh",
     "secure_http.kh",
     "requests.kh",
-    "json.kh"
+    "json.kh",
+    "client/webi.js"
   ]
 }

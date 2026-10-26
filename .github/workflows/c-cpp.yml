@@ -205,6 +205,28 @@ jobs:
         ./kosh.exe tests/test_dns.kh
         ./kosh.exe tests/test_webi_bot.kh
 
+    - name: Run browser-client serving test suite (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: ./kosh tests/test_webi_client_serve.kh
+
+    - name: Run browser-client serving test suite (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/test_webi_client_serve.kh
+
+    - name: JS client - RFC and OpenSSL vector tests (Node)
+      run: node tests/js/test_webi_js_vectors.js
+
+    - name: JS client - end-to-end against the real server (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: node tests/js/test_webi_js_e2e.js
+
+    - name: JS client - browser bootstrap in jsdom (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        npm install --prefix "$RUNNER_TEMP/jsd" jsdom --no-audit --no-fund
+        JSDOM_PATH="$RUNNER_TEMP/jsd/node_modules/jsdom" node tests/js/test_webi_js_browser.js
+
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: ./kosh tests/test_vision.kh
@@ -384,6 +406,7 @@ jobs:
         ./kosh_asan tests/test_rate_limit.kh
         ./kosh_asan tests/test_dns.kh
         ./kosh_asan tests/test_webi_bot.kh
+        ./kosh_asan tests/test_webi_client_serve.kh
 
     - name: Upload Artifacts (Linux)
       if: matrix.os == 'ubuntu-latest'
