@@ -62,7 +62,7 @@ server authentication (pinned key + Ed25519 signature) is future work.
 | T7 | DNS flood via bot checks | Lookups only for crawler claims on bot paths; positive and negative caching; per-IP (3/h) and global (20/min) budgets; over budget = treated as ordinary client. Lookups still block the single-threaded server for their duration | Implemented, tested |
 | T8 | Plain-mode secret leak | `require_secure` refuses plain requests; only paths in the explicit `public` list are served in the clear (unknown paths also get 426, so route existence is not revealed) | Implemented, tested |
 | T9 | Downgrade | Version field bound into the AEAD aad; unknown versions rejected | Implemented, tested |
-| T10 | Key exposure to page JS | Strict CSP, key in memory only, short lifetime | Planned (M4) |
+| T10 | Key exposure to page JS | Key in memory only (never written to storage), fresh handshake per navigation, shell has no inline script so a strict CSP can stay enabled. Cannot be fully solved: script running in the page can read the key | Partly mitigated |
 
 ## 6. Nonce / replay design
 
@@ -92,7 +92,7 @@ review**.
 - **M1 handshake + key schedule** - done (`secure.kh`, `tests/test_webi_secure.kh`).
 - **M2 sealed packets + replay window + HTTP integration** - done (`secure_http.kh`, `tests/test_webi_secure_http.kh`, `examples/webi_secure_demo.kh`).
 - **M3 bot verification** (forward-confirmed rDNS, cache, budgets, `bot_paths`) - done (`bot.kh`, `tests/test_webi_bot.kh`, `tests/test_dns.kh`).
-- **M4 WASM client** (`webi.js`, < 20 KB) - pending.
+- **M4 browser client** - done as plain JavaScript (`client/webi.js`, ~20 KB, no WASM: not needed for correctness, auditable, no load delay, and no WASM toolchain was available). Tested in Node (RFC + OpenSSL vectors), end-to-end against a real server, and in jsdom. **Not yet run in real browsers.**
 - **M5 `/webi/proof` page** - pending.
 - **M6 fuzzing + external crypto review before 1.0** - pending.
 

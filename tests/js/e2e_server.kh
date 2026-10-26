@@ -1,0 +1,52 @@
+# Server used by tests/js/test_webi_js_e2e.js (JS client <-> real Kosh server).
+#   ./kosh tests/js/e2e_server.kh <port>
+import "../../packages/webi/webi.kh"
+
+fn h_home(req):
+    return res_html("<h1>public home</h1>")
+
+fn h_hello(req):
+    return res_html("<h1>Hello secret world</h1>")
+
+fn h_echo(req):
+    let r = res_json({
+        "method": req["method"],
+        "body": req["body"],
+        "q": query_get(req, "x", "none"),
+        "ua": query_get(req, "y", "none")
+    })
+    return res_with_header(r, "X-Echo", "yes")
+
+fn h_headers(req):
+    let v = "missing"
+    if has(req["headers"], "X-Custom"):
+        v = req["headers"]["X-Custom"]
+    return res_text(v)
+
+fn h_cookie(req):
+    return res_with_cookie(res_text("cookie set"), "sid", "abc123")
+
+fn h_big(req):
+    return res_text(req["body"])
+
+fn h_post(req):
+    return res_html("<h1>blog post</h1>")
+
+fn h_page(req):
+    return res_html("<!doctype html><html><head><title>Secret page</title></head><body><h1 id=\"t\">decrypted page</h1><p id=\"q\">" + query_get(req, "n", "no-query") + "</p><script>document.getElementById(\"t\").setAttribute(\"data-ran\", \"yes\")</script></body></html>")
+
+fn h_json(req):
+    return res_json({"ok": true})
+
+let app = webi_app()
+app = route(app, "GET", "/", h_home)
+app = route(app, "GET", "/hello", h_hello)
+app = route(app, "POST", "/echo", h_echo)
+app = route(app, "GET", "/headers", h_headers)
+app = route(app, "GET", "/cookie", h_cookie)
+app = route(app, "POST", "/big", h_big)
+app = route(app, "GET", "/blog/post", h_post)
+app = route(app, "GET", "/page", h_page)
+app = route(app, "GET", "/data.json", h_json)
+app = webi_enable_secure(app, {"require_secure": true, "public": ["/"], "bot_paths": ["/blog/"], "bootstrap": true, "handshake_per_min": 100000, "requests_per_min": 1000000})
+webi_run_host(app, "127.0.0.1", num(argv[0]))

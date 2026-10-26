@@ -1,0 +1,80 @@
+# The browser client served by webi: /_webi/client.js and the bootstrap shell.
+import "../packages/test/test.kh"
+import "../packages/webi/webi.kh"
+
+let t = test_suite("Webi browser client serving")
+
+fn read_client_source():
+    let src = read_file("packages/webi/client/webi.js")
+    if src == nil:
+        src = read_file("../packages/webi/client/webi.js")
+    return src
+
+fn h_secret(req):
+    return res_html("<h1>secret</h1>")
+
+fn h_blog(req):
+    return res_html("<h1>blog</h1>")
+
+# ---- the embedded copy matches the real file (run tools/gen_client_js.py after edits) ------------
+let src = read_client_source()
+t = test_not_nil(t, "client source file is readable", src)
+t = test_eq(t, "embedded client_js.kh is identical to client/webi.js (no drift)", WEBI_CLIENT_JS, str_replace(src, "\r\n", "\n"))
+t = test_eq(t, "embedded hash matches the embedded script", sha256(WEBI_CLIENT_JS), WEBI_CLIENT_JS_SHA256)
+t = test_true(t, "client is under 24 KB", len(WEBI_CLIENT_JS) < 24576)
+
+# ---- /_webi/client.js ------------------------------------------------------------------------------
+let app = webi_app()
+app = route(app, "GET", "/secret", h_secret)
+app = route(app, "GET", "/blog/post", h_blog)
+app = webi_enable_secure(app, {"require_secure": true, "bot_paths": ["/blog/"], "bootstrap": true, "requests_per_min": 100000})
+
+let js = webi_handle(app, "GET", "/_webi/client.js", "", "", "", "10.0.0.1")
+t = test_eq(t, "client.js is served in the clear even under require_secure", js["status"], 200)
+t = test_eq(t, "client.js body is the embedded script", js["body"], WEBI_CLIENT_JS)
+t = test_contains_str(t, "client.js content type is JavaScript", js["content_type"], "application/javascript")
+t = test_eq(t, "client.js is sent with nosniff", js["headers"]["X-Content-Type-Options"], "nosniff")
+t = test_eq(t, "client.js advertises its SHA-256", js["headers"]["X-Webi-Client-SHA256"], WEBI_CLIENT_JS_SHA256)
+t = test_contains_str(t, "client.js is publicly cacheable (it is public code)", js["headers"]["Cache-Control"], "public")
+t = test_eq(t, "POST to client.js is 405", webi_handle(app, "POST", "/_webi/client.js", "", "", "", "10.0.0.1")["status"], 405)
+
+let plain_app = webi_app()
+t = test_eq(t, "without secure mode client.js does not exist", webi_handle(plain_app, "GET", "/_webi/client.js", "", "", "", "10.0.0.1")["status"], 404)
+
+# ---- bootstrap shell ------------------------------------------------------------------------------------
+let BROWSER = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\nUser-Agent: Mozilla/5.0 Firefox/120.0"
+let shell = webi_handle(app, "GET", "/secret", "", BROWSER, "", "10.0.0.2")
+t = test_eq(t, "a browser navigation gets the shell (200)", shell["status"], 200)
+t = test_contains_str(t, "the shell loads the client", shell["body"], "/_webi/client.js")
+t = test_contains_str(t, "the shell asks the client to bootstrap (no inline script)", shell["body"], "data-webi-bootstrap")
+t = test_false(t, "the shell has no inline script (CSP friendly)", contains(shell["body"], "<script>"))
+t = test_false(t, "the shell contains none of the real page", contains(shell["body"], "secret</h1>"))
+t = test_eq(t, "the shell is never cached", shell["headers"]["Cache-Control"], "no-store")
+t = test_eq(t, "the shell is marked noindex", shell["headers"]["X-Robots-Tag"], "noindex")
+t = test_contains_str(t, "the shell has a noindex meta tag too", shell["body"], "noindex")
+
+let api = webi_handle(app, "GET", "/secret", "", "Accept: application/json", "", "10.0.0.2")
+t = test_eq(t, "an API client (no text/html in Accept) still gets 426", api["status"], 426)
+let noaccept = webi_handle(app, "GET", "/secret", "", "", "", "10.0.0.2")
+t = test_eq(t, "a request with no Accept header gets 426", noaccept["status"], 426)
+let post = webi_handle(app, "POST", "/secret", "", BROWSER, "", "10.0.0.2")
+t = test_eq(t, "only GET navigations get the shell, POST gets 426", post["status"], 426)
+
+# fake Googlebot on a bot path: not verified, but it sends text/html -> sees only the empty shell
+let fake = webi_handle(app, "GET", "/blog/post", "", "Accept: text/html\nUser-Agent: Googlebot/2.1", "", "10.0.0.3")
+t = test_false(t, "a fake Googlebot never receives the real page", contains(fake["body"], "blog</h1>"))
+
+# bootstrap off (default): browsers get the plain 426
+let strict = webi_enable_secure(webi_app(), {"require_secure": true})
+let off = webi_handle(strict, "GET", "/secret", "", BROWSER, "", "10.0.0.4")
+t = test_eq(t, "without the bootstrap option browsers get 426", off["status"], 426)
+
+# the shell works through to the real page over the channel
+let c1 = wsec_client_start()
+let hs = webi_handle(app, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(c1), "10.0.0.5")
+let sess = wsec_client_finish(c1, json_decode(hs["body"]))
+let pkt = wsec_client_request(sess, "GET", "/secret", "", {}, "")
+let inner = wsec_client_read_response(sess, webi_handle(app, "POST", "/_webi/secure", "", "", pkt, "10.0.0.5")["body"])
+t = test_eq(t, "the channel still delivers the real page", inner["body"], "<h1>secret</h1>")
+
+test_run(t)

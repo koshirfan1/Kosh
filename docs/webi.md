@@ -500,3 +500,42 @@ crawler's address is not visible unless the proxy forwards the connection
 transparently. Only crawlers that publish an rDNS domain are supported
 (DuckDuckBot publishes IP lists only). Users who arrive from a search result
 still need the channel (the WASM client, M4) to read the page.
+
+### Browser client (`webi.js`)
+
+`GET /_webi/client.js` serves a dependency-free JavaScript client (about 20 KB,
+unminified, ASCII only) that speaks the channel: SHA-256/HMAC/HKDF,
+ChaCha20-Poly1305 and X25519 are implemented in the file itself, so it needs no
+WebCrypto support and no WASM. Source: `packages/webi/client/webi.js`; the
+server embeds a generated copy (`client_js.kh`) - after editing the source run
+`python3 tools/gen_client_js.py` (a test fails if the two drift apart). The
+response carries `X-Webi-Client-SHA256`.
+
+```js
+const ch = await Webi.connect();                     // handshake
+const r  = await ch.request("GET", "/account?tab=1"); // r.status, r.headers, r.body, r.contentType
+```
+
+With `"bootstrap": true` a browser navigation (GET, `Accept: text/html`) to a
+protected path receives a tiny shell page instead of 426. The shell loads
+`/_webi/client.js` (no inline script, so a strict CSP can stay on); the client
+fetches the real page through the channel and replaces the document with it.
+The shell never reveals more than the URL, is never cached and is `noindex`.
+Verified crawlers on `bot_paths` bypass the shell and get the page directly.
+
+Things to know:
+- The client is plain JavaScript, not constant-time, and not hardened against
+  script running in the same page: XSS or a malicious extension can read the
+  session key and everything decrypted. Use a strict CSP.
+- Hiding HTML from View-Source is a side effect, not a security property; the
+  decrypted DOM is visible in DevTools.
+- Each navigation performs a fresh handshake (keys are kept in memory only).
+- Only text responses work (the inner message is JSON). `Set-Cookie` values in
+  sealed responses are returned in `r.cookies` but are not applied by the
+  client; keep session state in tokens your page handles itself.
+- Link clicks and form posts are ordinary navigations (each gets the shell,
+  then bootstraps); there is no SPA-style interception yet.
+- The client is tested against RFC 8439 / 7748 / 5869 / 4231 vectors, against
+  Node's OpenSSL on randomised inputs, against a real Kosh server over sockets,
+  and in jsdom. It has not been run in real browsers (Chrome/Firefox/Safari).
+
