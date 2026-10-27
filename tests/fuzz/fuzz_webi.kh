@@ -1,0 +1,344 @@
+# tests/fuzz/fuzz_webi.kh - property fuzzer for the Webi encrypted channel.
+#
+#   ./kosh tests/fuzz/fuzz_webi.kh [seed] [iterations]
+#
+# Deterministic: the same seed reproduces the same run. A failure prints the
+# property that broke plus the seed and iteration, and exits 1. Run it under
+# AddressSanitizer/UBSan (CI does) so a memory error in the native crypto or
+# parsers also fails the run.
+#
+# Properties checked
+#   P1  random / garbage packets never authenticate
+#   P2  EVERY single-character mutation, insertion, deletion and truncation of a
+#       valid packet is rejected (and forged attempts never advance the replay
+#       window: the genuine packet still opens afterwards)
+#   P3  random handshake hellos either fail cleanly or yield a well-formed
+#       reply; the session store never exceeds its cap
+#   P4  random AUTHENTICATED inner requests (hostile methods, paths, headers,
+#       bodies, nested /_webi/ tricks) always produce a sealed, authentic
+#       reply with a sane inner status, and can never reach the channel's own
+#       endpoints (no handshake / session growth through the channel)
+#   P5  random unauthenticated requests to every /_webi/ endpoint never crash
+#       and never produce a 5xx
+#   P6  crawler verification never accepts an address that is not genuine
+#   P7  native crypto never accepts random ciphertext and never crashes
+import "../../packages/test/test.kh"
+import "../../packages/webi/webi.kh"
+
+let SEED = 1
+let ITERS = 1000
+if len(argv) > 0:
+    SEED = num(argv[0])
+if len(argv) > 1:
+    ITERS = num(argv[1])
+
+# ---- deterministic PRNG (Park-Miller; products stay below 2^53) ------------------------
+let RNG = SEED % 2147483646 + 1
+fn rnd(n):
+    RNG = (RNG * 16807) % 2147483647
+    return RNG % n
+
+let FAILS = 0
+let CTX = "setup"
+fn bad(msg):
+    FAILS = FAILS + 1
+    print "  FUZZ FAIL [" + CTX + "] " + msg + "   (seed=" + str(SEED) + ")"
+    if FAILS >= 10:
+        print "  too many failures, stopping"
+        exit(1)
+
+let ALPHA = "0123456789abcdefABCDEF._-/%:;|\"'\\{}[] \n\t,=&?#@!$()*+<>^~`vVsSwW"
+let HEXC = "0123456789abcdef"
+let PARTS = ["", "v1", "v1.", "v2.", ".", "..", "...", "0", "00", "-1", "1e5", "99999999999999999999", "281474976710655", "281474976710656", "null", "true", "{}", "[]", "\"", "\\", "%00", "%5fwebi", "\n", " ", "é", "✓", "你好"]
+
+fn rstr(maxlen):
+    let n = rnd(maxlen + 1)
+    let s = ""
+    let i = 0
+    while i < n:
+        s = s + substring(ALPHA, rnd(len(ALPHA)), 1)
+        i = i + 1
+    return s
+
+fn rhex(n):
+    let s = ""
+    let i = 0
+    while i < n:
+        s = s + substring(HEXC, rnd(16), 1)
+        i = i + 1
+    return s
+
+fn rpart():
+    return PARTS[rnd(len(PARTS))]
+
+fn pick(list):
+    return list[rnd(len(list))]
+
+# ---- fixtures -----------------------------------------------------------------------------
+fn h_hello(req):
+    return res_html("<h1>hello</h1>")
+
+fn h_echo(req):
+    return res_json({"b": req["body"], "m": req["method"], "p": req["path"]})
+
+let app = webi_app()
+app = route(app, "GET", "/hello", h_hello)
+app = route(app, "POST", "/echo", h_echo)
+app = webi_enable_secure(app, {"require_secure": true, "public": ["/"], "bot_paths": ["/blog/"], "bootstrap": true, "proof": true, "max_sessions": 5000, "handshake_per_min": 1000000000, "requests_per_min": 1000000000})
+let store = app["_secure"]
+
+fn connect(ip):
+    let c = wsec_client_start()
+    let r = webi_handle(app, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(c), ip)
+    if r["status"] != 200:
+        bad("handshake failed in fixture, status " + str(r["status"]))
+        return nil
+    return wsec_client_finish(c, json_decode(r["body"]))
+
+# =====================================================================================
+CTX = "P1 garbage packets"
+let s1 = connect("10.0.0.1")
+let i = 0
+while i < ITERS:
+    let p = ""
+    let kind = rnd(6)
+    if kind == 0:
+        p = rstr(300)
+    if kind == 1:
+        p = "v1." + s1["sid"] + "." + rpart() + "." + rhex(rnd(200))
+    if kind == 2:
+        p = "v1." + s1["sid"] + "." + str(rnd(100)) + "." + rhex(32 + rnd(100) * 2)
+    if kind == 3:
+        p = rpart() + rpart() + rpart() + rpart()
+    if kind == 4:
+        p = "v1." + rhex(32) + "." + str(rnd(1000)) + "." + rhex(64)
+    if kind == 5:
+        p = "v1." + s1["sid"] + "." + str(rnd(5)) + "." + rhex(32 + rnd(10) * 2) + rstr(3)
+    if wsec_server_open(store, p, "webi-req") != nil:
+        bad("garbage packet authenticated: " + p)
+    let r = webi_handle(app, "POST", "/_webi/secure", "", "", p, "10.0.0.1")
+    if r["status"] != 403 and r["status"] != 429:
+        bad("garbage packet got status " + str(r["status"]) + " instead of 403: " + p)
+    i = i + 1
+
+# =====================================================================================
+CTX = "P2 mutation of a valid packet"
+let s2 = connect("10.0.0.2")
+let genuine = wsec_client_request(s2, "GET", "/hello", "", {}, "")
+let g = wsec_parse(genuine)
+
+fn equivalent(m):
+    # mutated text that is the SAME packet in a different spelling (upper-case
+    # hex, leading zeros in the counter) is not a forgery
+    let q = wsec_parse(m)
+    if q == nil:
+        return false
+    return q["sid"] == g["sid"] and q["ctr"] == g["ctr"] and lower(q["ct"]) == g["ct"]
+
+let tried = 0
+let pos = 0
+while pos < len(genuine):
+    let k = 0
+    while k < len(ALPHA):
+        let ch = substring(ALPHA, k, 1)
+        let replaced = substring(genuine, 0, pos) + ch + substring(genuine, pos + 1, len(genuine) - pos - 1)
+        let inserted = substring(genuine, 0, pos) + ch + substring(genuine, pos, len(genuine) - pos)
+        if replaced != genuine and not equivalent(replaced):
+            tried = tried + 1
+            if wsec_server_open(store, replaced, "webi-req") != nil:
+                bad("replacement at " + str(pos) + " with [" + ch + "] authenticated")
+        if not equivalent(inserted):
+            tried = tried + 1
+            if wsec_server_open(store, inserted, "webi-req") != nil:
+                bad("insertion at " + str(pos) + " of [" + ch + "] authenticated")
+        k = k + 1
+    let deleted = substring(genuine, 0, pos) + substring(genuine, pos + 1, len(genuine) - pos - 1)
+    if not equivalent(deleted):
+        tried = tried + 1
+        if wsec_server_open(store, deleted, "webi-req") != nil:
+            bad("deletion at " + str(pos) + " authenticated")
+    let cut = substring(genuine, 0, pos)
+    if wsec_server_open(store, cut, "webi-req") != nil:
+        bad("truncation to " + str(pos) + " authenticated")
+    pos = pos + 1
+let extended = genuine + "00"
+if wsec_server_open(store, extended, "webi-req") != nil:
+    bad("appended bytes authenticated")
+if wsec_server_open(store, genuine, "webi-req-x") != nil:
+    bad("genuine packet opened under the wrong caller aad")
+if wsec_server_open(store, genuine, "webi-req") == nil:
+    bad("forged attempts advanced the replay window / broke the session: the genuine packet no longer opens")
+if wsec_server_open(store, genuine, "webi-req") != nil:
+    bad("genuine packet opened twice")
+print "  P2: " + str(tried) + " mutated packets, all rejected"
+
+# =====================================================================================
+CTX = "P3 hello fuzz"
+let small = wsec_new_store(25, 3600)
+i = 0
+while i < ITERS:
+    let hello = nil
+    let kind = rnd(8)
+    if kind == 0:
+        hello = rstr(40)
+    if kind == 1:
+        hello = {}
+    if kind == 2:
+        hello = {"v": 1, "pub": rhex(64)}
+    if kind == 3:
+        hello = {"v": 1, "pub": rhex(rnd(130))}
+    if kind == 4:
+        hello = {"v": rpart(), "pub": rstr(70)}
+    if kind == 5:
+        hello = {"v": 1, "pub": wsec_client_start()["pub"]}
+    if kind == 6:
+        hello = {"v": 1.5, "pub": rhex(64), "extra": rstr(10)}
+    if kind == 7:
+        hello = [1, 2, 3]
+    let rep = wsec_server_accept(small, hello)
+    if rep != nil:
+        if type(rep) != "map" or len(rep["sid"]) != 32 or len(rep["pub"]) != 64 or rep["v"] != 1:
+            bad("malformed accept reply")
+    if small["count"] > 25:
+        bad("session cap exceeded: " + str(small["count"]))
+    i = i + 1
+
+# =====================================================================================
+CTX = "P4 authenticated hostile inner requests"
+let s4 = connect("10.0.0.4")
+let METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "TRACE", "CONNECT", "get", "", "GET ", "G\nET", "OPTIONS", "../", "BREW"]
+let PATHS = ["/", "/hello", "/echo", "/nope", "", "hello", "//", "/_webi", "/_webi/", "/_webi/handshake", "/_webi/secure", "/_webi/client.js", "/_webi/proof", "/_webi/proof.json", "/_WEBI/secure", "/%5fwebi/secure", "/%5Fwebi/handshake", "/./_webi/secure", "/x/../_webi/secure", "//_webi/secure", "/_webi%2fsecure", "/_webi\\secure", "/.well-known/webi-proof", "/blog/post", "/static/../../etc/passwd", "/hello?x=1", "/hello#frag", "/\u0000", "/ ", "/hello/"]
+let before_ok = store["stats"]["handshakes_ok"]
+let before_sessions = store["count"]
+let weird = 0
+i = 0
+while i < ITERS:
+    let plain = ""
+    let kind = rnd(5)
+    if kind == 0:
+        plain = rstr(200)
+    if kind == 1:
+        plain = json_encode({"method": pick(METHODS), "path": pick(PATHS), "query": rstr(30), "headers": rstr(60), "body": rstr(80)})
+    if kind == 2:
+        plain = json_encode({"method": rpart(), "path": rpart() + rstr(20), "query": rpart(), "headers": rpart(), "body": rpart()})
+    if kind == 3:
+        plain = "{\"method\": " + rpart() + ", \"path\": " + rpart() + "}"
+    if kind == 4:
+        plain = json_encode({"method": pick(["GET", "POST"]), "path": pick(PATHS), "headers": "X-A: " + rstr(20) + "\nContent-Type: " + rstr(10) + "\nCookie: " + rstr(20), "body": rstr(100)})
+    let pkt = wsec_seal(s4, "webi-req", plain)
+    if pkt == nil:
+        bad("could not seal")
+    else:
+        let outer = webi_handle(app, "POST", "/_webi/secure", "", "", pkt, "10.0.0.4")
+        if outer["status"] != 200:
+            bad("authenticated request got outer status " + str(outer["status"]) + " for plaintext " + plain)
+        else:
+            let inner = wsec_client_read_response(s4, outer["body"])
+            if inner == nil:
+                bad("authenticated request got an unreadable reply for plaintext " + plain)
+            else:
+                if type(inner["status"]) != "number" or inner["status"] < 100 or inner["status"] > 599:
+                    bad("inner status out of range: " + str(inner["status"]))
+                if inner["status"] >= 500:
+                    bad("inner 5xx (" + str(inner["status"]) + ") for plaintext " + plain)
+                let b = inner["body"]
+                if type(b) == "string" and (substring(b, 0, 3) == "v1." or contains(b, "\"sid\"") or contains(b, "kosh-webi/1")):
+                    bad("channel internals leaked through the channel for plaintext " + plain)
+    i = i + 1
+if store["stats"]["handshakes_ok"] != before_ok:
+    bad("a handshake happened through the channel (nesting guard broken)")
+if store["count"] != before_sessions:
+    bad("session count changed through the channel")
+
+# =====================================================================================
+CTX = "P5 unauthenticated requests to /_webi/ endpoints"
+let EPS = ["/_webi/handshake", "/_webi/secure", "/_webi/client.js", "/_webi/proof", "/_webi/proof.js", "/_webi/proof.json", "/_webi/", "/_webi", "/_webi/x", "/_webi/../", "/_webi/secure/", "/_webi/Secure", "/.well-known/webi-proof"]
+i = 0
+while i < ITERS:
+    let body = ""
+    let bk = rnd(5)
+    if bk == 0:
+        body = rstr(100)
+    if bk == 1:
+        body = json_encode({"v": rpart(), "pub": rstr(80)})
+    if bk == 2:
+        body = rpart() + rpart()
+    if bk == 3:
+        body = "v1." + rhex(32) + "." + rpart() + "." + rhex(40)
+    if bk == 4:
+        body = ""
+    let r = webi_handle(app, pick(["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"]), pick(EPS), rstr(40), rstr(80), body, "10.0." + str(rnd(250)) + "." + str(rnd(250)))
+    if type(r) != "map" or type(r["status"]) != "number":
+        bad("no response map")
+    else:
+        if r["status"] >= 500:
+            bad("5xx from an unauthenticated request: " + str(r["status"]))
+    i = i + 1
+
+# =====================================================================================
+CTX = "P6 crawler verification"
+let GOOD = {"66.249.66.1": "crawl-66-249-66-1.googlebot.com"}
+fn mock_rdns(ip):
+    if has(GOOD, ip):
+        return GOOD[ip]
+    if rnd(3) == 0:
+        return rstr(40)
+    if rnd(3) == 0:
+        return "x." + pick(["googlebot.com", "google.com", "search.msn.com"]) + "." + pick(["evil.com", "", "x"])
+    return nil
+
+fn mock_fwd(host, ip):
+    return host == "crawl-66-249-66-1.googlebot.com" and ip == "66.249.66.1"
+
+let UAS = ["Googlebot/2.1", "bingbot/2.0", "Mozilla/5.0 (compatible; Googlebot/2.1)", "applebot", "YANDEXBOT", "baiduspider", "Mozilla/5.0 Firefox", "", "googlebot"]
+i = 0
+while i < ITERS:
+    let b = wbot_new(nil, nil, 1000000)
+    b["rdns"] = mock_rdns
+    b["fwd"] = mock_fwd
+    let ip = "10." + str(rnd(250)) + "." + str(rnd(250)) + "." + str(rnd(250))
+    let ua = pick(UAS) + rstr(20)
+    if rnd(10) == 0:
+        ip = rstr(50)
+    let name = wbot_check_request(b, {"ip": ip, "headers": {"User-Agent": ua}})
+    if name != nil:
+        bad("unverified address " + ip + " accepted as " + name)
+    i = i + 1
+let rb = wbot_new(nil, nil, 1000000)
+rb["rdns"] = mock_rdns
+rb["fwd"] = mock_fwd
+if wbot_check_request(rb, {"ip": "66.249.66.1", "headers": {"User-Agent": "Googlebot/2.1"}}) != "googlebot":
+    bad("the genuine crawler fixture was not verified (fuzz harness broken)")
+
+# =====================================================================================
+CTX = "P7 native crypto"
+i = 0
+while i < ITERS:
+    let key = rhex(64)
+    let nonce = rhex(24)
+    let aad = rstr(20)
+    let ct = rhex(rnd(80) * 2)
+    if chacha20poly1305_decrypt(key, nonce, aad, ct) != nil:
+        bad("random ciphertext authenticated: " + ct)
+    let msg = rstr(rnd(200))
+    let sealed = chacha20poly1305_encrypt(key, nonce, aad, msg)
+    if chacha20poly1305_decrypt(key, nonce, aad, sealed) != msg:
+        bad("round trip failed for key=" + key + " nonce=" + nonce)
+    if len(sealed) != (len(msg) + 16) * 2:
+        bad("sealed length wrong")
+    let sh = x25519_shared(rhex(64), rhex(64))
+    if sh != nil and len(sh) != 64:
+        bad("x25519 shared length")
+    let k = hkdf_sha256(rhex(2 * (1 + rnd(40))), rhex(2 * rnd(40)), rstr(30), 1 + rnd(255))
+    if k == nil:
+        bad("hkdf returned nil for valid input")
+    let cmp = constant_time_equals(rstr(20), rstr(20))
+    if type(cmp) != "bool":
+        bad("constant_time_equals type")
+    i = i + 1
+
+# =====================================================================================
+if FAILS > 0:
+    print "FUZZ FAILED: " + str(FAILS) + " failure(s), seed=" + str(SEED)
+    exit(1)
+print "FUZZ OK  seed=" + str(SEED) + " iterations=" + str(ITERS)

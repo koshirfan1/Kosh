@@ -4,11 +4,14 @@ import "../packages/webi/webi.kh"
 
 let t = test_suite("Webi browser client serving")
 
-fn read_client_source():
-    let src = read_file("packages/webi/client/webi.js")
+fn read_client_file(name):
+    let src = read_file("packages/webi/client/" + name)
     if src == nil:
-        src = read_file("../packages/webi/client/webi.js")
+        src = read_file("../packages/webi/client/" + name)
     return src
+
+fn read_client_source():
+    return read_client_file("webi.js")
 
 fn h_secret(req):
     return res_html("<h1>secret</h1>")
@@ -22,6 +25,10 @@ t = test_not_nil(t, "client source file is readable", src)
 t = test_eq(t, "embedded client_js.kh is identical to client/webi.js (no drift)", WEBI_CLIENT_JS, str_replace(src, "\r\n", "\n"))
 t = test_eq(t, "embedded hash matches the embedded script", sha256(WEBI_CLIENT_JS), WEBI_CLIENT_JS_SHA256)
 t = test_true(t, "client is under 24 KB", len(WEBI_CLIENT_JS) < 24576)
+let psrc = read_client_file("proof.js")
+t = test_not_nil(t, "proof script source file is readable", psrc)
+t = test_eq(t, "embedded proof.js is identical to client/proof.js (no drift)", WEBI_PROOF_JS, str_replace(psrc, "\r\n", "\n"))
+t = test_eq(t, "embedded proof hash matches", sha256(WEBI_PROOF_JS), WEBI_PROOF_JS_SHA256)
 
 # ---- /_webi/client.js ------------------------------------------------------------------------------
 let app = webi_app()
@@ -76,5 +83,75 @@ let sess = wsec_client_finish(c1, json_decode(hs["body"]))
 let pkt = wsec_client_request(sess, "GET", "/secret", "", {}, "")
 let inner = wsec_client_read_response(sess, webi_handle(app, "POST", "/_webi/secure", "", "", pkt, "10.0.0.5")["body"])
 t = test_eq(t, "the channel still delivers the real page", inner["body"], "<h1>secret</h1>")
+
+# ---- proof page (opt-in) ---------------------------------------------------------------------------------
+let noproof = webi_enable_secure(webi_app(), {"require_secure": true})
+t = test_neq(t, "proof page is off by default (strict app)", webi_handle(noproof, "GET", "/_webi/proof", "", "", "", "10.1.0.1")["status"], 200)
+t = test_neq(t, "proof script is off by default (strict app)", webi_handle(noproof, "GET", "/_webi/proof.js", "", "", "", "10.1.0.1")["status"], 200)
+t = test_neq(t, "proof.json is off by default (strict app)", webi_handle(noproof, "GET", "/_webi/proof.json", "", "", "", "10.1.0.1")["status"], 200)
+let lax = webi_enable_secure(webi_app(), {})
+t = test_eq(t, "proof page is 404 by default (app without require_secure)", webi_handle(lax, "GET", "/_webi/proof", "", "", "", "10.1.0.1")["status"], 404)
+t = test_eq(t, "proof.json is 404 by default (app without require_secure)", webi_handle(lax, "GET", "/_webi/proof.json", "", "", "", "10.1.0.1")["status"], 404)
+t = test_eq(t, "the probe route is not registered by default", webi_handle(webi_enable_secure(webi_app(), {}), "GET", "/.well-known/webi-proof", "", "", "", "10.1.0.1")["status"], 404)
+
+fn h_other(req):
+    return res_text("other")
+
+let papp = webi_app()
+papp = route(papp, "GET", "/other", h_other)
+papp = webi_enable_secure(papp, {"require_secure": true, "proof": true, "bootstrap": true, "requests_per_min": 100000, "handshake_per_min": 100000})
+
+let pg = webi_handle(papp, "GET", "/_webi/proof", "", "", "", "10.1.0.2")
+t = test_eq(t, "proof page is served in the clear when enabled", pg["status"], 200)
+t = test_contains_str(t, "it is HTML", pg["content_type"], "text/html")
+t = test_false(t, "the page has no inline script", contains(pg["body"], "<script>"))
+t = test_contains_str(t, "it loads the client", pg["body"], "/_webi/client.js")
+t = test_contains_str(t, "and the proof script", pg["body"], "/_webi/proof.js")
+t = test_contains_str(t, "it says plainly what it does NOT prove", pg["body"], "What this does not prove")
+t = test_contains_str(t, "strict CSP on the proof page", pg["headers"]["Content-Security-Policy"], "script-src 'self'")
+t = test_contains_str(t, "CSP forbids framing", pg["headers"]["Content-Security-Policy"], "frame-ancestors 'none'")
+t = test_eq(t, "proof page is never cached", pg["headers"]["Cache-Control"], "no-store")
+
+let pjs = webi_handle(papp, "GET", "/_webi/proof.js", "", "", "", "10.1.0.2")
+t = test_eq(t, "proof.js is the embedded script", pjs["body"], WEBI_PROOF_JS)
+t = test_eq(t, "proof.js advertises its hash", pjs["headers"]["X-Webi-Proof-SHA256"], WEBI_PROOF_JS_SHA256)
+t = test_eq(t, "POST to proof is 405", webi_handle(papp, "POST", "/_webi/proof", "", "", "", "10.1.0.2")["status"], 405)
+
+let pj = json_decode(webi_handle(papp, "GET", "/_webi/proof.json", "", "", "", "10.1.0.2")["body"])
+t = test_eq(t, "proof.json names the protocol", pj["protocol"], "kosh-webi/1")
+t = test_eq(t, "proof.json reports require_secure", pj["require_secure"], true)
+t = test_eq(t, "proof.json reports the replay window", pj["replay_window"], 64)
+t = test_eq(t, "proof.json is honest that there has been no external review", pj["external_review"], false)
+t = test_eq(t, "proof.json says TLS is required", pj["runs_inside_tls_required"], true)
+t = test_eq(t, "proof.json carries the client hash", pj["client_sha256"], WEBI_CLIENT_JS_SHA256)
+t = test_false(t, "proof.json does not list any paths (no route disclosure)", contains(webi_handle(papp, "GET", "/_webi/proof.json", "", "", "", "10.1.0.2")["body"], "/other"))
+
+# counters move
+let before = pj["stats"]["handshakes_ok"]
+let pc = wsec_client_start()
+let phs = webi_handle(papp, "POST", "/_webi/handshake", "", "", wsec_client_hello_body(pc), "10.1.0.3")
+let psess = wsec_client_finish(pc, json_decode(phs["body"]))
+webi_handle(papp, "POST", "/_webi/handshake", "", "", "garbage", "10.1.0.3")
+let ppk = wsec_client_request(psess, "GET", "/.well-known/webi-proof", "n=abc123", {}, "")
+let pr = webi_handle(papp, "POST", "/_webi/secure", "", "", ppk, "10.1.0.3")
+webi_handle(papp, "POST", "/_webi/secure", "", "", ppk, "10.1.0.3")
+webi_handle(papp, "GET", "/other", "", "Accept: application/json", "", "10.1.0.3")
+let pj2 = json_decode(webi_handle(papp, "GET", "/_webi/proof.json", "", "", "", "10.1.0.2")["body"])
+t = test_eq(t, "counter: handshakes_ok went up by one", pj2["stats"]["handshakes_ok"], before + 1)
+t = test_eq(t, "counter: a bad handshake was counted", pj2["stats"]["handshakes_refused"], 1)
+t = test_eq(t, "counter: one sealed request served", pj2["stats"]["secure_requests_ok"], 1)
+t = test_eq(t, "counter: the replay was counted as rejected", pj2["stats"]["secure_requests_rejected"], 1)
+t = test_eq(t, "counter: the plain request was counted as refused", pj2["stats"]["plain_requests_refused"], 1)
+t = test_eq(t, "session count visible", pj2["sessions_active"], 1)
+
+# the probe route works through the channel and echoes the nonce
+let probe = wsec_client_read_response(psess, pr["body"])
+t = test_eq(t, "probe route answers through the channel", probe["status"], 200)
+t = test_eq(t, "and echoes the nonce", json_decode(probe["body"])["nonce"], "abc123")
+t = test_eq(t, "a plain request to the probe route is refused under require_secure", webi_handle(papp, "GET", "/.well-known/webi-proof", "", "Accept: application/json", "", "10.1.0.4")["status"], 426)
+
+# badge is just a link
+t = test_eq(t, "badge helper is a plain link to the live check", webi_badge_html(), "<a href=\"/_webi/proof\" rel=\"noopener\">Webi secure channel: verify live</a>")
+
 
 test_run(t)
