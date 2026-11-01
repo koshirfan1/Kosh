@@ -14,7 +14,7 @@ fn fn_index(req):
         "email":        "khandev1211@gmail.com",
         "location":     "Karachi, Pakistan",
         "freelance":    "Available",
-        "github":       "https://github.com/khandev1211-cpu",
+        "github":       "https://github.com/koshirfan1",
         "linkedin":     "https://linkedin.com/in/irfan-kosh",
         "contact_text": "Have a project in mind or just want to say hi? I'd love to hear from you!",
         "year":         "2026"

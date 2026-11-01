@@ -36,6 +36,9 @@ static void enable_ansi(void) {}
 #include "vision_cascade.h"
 #include "tensor_lib.h"
 #include "crypto_lib.h"
+#ifdef OCR_SUPPORT
+#include "ocr_lib.h"
+#endif
 #include "kosh_version.h"
 #ifdef LLM_SUPPORT
 #include "llm_lib.h"
@@ -92,6 +95,9 @@ static void register_all_libraries(VM *vm) {
     vision_cascade_register_all_vm(vm);
     tensor_register_all_vm(vm);
     crypto_register_all_vm(vm);
+#ifdef OCR_SUPPORT
+    ocr_register_all_vm(vm);
+#endif
 #ifdef LLM_SUPPORT
     llm_register_all_vm(vm);
 #endif

@@ -86,6 +86,15 @@ ifdef LLM
     SRCS    += src/llm_lib.c
 endif
 
+# Optional OCR (Tesseract) bridge - opt-in: `make OCR=1`. The default build
+# never needs libtesseract. Install it first (see docs/ocr.md); pkg-config
+# finds the include/library flags on Linux, Homebrew and MSYS2.
+ifdef OCR
+    CFLAGS  += -DOCR_SUPPORT $(shell pkg-config --cflags tesseract lept 2>/dev/null)
+    LDFLAGS += $(shell pkg-config --libs tesseract lept 2>/dev/null || echo -ltesseract -llept)
+    SRCS    += src/ocr_lib.c
+endif
+
 .PHONY: all kosh kh clean install uninstall
 
 all: kosh$(EXT) kh$(EXT)
@@ -100,7 +109,14 @@ kh$(EXT): $(KH_SRCS)
 
 clean:
 ifeq ($(OS),Windows_NT)
-	-del /Q /F src\*.o kosh.exe kh.exe 2>nul
+  # A POSIX shell (MSYS2, Git Bash) runs the recipe: use rm. Never write `2>nul`
+  # there: sh treats `nul` as an ordinary file name and creates a stray file
+  # called "nul" that Git on Windows then cannot add.
+  ifneq (,$(filter sh bash,$(patsubst %.exe,%,$(notdir $(SHELL)))))
+	rm -f src/*.o kosh.exe kh.exe
+  else
+	-del /Q /F src\*.o kosh.exe kh.exe 2>NUL
+  endif
 else
 	rm -f src/*.o kosh kh
 endif

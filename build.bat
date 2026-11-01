@@ -6,7 +6,7 @@ echo  Kosh Language — Windows Build Script
 echo ─────────────────────────────────────────────────────────────
 
 :: Check for GCC
-where gcc >nul 2>1
+where gcc >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] gcc not found. Please install MinGW-w64 and add it to your PATH.
     pause

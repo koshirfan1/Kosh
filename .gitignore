@@ -42,3 +42,11 @@ benchmarks/_*_c_bin
 
 # Local external dependency checkouts (e.g. llama.cpp for the LLM bridge)
 third_party/
+
+# test artifacts (sqlite/json_db tests create these in the working directory)
+*.db
+*.db-journal
+
+# Windows: stray files created by shell redirects (`>nul` under MSYS/Git Bash, a `2>1` typo)
+nul
+/1

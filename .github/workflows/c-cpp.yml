@@ -242,6 +242,24 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: node tests/js/fuzz_webi_js.js 1 1
 
+    - name: OCR build (opt-in make OCR=1) and test suite (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libtesseract-dev tesseract-ocr-eng tesseract-ocr-fra pkg-config
+        make clean
+        make OCR=1
+        ./kosh tests/test_ocr.kh
+        make clean
+        make
+
+    - name: Docs drift check - generated tables and embedded client (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        python3 tools/gen_readme_packages.py --check
+        python3 tools/gen_client_js.py
+        git diff --exit-code -- packages/webi/client_js.kh
+
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: ./kosh tests/test_vision.kh

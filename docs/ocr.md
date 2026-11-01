@@ -11,13 +11,28 @@ the lower-level `ocr_init`/`ocr_recognize`/`ocr_confidence`/
 `ocr_set_page_seg_mode`/`ocr_free` natives), see the header comment in
 `packages/ocr/ocr.kh` — this doc covers getting it to build and run.
 
-## This is a real build-time dependency
+## Building with OCR (opt-in)
 
-Unlike most of Kosh's packages, OCR needs something installed on the
-machine you *build* Kosh on. If libtesseract isn't found, `make` fails
-outright — on purpose. Earlier versions of the `vision` package shipped
-fakes for things that weren't really implemented (see `vision_lib.h`);
-this package deliberately doesn't repeat that.
+OCR needs libtesseract on the machine you *build* Kosh on, so it is opt-in:
+
+```bash
+make OCR=1        # default `make` never needs libtesseract
+```
+
+`make OCR=1` compiles `src/ocr_lib.c`, links libtesseract and leptonica
+(flags come from `pkg-config`), and registers the `ocr_*` natives. Without it,
+`import "ocr"` still loads but calling an `ocr_*` function fails with
+`Undefined variable 'ocr_init'`. If libtesseract is not installed, `make OCR=1`
+fails at compile or link time rather than silently skipping OCR; that is
+deliberate. Earlier versions of the `vision` package shipped fakes for things
+that were not really implemented (see `vision_lib.h`), and this package does not
+repeat that.
+
+The test suite (`tests/test_ocr.kh`) needs a binary built with `OCR=1`, plus the
+English and French language packs (`tesseract-ocr-eng`, `tesseract-ocr-fra`).
+Its image fixtures live in `examples/` (`ocr_test.png`, `ocr_paragraph.png`,
+`ocr_paragraph_rot90cw.png`, `ocr_french.png`) and are generated synthetic text,
+not photographs.
 
 ### Linux (Debian/Ubuntu)
 
