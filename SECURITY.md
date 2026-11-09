@@ -33,7 +33,7 @@ basis and there is no guaranteed response time.
   It is designed to run on top of TLS. See [docs/webi-threat-model.md](docs/webi-threat-model.md)
   for what it does and does not claim, and [docs/webi-testing.md](docs/webi-testing.md)
   for what has been tested.
-- `kh install` does not verify checksums of downloaded packages yet.
+- `kh install` verifies every file against a SHA-256 from the registry, but the registry and the files live in the same repository, so a compromise of the repository itself is not covered (that needs a signed registry, which does not exist yet).
 
 ## Out of scope
 

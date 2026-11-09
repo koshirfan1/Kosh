@@ -1,8 +1,8 @@
-# Executables
-kosh.exe
-kh.exe
-kosh
-kh
+# Executables (anchored to the repo root: an unanchored `kh` would also hide the tests/kh folder)
+/kosh.exe
+/kh.exe
+/kosh
+/kh
 
 
 

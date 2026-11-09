@@ -1,8 +1,7 @@
 from webi import webi
-import "morgos"
+
 
 let app = webi_app()
-app = after(app, morgos)
 
 fn fn_index(req):
     let vars = {

@@ -6,6 +6,11 @@ Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 ## v0.016.0 - 2026-10-27
 
 ### Security fixes
+- **`kh install` now verifies every file** against a per-file SHA-256 published in the
+  registry, downloads into a staging directory first, and installs nothing (leaving an
+  existing install untouched) if any download, checksum or file name is bad. Missing or
+  malformed checksums are refused (`--no-verify` overrides, with a warning). Previously a
+  failed download of an extra file still reported success and left a half-installed package.
 - **Heap buffer overflow** in the curl command builder used by `requests`
   (`http_request`) and webi on POSIX: every `'` in a URL or header expands to
   four bytes but only two were reserved. Found with AddressSanitizer;
@@ -27,6 +32,17 @@ Versions are `0.x` until the roadmap's 1.0 criteria are met (see
   constant-time.
 
 ### Added
+- `kh` dependency installation: a package's `"dependencies"` are installed first
+  (cycle-safe, depth-limited). Eight packages (`dns`, `nn`, `openai`, `orm`, `smtp`,
+  `swagger`, `webi_auth`, `webi_socket`) imported another package that `kh install` never
+  fetched, so they failed to import after a normal install.
+- `kh sha256 <file>`, and `KH_REGISTRY_URL` / `KH_RAW_BASE` (https:// or file:// only) for
+  mirrors and offline tests.
+- `tools/gen_registry.py`: generates the registry's versions, file lists, dependencies and
+  checksums from each package's `package.json` (CI fails on drift).
+- `tests/kh/test_kh_install.py` (76 checks): tampering, truncation, missing/malformed
+  checksums, atomic upgrades, dependencies, and that `webi`, `vision`, `openai`, `nn` import
+  after a plain install.
 - Native crypto builtins: `hmac_sha256`, `constant_time_equals`,
   `hkdf_sha256`, `x25519_public`, `x25519_shared`,
   `chacha20poly1305_encrypt`, `chacha20poly1305_decrypt` (RFC 8439 / 7748 /
@@ -59,6 +75,11 @@ Versions are `0.x` until the roadmap's 1.0 criteria are met (see
   package tables from `packages/registry.json`; CI fails on drift).
 
 ### Changed
+- Registry repaired: `kh install webi` omitted the four new secure-channel files and
+  `kh install vision` / `openai` omitted 11 and 9 sibling files, so those installs were
+  incomplete; `tensor` was listed as 1.0.0 although the package is 2.0.0.
+- 14 package manifests were saved as UTF-16 (a PowerShell `>` redirect artifact) and are
+  now UTF-8; their `author` no longer names the suspended GitHub account.
 - Rebrand finished: every remaining "Khan" is now "Kosh" (the author's name
   and personal links are unchanged); the playground WASM was patched in place
   (same-length rename) and should be rebuilt with `playground/build.sh`.
@@ -84,7 +105,7 @@ Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 - Not yet exercised in real browsers (Chrome, Firefox, Safari) or on Windows.
 - The JS client is not constant-time; script running in the page can read the
   session key. Text bodies only. Counters and sessions live in process memory.
-- `kh install` still does not verify checksums of downloaded packages.
+- `kh install` verifies checksums, but the registry and the packages live in the same repository, so a compromised repository is not covered (that needs a signed registry).
 
 ## v0.015.0
 

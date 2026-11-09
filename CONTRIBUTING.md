@@ -25,6 +25,7 @@ More detail, including Windows: [docs/install.md](docs/install.md).
 ./kosh tests/fuzz/fuzz_webi.kh 1 1000   # Webi channel property fuzzer: seed, iterations
 node tests/js/test_webi_js_vectors.js   # browser client vectors (needs Node 18+)
 python3 tests/fuzz/negative_cases.py ./kosh
+python3 tests/kh/test_kh_install.py     # kh install: checksums, dependencies, atomic installs (needs curl)
 ```
 
 `tests/test_ocr.kh` needs a binary built with `make OCR=1` and the `tesseract-ocr-eng`
@@ -46,14 +47,15 @@ ASAN_OPTIONS=detect_leaks=0 ./kosh_asan tests/run_all.kh
 | File | Regenerate with |
 |---|---|
 | `packages/webi/client_js.kh` (the browser client served by webi) | `python3 tools/gen_client_js.py` after editing `packages/webi/client/webi.js` or `proof.js` |
+| `packages/registry.json` versions, file lists, dependencies and SHA-256 checksums | `python3 tools/gen_registry.py` after changing any shipped package file or its `package.json` |
 | The package tables in `README.md` and `docs/packages.md` | `python3 tools/gen_readme_packages.py` after changing `packages/registry.json` |
 
 CI runs a drift check for both, so a forgotten regeneration fails the build.
 
 ## Adding a package
 
-1. Create `packages/<name>/<name>.kh` and `packages/<name>/package.json`.
-2. Add an entry to `packages/registry.json`.
+1. Create `packages/<name>/<name>.kh` and `packages/<name>/package.json` (UTF-8; list every extra file under `"files"` and any other package you `import` under `"dependencies"`).
+2. Add an entry to `packages/registry.json` with `name`, `description`, `developer`, `author` and `url` (ending in `/<name>/<name>.kh`), then run `python3 tools/gen_registry.py` to fill in the version, files, dependencies and checksums.
 3. Add the package to a category in `tools/gen_readme_packages.py`, then run it.
 4. Add tests under `tests/` and a short doc under `docs/` if it is more than a few functions.
 

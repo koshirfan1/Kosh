@@ -257,8 +257,13 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         python3 tools/gen_readme_packages.py --check
+        python3 tools/gen_registry.py --check
         python3 tools/gen_client_js.py
         git diff --exit-code -- packages/webi/client_js.kh
+
+    - name: kh install tests - checksums, dependencies, atomic installs (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      run: python3 tests/kh/test_kh_install.py
 
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'

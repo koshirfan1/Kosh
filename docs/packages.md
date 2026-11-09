@@ -10,7 +10,9 @@ Kosh ships with `kh.exe` — a package manager that downloads packages from the 
 
 | Command | Description |
 |---|---|
-| `kh install <name>` | Download and install a package |
+| `kh install <name>` | Download and install a package and its dependencies, verifying every file against the registry's SHA-256 |
+| `kh install <name> --no-verify` | Install without the checksum check (a registry you trust only) |
+| `kh sha256 <file>` | Print a file's SHA-256 |
 | `kh remove <name>` | Remove an installed package |
 | `kh list` | Show all available packages in the registry |
 | `kh installed` | Show locally installed packages |
@@ -30,6 +32,23 @@ import "math"
 print math_sqrt(144)    # 12
 print PI                # 3.14159...
 ```
+
+### Integrity and dependencies
+
+`kh install` does not trust a download just because it arrived:
+
+1. Every file is downloaded into a staging directory first.
+2. Each file's SHA-256 is compared with the one the registry lists for it (`"sha256": {"math.kh": "..."}`). A missing, malformed or non-matching checksum **aborts the install**: nothing is installed, and an existing install of the package is left exactly as it was.
+3. Only after every file verified are they moved into place.
+4. Packages listed under `"dependencies"` (for example `openai` needs `requests`) are installed first, the same way. A dependency that is already installed is not fetched again; a cycle or a chain deeper than 8 is refused.
+
+What this protects against: corrupted or truncated downloads, a stale CDN cache serving a mix of old and new files, and a file that changed without the registry being updated. What it does **not** protect against: someone who can change both a package file *and* the registry that lists its checksum, because they live in the same repository. Defending against that needs a signed registry, which does not exist yet.
+
+`--no-verify` skips step 2 and prints a warning. Use it only for a registry you trust.
+
+Environment variables (for mirrors and tests; only `https://` and `file://` are accepted, never plain `http://`): `KH_REGISTRY_URL` (the registry JSON) and `KH_RAW_BASE` (the folder holding the package files).
+
+Package authors: the registry's versions, file lists, dependencies and checksums are generated from each package's `package.json` by `python3 tools/gen_registry.py`. Run it after changing any shipped file and commit the result; CI fails if you forget. `kh remove` does not check whether other packages depend on the one you remove.
 
 ## Packages
 
@@ -94,7 +113,7 @@ Every package installs the same way, regardless of category: `kh install <name>`
 
 | Package | Version | Description |
 |---|---|---|
-| [`tensor`](tensor.md) | 1.0.0 | Multi-dimensional array math for AI |
+| [`tensor`](tensor.md) | 2.0.0 | Native n-dimensional tensors with automatic differentiation |
 | [`nn`](nn.md) | 1.0.0 | Minimal neural-network module on top of tensor: Dense, ReLU, Sequential, MSE/cross-entropy losses, SGD and Adam optimizers. Requires the tensor package. |
 | `kbrain` | 1.0.0 | Simple machine learning and AI utilities |
 | `nlp` | 1.0.0 | Natural Language Processing and Sentiment Analysis |

@@ -16,5 +16,8 @@
     "embeddings.kh",
     "moderation.kh",
     "models.kh"
+  ],
+  "dependencies": [
+    "requests"
   ]
 }

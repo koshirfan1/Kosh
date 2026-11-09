@@ -7,7 +7,10 @@
       "developer": "Irfan Khan",
       "description": "Advanced math functions: sqrt, pow, gcd, primes, factorial, mean",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/math/math.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/math/math.kh",
+      "sha256": {
+        "math.kh": "af33c7ced93b7153684c0812ecdd5048f16a32ce9f154cf364245096bbc61d8b"
+      }
     },
     {
       "name": "strings",
@@ -15,7 +18,10 @@
       "developer": "Irfan Khan",
       "description": "String utilities: split, trim, replace, pad, repeat, contains, join",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/strings/strings.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/strings/strings.kh",
+      "sha256": {
+        "strings.kh": "a239d447290b8cbf4f6d3544b3bb763d78544fcfffc0a4369b4602bf88d82485"
+      }
     },
     {
       "name": "colors",
@@ -23,7 +29,10 @@
       "developer": "Irfan Khan",
       "description": "Terminal color output using ANSI codes: red, green, bold, boxes, etc.",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/colors/colors.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/colors/colors.kh",
+      "sha256": {
+        "colors.kh": "bac6ac72b51e7d000257351f660c1e094d340d58685dab94c99ed6f3b0b55423"
+      }
     },
     {
       "name": "requests",
@@ -31,7 +40,10 @@
       "developer": "Irfan Khan",
       "description": "HTTP client: get, post, post_json, put, delete with auto JSON decode",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/requests/requests.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/requests/requests.kh",
+      "sha256": {
+        "requests.kh": "d3dd83121b0c01ecab9ba1e096cc18505fb110eed9c3d6c0c99b297b31fa06cc"
+      }
     },
     {
       "name": "postman",
@@ -39,7 +51,10 @@
       "developer": "Irfan Khan",
       "description": "API testing toolkit: send requests, assert responses, run test suites",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/postman/postman.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/postman/postman.kh",
+      "sha256": {
+        "postman.kh": "fb408587a43b01f22b410deee1a965390c931f673457a565617ac2d562e69de4"
+      }
     },
     {
       "name": "collections",
@@ -47,7 +62,10 @@
       "developer": "Irfan Khan",
       "description": "Functional array helpers: sort, filter, map_each, reduce, find, unique, chunk, zip, sort_by",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/collections/collections.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/collections/collections.kh",
+      "sha256": {
+        "collections.kh": "1ae60efe67dbc823f1b54359a833c57f25ca7071698d8ab16bf9d0949796300d"
+      }
     },
     {
       "name": "fs",
@@ -55,7 +73,10 @@
       "developer": "Irfan Khan",
       "description": "File system utilities: read, write, append, copy, path helpers, JSON config",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/fs/fs.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/fs/fs.kh",
+      "sha256": {
+        "fs.kh": "8080f1e944530f8433676b84b9ebf82c80e24b21fae61c6deeb9220f41df4faa"
+      }
     },
     {
       "name": "datetime",
@@ -63,7 +84,10 @@
       "developer": "Irfan Khan",
       "description": "Date and time utilities: timer, elapsed, human-readable duration, sleep helpers",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/datetime/datetime.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/datetime/datetime.kh",
+      "sha256": {
+        "datetime.kh": "fca5bb2b612787029cb64d506e5e8f32c6058290ef0dc857265ba1fbadcffbaa"
+      }
     },
     {
       "name": "test",
@@ -71,15 +95,21 @@
       "developer": "Irfan Khan",
       "description": "Unit testing framework: assertions, test suites, pass/fail reporting",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/test/test.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/test/test.kh",
+      "sha256": {
+        "test.kh": "76e65efcc360dff3c29b5d9784ffdbb2f4a82ffa1a5de7d52a523e7ca0b43856"
+      }
     },
     {
       "name": "events",
       "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "Event emitter system: on, emit, once, off, history \u2014 built for Kosh Engine game events",
+      "description": "Event emitter system: on, emit, once, off, history — built for Kosh Engine game events",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/events/events.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/events/events.kh",
+      "sha256": {
+        "events.kh": "5624fc0abb159660ab201ab46b5d62041f0ff0a04de06b8df1214e2d1018579a"
+      }
     },
     {
       "name": "logger",
@@ -87,7 +117,10 @@
       "developer": "Irfan Khan",
       "description": "Structured logger: debug/info/warn/error levels, file output, silent mode",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/logger/logger.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/logger/logger.kh",
+      "sha256": {
+        "logger.kh": "3ffea2d4ddf43fca1f33ec6d641432afc41e98846b182473858f8e38123fd95d"
+      }
     },
     {
       "name": "uuid",
@@ -95,7 +128,10 @@
       "developer": "Irfan Khan",
       "description": "Unique ID generation: uuid_v4, short IDs, named entity IDs, sequential counters",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/uuid/uuid.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/uuid/uuid.kh",
+      "sha256": {
+        "uuid.kh": "79a9dde0b7339a55b9e6aa0135e5e50767b7636bfed354ec9bad143393503d65"
+      }
     },
     {
       "name": "webi",
@@ -108,24 +144,50 @@
         "util.kh",
         "app.kh",
         "routing.kh",
-        "middleware.kh",
         "request.kh",
         "response.kh",
+        "middleware.kh",
+        "security.kh",
         "server.kh",
         "template.kh",
         "meta.kh",
-        "security.kh",
+        "secure.kh",
+        "bot.kh",
+        "client_js.kh",
+        "secure_http.kh",
         "requests.kh",
         "json.kh"
-      ]
+      ],
+      "sha256": {
+        "webi.kh": "e7500d3dbc551de803a89213f374c8a971e80241f312576fb3070eabaebfc795",
+        "util.kh": "85105e8e9beb763219f29eee07f0c221971c92e40beb604427d399df5592795b",
+        "app.kh": "55d57d4d3cc32c25250bef367748beaa4acdb48f140d24612ef1983791284cbd",
+        "routing.kh": "879f3c034513f9ddcd545f7f65bbe4e402ec90424634c40c4b4b7c101c0a5e2f",
+        "request.kh": "55ac6f4650ae9ccbe86b36e7f303d7f665e4fda84e3f73b57d0c3570eef686d0",
+        "response.kh": "561247df484a13f82ebfe125724ec1a0a0b63daa7a409155de2e095401704d3e",
+        "middleware.kh": "93013a034d44c85ae854cb3c3a0b94c6299811f77f47790bb950baca323aa8f2",
+        "security.kh": "37a905f27ff5974b415c874c7f8023e171d21a1134eeb6c65fc61ec4e5187720",
+        "server.kh": "e74150335fab6cbcfea08dce0b0fa867e4fb3ca7bbb13e2b27c2412c44e5598c",
+        "template.kh": "34b9815eb3143d4b76ee355b3fe9be3eb298a41a85383816c5e569503a81664f",
+        "meta.kh": "b128194116a1ebcd815bffbea657dcae6086366e2db8a8b91f384019d1cfe9d5",
+        "secure.kh": "a26fc0abbd6abf2b0b527ea0be23570c0fb31e57bf4540774c3e298c1e7271a4",
+        "bot.kh": "70d4ce319201efee55132677d0f48c64ed1911fc0595ea41996e997615873ee5",
+        "client_js.kh": "1a5fbd39d7efcba217fd7e101e6648e96251ae7cbc3ef37e4e45fba3ec485dcf",
+        "secure_http.kh": "76f2e046ac7ce859e050fb40bdbd8306d9a6a1af508250f687b13aecaab3ee38",
+        "requests.kh": "69bd236c8589255dd28c017edc7d30b6ad29818383e4b512f54a51e00d8a58c7",
+        "json.kh": "916f7b081d49efa958aff3097db638d5e03a9554827d4d5253d62792acee8118"
+      }
     },
     {
       "name": "morgos",
       "version": "1.0.0",
       "developer": "Irfan Khan",
-      "description": "Morgan-style HTTP request logger for webi: colored status, elapsed time, response size \u2014 as a swappable after-hook",
+      "description": "Morgan-style HTTP request logger for webi: colored status, elapsed time, response size — as a swappable after-hook",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/morgos/morgos.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/morgos/morgos.kh",
+      "sha256": {
+        "morgos.kh": "f9b940e8e2e0643ec143ff3bf744afac852d4d69ccfbfa1596b8e2d5ef800a81"
+      }
     },
     {
       "name": "openai",
@@ -133,7 +195,33 @@
       "developer": "Irfan Khan",
       "description": "Production-grade OpenAI API client: chat completions, multi-turn conversations, embeddings, moderation, and model listing, with structured error handling and automatic retry/backoff.",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/openai/openai.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/openai/openai.kh",
+      "files": [
+        "util.kh",
+        "errors.kh",
+        "transport.kh",
+        "client.kh",
+        "messages.kh",
+        "chat.kh",
+        "embeddings.kh",
+        "moderation.kh",
+        "models.kh"
+      ],
+      "dependencies": [
+        "requests"
+      ],
+      "sha256": {
+        "openai.kh": "280485a9a49d9bc0dbf6cb8027332a3d286e22689562d40b6476f4fb8486c037",
+        "util.kh": "f7df3536b715ac64e9b12eec82cc1283e9f5f0166190e77bf82431ba55b638bb",
+        "errors.kh": "0307f3367871525c866dc140b87cc4604cedd9a63362c1e796a70ef62f49eba5",
+        "transport.kh": "94cd90ecdac4e5de438c4c7a2631f77df30576acf3ee07c725321f627313b467",
+        "client.kh": "2631c45334ca98a20ef272bbb3ba3a0f3b5f53ecb45ad15121ffec55a9345123",
+        "messages.kh": "583ccb4c86cdd47cd283a4084e29facedb85e0af4e514bc89b6520df5d5309cd",
+        "chat.kh": "1f70766a8df6aea9ce98d9c7fc3e7c669bde740f727143e0f56b0dc02ef4f79a",
+        "embeddings.kh": "258026f50376cb82dee90a1b099bee294db99520af1b01ce7b453af79d59366b",
+        "moderation.kh": "fecd8046210ce842dccd446f4b4575ceed323a02ee7ed46bf6983d0b51c70cd2",
+        "models.kh": "0b4dc5b60158f945bf95b6ddfa7497dbc8a4dc907ad82506562eaf759176087d"
+      }
     },
     {
       "name": "validation",
@@ -141,7 +229,10 @@
       "developer": "Irfan Khan",
       "description": "Data validation utilities: emails, lengths, numeric checks",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/validation/validation.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/validation/validation.kh",
+      "sha256": {
+        "validation.kh": "12bde6a2b32cac1ea40e26f5e8746bcbf05c4f4c15125429e5e484b2426bd3fb"
+      }
     },
     {
       "name": "argparse",
@@ -149,7 +240,10 @@
       "developer": "Irfan Khan",
       "description": "Command-line argument parser",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/argparse/argparse.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/argparse/argparse.kh",
+      "sha256": {
+        "argparse.kh": "dca6633ed12beaeb73211fed93def4b77ad98ddfd20591ce887b12df96a95f7b"
+      }
     },
     {
       "name": "dotenv",
@@ -157,7 +251,10 @@
       "developer": "Irfan Khan",
       "description": "Load environment variables from .env files",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/dotenv/dotenv.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/dotenv/dotenv.kh",
+      "sha256": {
+        "dotenv.kh": "b4dfc5b891cc7da3b5d9f676a054b77a11e23b8eb3389137cf5a6676fee52a3d"
+      }
     },
     {
       "name": "json_db",
@@ -165,7 +262,10 @@
       "developer": "Irfan Khan",
       "description": "Simple NoSQL database using JSON files",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/json_db/json_db.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/json_db/json_db.kh",
+      "sha256": {
+        "json_db.kh": "ef94a16805cbd3590849635dfc415c499f60965ea27bcc2e615b40aaf050b369"
+      }
     },
     {
       "name": "csv_io",
@@ -173,7 +273,10 @@
       "developer": "Irfan Khan",
       "description": "CSV file reader and writer",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/csv_io/csv_io.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/csv_io/csv_io.kh",
+      "sha256": {
+        "csv_io.kh": "5997216eededdca57f611a53c27f1e62eeece36dccd06e5111e7ed51e91cc5bc"
+      }
     },
     {
       "name": "kbrain",
@@ -181,7 +284,10 @@
       "developer": "Irfan Khan",
       "description": "Simple machine learning and AI utilities",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/kbrain/kbrain.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/kbrain/kbrain.kh",
+      "sha256": {
+        "kbrain.kh": "b574eeb99635a274f77dee13a9733944b1054ddedb1430af611f04606c0095e7"
+      }
     },
     {
       "name": "webi_auth",
@@ -189,7 +295,13 @@
       "developer": "Irfan Khan",
       "description": "Authentication middleware for Webi",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/webi_auth/webi_auth.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/webi_auth/webi_auth.kh",
+      "dependencies": [
+        "webi"
+      ],
+      "sha256": {
+        "webi_auth.kh": "9e4550e31f319a6211bf0d7f4e232c8bf6f23617fa5b46383382045eeb50db3d"
+      }
     },
     {
       "name": "dns",
@@ -197,7 +309,13 @@
       "developer": "Irfan Khan",
       "description": "DNS lookup utilities using DNS-over-HTTPS",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/dns/dns.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/dns/dns.kh",
+      "dependencies": [
+        "requests"
+      ],
+      "sha256": {
+        "dns.kh": "0d2f81441820f2141286fdf610d029be636ee5e824d30a521db3b8db202a92dc"
+      }
     },
     {
       "name": "smtp",
@@ -205,7 +323,13 @@
       "developer": "Irfan Khan",
       "description": "Email sending utilities",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/smtp/smtp.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/smtp/smtp.kh",
+      "dependencies": [
+        "requests"
+      ],
+      "sha256": {
+        "smtp.kh": "8d6e7009ce04b6a0392b7029ed5cca826470f73b73db05215a32354b2e3a1c9c"
+      }
     },
     {
       "name": "orm",
@@ -213,7 +337,13 @@
       "developer": "Irfan Khan",
       "description": "Simple Object-Relational Mapper for JSON databases",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/orm/orm.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/orm/orm.kh",
+      "dependencies": [
+        "json_db"
+      ],
+      "sha256": {
+        "orm.kh": "8bb7ed283e8ddf600be2ac80d749ef436c31160216b7085f30a4e258a46de328"
+      }
     },
     {
       "name": "swagger",
@@ -221,7 +351,13 @@
       "developer": "Irfan Khan",
       "description": "Swagger UI and API documentation generator",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/swagger/swagger.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/swagger/swagger.kh",
+      "dependencies": [
+        "webi"
+      ],
+      "sha256": {
+        "swagger.kh": "eab5445c4f957da69084d939c6c3f12df8d7e5035421027e387e25af50f49472"
+      }
     },
     {
       "name": "nlp",
@@ -229,15 +365,21 @@
       "developer": "Irfan Khan",
       "description": "Natural Language Processing and Sentiment Analysis",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/nlp/nlp.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/nlp/nlp.kh",
+      "sha256": {
+        "nlp.kh": "ad2c683667d2a0230b6713518154a56a1e4fc8e54106d7e5cecc3929bdf840ea"
+      }
     },
     {
       "name": "tensor",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "developer": "Irfan Khan",
-      "description": "Multi-dimensional array math for AI",
+      "description": "Native n-dimensional tensors with automatic differentiation",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/tensor/tensor.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/tensor/tensor.kh",
+      "sha256": {
+        "tensor.kh": "9c2686af03b088ea8cf0afd364c9ce4fa0cf29665d69dc8ad0efdb3d73a441ab"
+      }
     },
     {
       "name": "vision",
@@ -245,7 +387,34 @@
       "developer": "Irfan Khan",
       "description": "Full classical computer-vision toolkit: image I/O, filters (blur/sharpen/emboss/edges), thresholding (fixed/Otsu/adaptive), morphology, connected-component blob detection, histograms, drawing, template matching, HSV color-range detection, and real Haar-cascade face detection (Viola-Jones). All native/fast, no ML framework required.",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/vision/vision.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/vision/vision.kh",
+      "files": [
+        "core.kh",
+        "color.kh",
+        "transform.kh",
+        "filters.kh",
+        "threshold.kh",
+        "morphology.kh",
+        "contours.kh",
+        "histogram.kh",
+        "draw.kh",
+        "match.kh",
+        "detect.kh"
+      ],
+      "sha256": {
+        "vision.kh": "14614cc6359f3e20767f3f4aa62153716efcfdb523b011e1d98717fbbfe5fc6a",
+        "core.kh": "c426bea66a82522f06f2a78005bd865ce9bbe012cda71a08a4612dce57e84498",
+        "color.kh": "a0484c5e145c35c22767ac4f19ce8810c7e2d28dfecafc04d48fe4970b1622c0",
+        "transform.kh": "6894cfae97071e7cadca5f400731c880933a555c0229bef43b4521e6cfc7bf64",
+        "filters.kh": "3d800eb673ca626c7c55046b1f1868f222dbc9f5ca3a239ef740aa599548a968",
+        "threshold.kh": "153febf94ef46e0606d2d548c8d2417bba6e49c022dcf7acfd79bf443bd91a8c",
+        "morphology.kh": "2abc9fea1cfcba576cff2e35bebeb5605ab07c06359e3bb310f3957c9a5478fa",
+        "contours.kh": "5da00b062fba1375f36b46c63fbb4f5bf456677df7d2326b76e48b58de7862f0",
+        "histogram.kh": "6fcb7440fd84221e7deb99be4b4b87826fb6d2ef6399e2f30fa53ec20e8cacf6",
+        "draw.kh": "af9ef299beb5af0c9895699befb5090b89f56404ddf826afca498c5cc809f8c7",
+        "match.kh": "21d979c650dadd2e434b28544cf799387a98de422baf06975750e7fad28b8fa0",
+        "detect.kh": "13bf587829d0dd579436e7cf18f589b2ec7319a56e19c7caf24cff32ef0e3f4f"
+      }
     },
     {
       "name": "webi_socket",
@@ -253,7 +422,13 @@
       "developer": "Irfan Khan",
       "description": "WebSocket support for Webi framework",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/webi_socket/webi_socket.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/webi_socket/webi_socket.kh",
+      "dependencies": [
+        "webi"
+      ],
+      "sha256": {
+        "webi_socket.kh": "adb62c0c9ff7f97e6e911761792d36aa834f36be0c3ce59e8bf1a0eccd58872e"
+      }
     },
     {
       "name": "mqtt",
@@ -261,7 +436,10 @@
       "developer": "Irfan Khan",
       "description": "MQTT protocol for IoT messaging",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/mqtt/mqtt.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/mqtt/mqtt.kh",
+      "sha256": {
+        "mqtt.kh": "f04dcd6530b65d6ee5cd894fd7c6d2d3935bebeb8ac19dd6fb5c22c6b44d807a"
+      }
     },
     {
       "name": "ftp",
@@ -269,7 +447,10 @@
       "developer": "Irfan Khan",
       "description": "FTP client for file transfers",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ftp/ftp.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ftp/ftp.kh",
+      "sha256": {
+        "ftp.kh": "43ffb3d8cfd4996e17cc4146fb8d3c85e3933317fa661b402bad26b7bf01cbbe"
+      }
     },
     {
       "name": "ssh_client",
@@ -277,7 +458,10 @@
       "developer": "Irfan Khan",
       "description": "SSH client for remote command execution",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ssh_client/ssh_client.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ssh_client/ssh_client.kh",
+      "sha256": {
+        "ssh_client.kh": "622c623e4122b5492acd2c674b2cbda2e0dea1103f68878d188076957195a8a3"
+      }
     },
     {
       "name": "grpc",
@@ -285,7 +469,10 @@
       "developer": "Irfan Khan",
       "description": "gRPC client for high-performance RPC",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/grpc/grpc.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/grpc/grpc.kh",
+      "sha256": {
+        "grpc.kh": "cb9d7952cf31674bce2c96d967ce2ca62d0be268b6120e75fef90fdd6d2ba619"
+      }
     },
     {
       "name": "sqlite",
@@ -293,7 +480,10 @@
       "developer": "Irfan Khan",
       "description": "SQL Database bridge for high-speed local data persistence",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/sqlite/sqlite.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/sqlite/sqlite.kh",
+      "sha256": {
+        "sqlite.kh": "8613a6740f789d8918433ac788767265fff9256a74dddf94fbfee9b5e3adf6e2"
+      }
     },
     {
       "name": "ocr",
@@ -301,7 +491,10 @@
       "developer": "Irfan Khan",
       "description": "Real OCR via Tesseract: text, word-level boxes, orientation correction, searchable PDF, char whitelist, multi-language",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ocr/ocr.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ocr/ocr.kh",
+      "sha256": {
+        "ocr.kh": "1b9765c0e23775456be5c04b3e03573960b72d803cb644b74666fed29996cc81"
+      }
     },
     {
       "name": "nn",
@@ -309,7 +502,13 @@
       "developer": "Irfan Khan",
       "description": "Minimal neural-network module on top of tensor: Dense, ReLU, Sequential, MSE/cross-entropy losses, SGD and Adam optimizers. Requires the tensor package.",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/nn/nn.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/nn/nn.kh",
+      "dependencies": [
+        "tensor"
+      ],
+      "sha256": {
+        "nn.kh": "d41797960bf6f6217805ed82137cac4030d565129447c4c8cc9d932512d78d59"
+      }
     },
     {
       "name": "quant",
@@ -317,7 +516,10 @@
       "developer": "Irfan Khan",
       "description": "Accuracy-preserving quantization in pure Kosh: per-channel calibration, bias correction, outlier-aware sparse decomposition and mixed-precision strategies.",
       "author": "koshirfan1",
-      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/quant/quant.kh"
+      "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/quant/quant.kh",
+      "sha256": {
+        "quant.kh": "82e53054a1d044902dd4de1e2241790070c444d10ec89c3f2e73574a5bd10ada"
+      }
     }
   ]
 }

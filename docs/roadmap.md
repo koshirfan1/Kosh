@@ -17,7 +17,8 @@
 | Fuzz testing, memory stress testing (10M-allocation scale), CI | ✅ Complete for what exists — CI runs the full assertion suites on Linux and Windows (macOS steps exist, macOS is not in the matrix yet), parser mutation fuzzing, and an AddressSanitizer/UBSan job on Linux |
 | Security fixes: curl command buffer overflow, `kh` input validation, rate limiter fail-open, `crypto_lib` linked | ✅ Complete in v0.016.0, see [CHANGELOG.md](../CHANGELOG.md) |
 | `webi` encrypted channel (X25519 + HKDF + ChaCha20-Poly1305, replay window), `require_secure`, crawler verification, browser client, `/_webi/proof` | ✅ Implemented and fuzzed in v0.016.0 — **no external review yet**, see [webi-threat-model.md](webi-threat-model.md) |
-| `kh` package checksum verification | 🔲 Planned |
+| `kh` per-file SHA-256 verification, staged atomic installs, dependency installation | ✅ Complete in v0.016.0, see [packages.md](packages.md#integrity-and-dependencies) |
+| Signed package registry | 🔲 Planned |
 | macOS in the CI matrix | 🔲 Planned |
 | `{}` map as a real hash table | ✅ Complete — open-addressing (FNV-1a), see [docs/hash-table-audit.md](hash-table-audit.md) |
 | String concatenation performance | 🟡 Partial — redundant rescan fixed (~2.4x), full O(n²) root cause still open, see [benchmarks/RESULTS.md](../benchmarks/RESULTS.md) |

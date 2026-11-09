@@ -85,7 +85,7 @@ There is no published pre-built binary release yet. Details, the Inno Setup inst
 | | |
 |---|---|
 | **The language** | Indentation-based syntax, classes with single inheritance, `try`/`catch`/`throw`, first-class functions, a bytecode compiler and stack VM, a cycle collector, and `{}` maps backed by a real hash table. [Language guide](docs/language.md) |
-| **`kh` package manager** | `kh install <name>` from a 38-package registry. Package names, registry URLs and file names are validated before they reach a shell command or the filesystem. [Packages](docs/packages.md) |
+| **`kh` package manager** | `kh install <name>` from a 38-package registry. Every downloaded file is checked against a SHA-256 from the registry, dependencies are installed first, and package names, URLs and file names are validated before they reach a shell command or the filesystem. [Packages](docs/packages.md) |
 | **`webi` web framework** | Routing, middleware, CSRF, rate limiting, API keys, CORS, templates, static files, WebSockets. An opt-in encrypted channel runs on top of TLS (see [Security](#security)). [Reference](docs/webi.md) |
 | **Vision and OCR** | Classical computer vision with real Haar-cascade face detection, and an opt-in native Tesseract bridge for OCR (`make OCR=1`). |
 | **AI / ML** | A native `Tensor` type with autograd, a small `nn` module, quantization helpers, an OpenAI client. |
@@ -103,7 +103,7 @@ There is no published pre-built binary release yet. Details, the Inno Setup inst
 | `sqlite` | 1.0.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
 | `vision` | 3.0.0 | Full classical computer-vision toolkit |
 | [`ocr`](docs/ocr.md) | 1.1.0 | Real OCR via Tesseract *(opt-in: build with `make OCR=1` (needs libtesseract))* |
-| [`tensor`](docs/tensor.md) | 1.0.0 | Multi-dimensional array math for AI |
+| [`tensor`](docs/tensor.md) | 2.0.0 | Native n-dimensional tensors with automatic differentiation |
 | [`nn`](docs/nn.md) | 1.0.0 | Minimal neural-network module on top of tensor |
 | `openai` | 2.0.0 | Production-grade OpenAI API client |
 | `test` | 1.0.0 | Unit testing framework: assertions, test suites, pass/fail reporting |
