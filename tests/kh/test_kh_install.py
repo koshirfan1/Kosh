@@ -344,6 +344,118 @@ def test_validation():
     e.cleanup()
 
 
+# --------------------------------------------------------------------------- installed-package commands
+def test_installed_commands():
+    e = Env()
+    rc, out = e.kh("list")
+    check("list on an empty machine says nothing is installed (and works offline)", rc == 0 and "No packages installed" in out, out)
+    check("freeze on an empty machine prints nothing", e.kh("freeze") == (0, ""))
+    e.kh("install", "openai"); e.kh("install", "nn")
+    rc, out = e.kh("list")
+    names = [l.split()[0] for l in out.splitlines() if "\033[1;32m" in l]
+    names = [n.replace("\x1b[1;32m", "").replace("\x1b[0m", "") for n in names]
+    check("list shows the installed packages, dependencies included, sorted",
+          rc == 0 and names == ["nn", "openai", "requests", "tensor"], "%r\n%s" % (names, out))
+    # list must not depend on the network: break the registry and try again
+    rc, out = e.kh("list", env={"KH_REGISTRY_URL": "file:///nonexistent/registry.json"})
+    check("list works without the registry", rc == 0 and "openai" in out, out)
+    rc, out = e.kh("installed")
+    check("'installed' is still accepted and shows the same list", rc == 0 and "tensor" in out, out)
+    rc, out = e.kh("freeze")
+    check("freeze prints name==version lines", rc == 0 and out.splitlines() == [
+        "nn==%s" % e.entry("nn")["version"], "openai==%s" % e.entry("openai")["version"],
+        "requests==%s" % e.entry("requests")["version"], "tensor==%s" % e.entry("tensor")["version"]], out)
+
+    rc, out = e.kh("show", "openai")
+    check("show lists version, requires and every file", rc == 0 and e.entry("openai")["version"] in out and
+          "requests" in out and all(f in out for f in e.entry("openai")["files"]), out)
+    rc, out = e.kh("show", "requests")
+    check("show names the packages that need it (Required-by)", rc == 0 and "openai" in out.split("Required-by:")[1].split("\n")[0], out)
+    check("show on a package that is not installed fails", e.kh("show", "math")[0] != 0)
+
+    rc, out = e.kh("check")
+    check("check passes on a healthy install", rc == 0 and "No broken packages" in out, out)
+    chat = os.path.join(e.installed("openai"), "chat.kh")
+    tamper(chat)
+    rc, out = e.kh("check")
+    check("check catches a file modified after install", rc != 0 and "chat.kh" in out and "modified" in out, out)
+    check("check <name> only looks at that package", e.kh("check", "nn")[0] == 0)
+    e.kh("install", "openai")
+    check("reinstalling repairs it", e.kh("check")[0] == 0)
+    os.remove(os.path.join(e.installed("openai"), "models.kh"))
+    rc, out = e.kh("check")
+    check("check catches a missing file", rc != 0 and "missing file models.kh" in out, out)
+    e.kh("install", "openai")
+    shutil.rmtree(e.installed("tensor"))
+    rc, out = e.kh("check")
+    check("check catches a missing dependency", rc != 0 and "nn requires tensor" in out, out)
+    e.kh("install", "nn")
+    check("... and reinstalling the dependent package brings it back", e.is_installed("tensor") and e.kh("check")[0] == 0)
+
+    # outdated / update
+    rc, out = e.kh("list", "--outdated")
+    check("nothing is outdated right after installing", rc == 0 and "up to date" in out, out)
+    e.entry("requests")["version"] = "9.9.9"
+    e.entry("tensor")["version"] = "2.10.0"        # 2.10 must be NEWER than 2.0 (numeric, not string, compare)
+    e.save()
+    rc, out = e.kh("outdated")
+    check("outdated lists the packages with a newer registry version",
+          rc == 0 and "requests" in out and "9.9.9" in out and "tensor" in out and "2.10.0" in out and "openai" not in out, out)
+    rc, out = e.kh("update", "requests")
+    ver = lambda n: e.kh("freeze")[1].split("%s==" % n)[1].split()[0]
+    check("update <name> installs the newer version", rc == 0 and ver("requests") == "9.9.9", out)
+    check("... and leaves the others alone", ver("tensor") == "2.0.0")
+    rc, out = e.kh("update", "--all")
+    check("update --all updates the rest", rc == 0 and ver("tensor") == "2.10.0" and "up to date" in e.kh("list", "-o")[1])
+    e.entry("tensor")["version"] = "2.9.0"       # registry OLDER than installed 2.10.0: never offered as an update
+    e.save()
+    rc, out = e.kh("outdated")
+    check("an older registry version is not reported as outdated (2.9.0 < 2.10.0)", rc == 0 and "tensor" not in out, out)
+    check("update --all does not downgrade", e.kh("update", "--all")[0] == 0 and ver("tensor") == "2.10.0")
+    check("update needs a name or --all", e.kh("update")[0] != 0 and e.kh("update", "nn", "--all")[0] != 0)
+    check("update on a package that is not installed fails", e.kh("update", "math")[0] != 0)
+    # a failed update must leave the installed version alone
+    e.entry("nn")["version"] = "9.0.0"
+    e.save()
+    tamper(e.pkg_file("nn"))             # registry still lists the old checksum
+    before = open(os.path.join(e.installed("nn"), "nn.kh"), "rb").read()
+    rc, out = e.kh("update", "nn")
+    check("an update whose checksum does not match fails and changes nothing",
+          rc != 0 and open(os.path.join(e.installed("nn"), "nn.kh"), "rb").read() == before and ver("nn") != "9.0.0", out)
+
+    # search
+    rc, out = e.kh("search", "NEURAL")
+    check("search matches names and descriptions, case-insensitively, and marks installed ones",
+          rc == 0 and "nn" in out and "[installed]" in out, out)
+    check("search with no match says so", "No packages match" in e.kh("search", "zzz-no-such-thing")[1])
+    rc, out = e.kh("search")
+    check("search with no term lists the whole registry", rc == 0 and ("%d package(s) available" % len(e.reg["packages"])) in out, out)
+
+    # remove: whole folder, siblings included; warns about dependents; uninstall alias
+    rc, out = e.kh("remove", "requests")
+    check("remove warns when another installed package needs it", rc == 0 and "openai depends on requests" in out, out)
+    check("remove deleted the whole folder", not os.path.exists(e.installed("requests")))
+    check("remove leaves nothing of a multi-file package behind",
+          e.kh("uninstall", "openai")[0] == 0 and not os.path.exists(e.installed("openai")))
+    check("removing something that is not installed fails", e.kh("remove", "openai")[0] != 0)
+
+    # a package installed by an older kh (minimal package.json) still works everywhere
+    old = e.installed("legacy"); os.makedirs(old)
+    open(os.path.join(old, "legacy.kh"), "w").write("# old\n")
+    open(os.path.join(old, "package.json"), "w").write('{\n "name": "legacy",\n "version": "0.1.0",\n "description": "old"\n}\n')
+    rc, out = e.kh("list")
+    check("an install from an older kh is listed", "legacy" in out and "0.1.0" in out, out)
+    check("show/check cope with it", e.kh("show", "legacy")[0] == 0 and e.kh("check", "legacy")[0] == 0)
+    check("it can be removed", e.kh("remove", "legacy")[0] == 0 and not os.path.exists(old))
+    check("list ignores a leftover staging folder", (os.makedirs(os.path.join(e.home, ".kosh", "packages", ".kh-staging-x")) or True)
+          and ".kh-staging" not in e.kh("list")[1])
+
+    # argument validation
+    for args in (["show", "../x"], ["check", "a b"], ["update", "--bogus"], ["list", "--nope"], ["search", "a", "b"], ["show"]):
+        check("bad arguments are refused: kh %s" % " ".join(args), e.kh(*args)[0] != 0)
+    e.cleanup()
+
+
 # --------------------------------------------------------------------------- the real registry
 def test_real_registry():
     reg = json.load(open(os.path.join(SRC_PACKAGES, "registry.json"), encoding="utf-8"))
@@ -370,7 +482,7 @@ if __name__ == "__main__":
     for exe in (KH, KOSH):
         if not os.path.exists(exe):
             sys.exit("missing %s: run `make` first" % exe)
-    for t in (test_sha256_command, test_good_installs, test_dependencies, test_tampering, test_fail_closed, test_validation, test_real_registry):
+    for t in (test_sha256_command, test_good_installs, test_dependencies, test_tampering, test_fail_closed, test_validation, test_installed_commands, test_real_registry):
         t()
     print("  %d/%d passed   |   %d failed" % (passed, passed + failed, failed))
     sys.exit(1 if failed else 0)

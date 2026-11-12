@@ -3,6 +3,34 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.016.1 - 2026-11-13
+
+### Added
+- **`kh` can now inspect what is installed**, like `pip`:
+  `kh list` (installed packages and versions, offline), `kh list --outdated` / `kh outdated`,
+  `kh show <name>` (files, requires, required-by), `kh update <name>` / `kh update --all`
+  (verified, atomic, never downgrades), `kh check [name]` (missing files, files modified since
+  install, missing dependencies; exit code 1 on problems), `kh freeze` (`name==version`),
+  `kh search [term]`, and `kh uninstall` as an alias of `kh remove`.
+- `kh install` records the file list, dependencies and verified SHA-256 of each file in the
+  package's local `package.json` so the commands above work offline. Older installs still work
+  (they just have no checksums for `kh check` to re-verify).
+- 43 more checks in `tests/kh/test_kh_install.py` (119 in total), checked against deliberately
+  broken builds and run under ASan/UBSan with leak checking.
+
+### Changed
+- **`kh list` now shows installed packages** (it used to list the registry). Browsing the
+  registry moved to `kh search`. `kh installed` still works as an alias of `kh list`.
+- `kh info` also says whether the package is installed, and whether an update is available.
+
+### Fixed
+- `kh remove` left every file except the main one and `package.json` behind for multi-file
+  packages (`webi`, `vision`, `openai`, ...), so the package folder could never be deleted.
+  It now removes the whole folder and warns if another installed package depends on it.
+- `kh search` no longer cuts a UTF-8 character in half when it shortens a description.
+- Added `.gitattributes` (`*.bat` as CRLF, `*.sh` as LF) so Windows checkouts stop showing
+  `build.bat` as modified. Removed the stray `src/interpreter.h.bak`.
+
 ## v0.016.0 - 2026-10-27
 
 ### Security fixes

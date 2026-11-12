@@ -21,6 +21,7 @@ static void enable_ansi(void) {
 #  define _POSIX_C_SOURCE 200809L
 #  include <sys/stat.h>
 #  include <unistd.h>
+#  include <dirent.h>
 #  define MKDIR(p) mkdir(p, 0755)
 #  define RMDIR(p) rmdir(p)
 static void enable_ansi(void) {}
@@ -729,14 +730,25 @@ static int cmd_install(const char *name, int verify) {
     }
     staged = nfiles;
 
-    // Write a local package.json
+    // Write a local package.json. Besides name/version it records the file list,
+    // dependencies and (when verified) each file's SHA-256, so `kh show`, `kh check`
+    // and `kh list` work offline. "description" goes last on purpose: the small
+    // JSON reader finds keys by searching, and free text must not shadow a key.
     char meta_path[2048];
     snprintf(meta_path, sizeof(meta_path), "%s/package.json", pkg_dir);
     FILE *mf = fopen(meta_path, "w");
     if (mf) {
-        fprintf(mf, "{\n  \"name\": \"%s\",\n  \"version\": \"%s\",\n"
-                    "  \"description\": \"%s\"\n}\n",
-                name, version ? version : "?", desc ? desc : "");
+        fprintf(mf, "{\n  \"name\": \"%s\",\n  \"version\": \"%s\",\n  \"files\": [", name, version ? version : "?");
+        for (int i = 0; i < nfiles; i++) fprintf(mf, "%s\"%s\"", i ? ", " : "", files[i]);
+        fprintf(mf, "],\n  \"dependencies\": [");
+        for (int i = 0; i < dep_count; i++) fprintf(mf, "%s\"%s\"", i ? ", " : "", deps[i]);
+        fprintf(mf, "]");
+        if (verify) {
+            fprintf(mf, ",\n  \"sha256\": {");
+            for (int i = 0; i < nfiles; i++) fprintf(mf, "%s\n    \"%s\": \"%s\"", i ? "," : "", files[i], hashes[i]);
+            fprintf(mf, "\n  }");
+        }
+        fprintf(mf, ",\n  \"description\": \"%s\"\n}\n", desc ? desc : "");
         fclose(mf);
     }
 
@@ -760,51 +772,351 @@ done:
 }
 
 // ---------------------------------------------------------------------------
-// CMD: kh remove <name>
+// Installed-package helpers (used by list / show / outdated / update / check /
+// freeze / remove). Everything here reads only ~/.kosh/packages.
+// ---------------------------------------------------------------------------
+static void free_strs(char **a, int n) {
+    if (!a) return;
+    for (int i = 0; i < n; i++) free(a[i]);
+    free(a);
+}
+
+static char *read_text_file(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    size_t cap = 4096, len = 0;
+    char *buf = malloc(cap);
+    if (!buf) { fclose(f); return NULL; }
+    size_t n;
+    while ((n = fread(buf + len, 1, cap - len - 1, f)) > 0) {
+        len += n;
+        if (len + 1 >= cap) {
+            cap *= 2;
+            char *t = realloc(buf, cap);
+            if (!t) { free(buf); fclose(f); return NULL; }
+            buf = t;
+        }
+    }
+    fclose(f);
+    buf[len] = '\0';
+    return buf;
+}
+
+static int file_readable(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (f) { fclose(f); return 1; }
+    return 0;
+}
+
+static int path_exists(const char *path) {
+#ifdef _WIN32
+    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
+#else
+    struct stat st;
+    return stat(path, &st) == 0;
+#endif
+}
+
+static int cmp_strp(const void *a, const void *b) {
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+// Names of everything inside `dir` (no "." / ".."). Heap array of heap strings.
+static char **list_dir_names(const char *dir, int *count) {
+    *count = 0;
+    char **out = NULL; int n = 0, cap = 0;
+#ifdef _WIN32
+    char search[1100];
+    snprintf(search, sizeof(search), "%s/*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(search, &fd);
+    if (h == INVALID_HANDLE_VALUE) return NULL;
+    do {
+        const char *nm = fd.cFileName;
+#else
+    DIR *d = opendir(dir);
+    if (!d) return NULL;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        const char *nm = de->d_name;
+#endif
+        if (strcmp(nm, ".") != 0 && strcmp(nm, "..") != 0) {
+            if (n == cap) {
+                cap = cap ? cap * 2 : 16;
+                char **t = realloc(out, sizeof(char *) * (size_t)cap);
+                if (!t) break;
+                out = t;
+            }
+            out[n] = malloc(strlen(nm) + 1);
+            if (!out[n]) break;
+            strcpy(out[n], nm);
+            n++;
+        }
+#ifdef _WIN32
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    }
+    closedir(d);
+#endif
+    *count = n;
+    return out;
+}
+
+// Sorted names of every valid install (a directory holding <name>/<name>.kh).
+static char **installed_names(int *count) {
+    char *pd = get_packages_dir();
+    int n = 0;
+    char **all = list_dir_names(pd, &n);
+    free(pd);
+    char **out = calloc((size_t)n + 1, sizeof(char *));
+    int c = 0;
+    for (int i = 0; i < n; i++) {
+        if (out && valid_pkg_name(all[i]) && is_installed(all[i])) out[c++] = all[i];
+        else free(all[i]);
+    }
+    free(all);
+    if (out) qsort(out, (size_t)c, sizeof(char *), cmp_strp);
+    *count = out ? c : 0;
+    return out;
+}
+
+static char *load_meta(const char *name) {
+    char *pd = get_packages_dir();
+    char path[2048];
+    snprintf(path, sizeof(path), "%s/%s/package.json", pd, name);
+    free(pd);
+    return read_text_file(path);
+}
+
+// Installed version, or a copy of "?" when it cannot be read. Caller frees.
+static char *installed_version(const char *name) {
+    char *meta = load_meta(name);
+    char *v = meta ? json_get_string(meta, "version") : NULL;
+    free(meta);
+    if (!v) { v = malloc(2); if (v) strcpy(v, "?"); }
+    return v;
+}
+
+static int meta_requires(const char *meta, const char *dep) {
+    int n = 0;
+    char **d = json_get_string_array(meta, "dependencies", &n);
+    int hit = 0;
+    for (int i = 0; i < n; i++) if (strcmp(d[i], dep) == 0) hit = 1;
+    free_strs(d, n);
+    return hit;
+}
+
+// Plain dotted numbers (1.2.3) compare numerically; anything else just has to differ.
+static int ver_numeric(const char *v) {
+    if (!v || !*v) return 0;
+    for (; *v; v++) if (!(isdigit((unsigned char)*v) || *v == '.')) return 0;
+    return 1;
+}
+static int ver_cmp(const char *a, const char *b) {
+    while (*a || *b) {
+        long x = 0, y = 0;
+        while (isdigit((unsigned char)*a)) { if (x < 1000000000L) x = x * 10 + (*a - '0'); a++; }
+        while (isdigit((unsigned char)*b)) { if (y < 1000000000L) y = y * 10 + (*b - '0'); b++; }
+        if (x != y) return x < y ? -1 : 1;
+        if (*a == '.') a++;
+        if (*b == '.') b++;
+    }
+    return 0;
+}
+static int is_newer(const char *latest, const char *installed) {
+    if (ver_numeric(latest) && ver_numeric(installed)) return ver_cmp(latest, installed) > 0;
+    return strcmp(latest, installed) != 0;
+}
+
+// Delete a file or a whole directory tree. Symlinks are removed, never followed.
+static int remove_tree(const char *path) {
+#ifdef _WIN32
+    DWORD at = GetFileAttributesA(path);
+    if (at == INVALID_FILE_ATTRIBUTES) return -1;
+    if (at & FILE_ATTRIBUTE_DIRECTORY) {
+        if (!(at & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            int n = 0;
+            char **names = list_dir_names(path, &n);
+            for (int i = 0; i < n; i++) {
+                char child[2048];
+                snprintf(child, sizeof(child), "%s/%s", path, names[i]);
+                remove_tree(child);
+            }
+            free_strs(names, n);
+        }
+        return RemoveDirectoryA(path) ? 0 : -1;
+    }
+    SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
+    return DeleteFileA(path) ? 0 : -1;
+#else
+    struct stat st;
+    if (lstat(path, &st) != 0) return -1;
+    if (S_ISDIR(st.st_mode)) {
+        int n = 0;
+        char **names = list_dir_names(path, &n);
+        for (int i = 0; i < n; i++) {
+            char child[2048];
+            snprintf(child, sizeof(child), "%s/%s", path, names[i]);
+            remove_tree(child);
+        }
+        free_strs(names, n);
+        return rmdir(path);
+    }
+    return unlink(path);
+#endif
+}
+
+static int ci_contains(const char *hay, const char *needle) {
+    if (!needle || !*needle) return 1;
+    size_t nl = strlen(needle);
+    for (; *hay; hay++) {
+        size_t i = 0;
+        while (i < nl && hay[i] && tolower((unsigned char)hay[i]) == tolower((unsigned char)needle[i])) i++;
+        if (i == nl) return 1;
+    }
+    return 0;
+}
+
+static char *fetch_registry_or_err(void) {
+    char *registry = fetch_url(g_registry_url);
+    if (!registry || strlen(registry) < 10) {
+        print_err("Could not reach registry.");
+        free(registry);
+        return NULL;
+    }
+    return registry;
+}
+
+// ---------------------------------------------------------------------------
+// CMD: kh remove <name>   (alias: uninstall)
+// Deletes the whole package folder, including sibling files (older versions
+// of kh left those behind and could not remove the folder).
 // ---------------------------------------------------------------------------
 static int cmd_remove(const char *name) {
     char *pkgs_dir = get_packages_dir();
-    char pkg_file[1024], meta_file[1024], pkg_dir[1024];
-    snprintf(pkg_file,  sizeof(pkg_file),  "%s/%s/%s.kh",      pkgs_dir, name, name);
-    snprintf(meta_file, sizeof(meta_file), "%s/%s/package.json", pkgs_dir, name);
-    snprintf(pkg_dir,   sizeof(pkg_dir),   "%s/%s",             pkgs_dir, name);
+    char pkg_dir[1024];
+    snprintf(pkg_dir, sizeof(pkg_dir), "%s/%s", pkgs_dir, name);
     free(pkgs_dir);
 
-    int removed = 0;
-    if (remove(pkg_file)  == 0) removed = 1;
-    if (remove(meta_file) == 0) removed = 1;
-    if (removed) {
-#ifdef _WIN32
-        _rmdir(pkg_dir);
-#else
-        rmdir(pkg_dir);
-#endif
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Removed package \"%s\".", name);
-        print_ok(msg);
-        return 0;
-    } else {
+    if (!path_exists(pkg_dir)) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Package \"%s\" is not installed.", name);
         print_err(msg);
         return 1;
     }
+
+    // Warn (pip-style) if something installed still needs it.
+    int n = 0;
+    char **names = installed_names(&n);
+    for (int i = 0; i < n; i++) {
+        if (strcmp(names[i], name) == 0) continue;
+        char *meta = load_meta(names[i]);
+        if (meta && meta_requires(meta, name)) {
+            printf("\033[1;33m!\033[0m %s depends on %s and will not import until you reinstall it.\n", names[i], name);
+        }
+        free(meta);
+    }
+    free_strs(names, n);
+
+    if (remove_tree(pkg_dir) != 0 && path_exists(pkg_dir)) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Could not fully remove \"%s\" (a file may be in use).", name);
+        print_err(msg);
+        return 1;
+    }
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Removed package \"%s\".", name);
+    print_ok(msg);
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
-// CMD: kh list
+// CMD: kh list [--outdated]      (also: kh installed, kh outdated)
+// Like `pip list`: what is installed on this computer. Works offline.
+// With --outdated it asks the registry and shows only packages with a newer version.
 // ---------------------------------------------------------------------------
-static int cmd_list(void) {
-    print_info_line("Fetching registry...");
+static int cmd_list(int outdated_only) {
+    int n = 0;
+    char **names = installed_names(&n);
+    char *registry = NULL;
 
-    char *registry = fetch_url(g_registry_url);
-    if (!registry || strlen(registry) < 10) {
-        print_err("Could not reach registry.");
-        free(registry);
-        return 1;
+    if (outdated_only) {
+        print_info_line("Checking the registry for newer versions...");
+        registry = fetch_registry_or_err();
+        if (!registry) { free_strs(names, n); return 1; }
     }
 
-    print_header("\nKosh Package Registry");
+    if (n == 0) {
+        printf("No packages installed yet.\n");
+        printf("Run \033[1mkh install <name>\033[0m to install one, or \033[1mkh search\033[0m to browse.\n");
+        free(registry); free_strs(names, n);
+        return 0;
+    }
+
+    if (outdated_only) {
+        print_header("\nOutdated Kosh packages");
+        printf("%-18s %-10s %s\n", "NAME", "INSTALLED", "LATEST");
+        printf("%-18s %-10s %s\n", "──────────────────", "─────────", "──────");
+    } else {
+        print_header("\nInstalled Kosh packages");
+        printf("%-18s %s\n", "NAME", "VERSION");
+        printf("%-18s %s\n", "──────────────────", "───────");
+    }
+
+    int shown = 0;
+    for (int i = 0; i < n; i++) {
+        char *ver = installed_version(names[i]);
+        if (outdated_only) {
+            char *entry = find_package_in_registry(registry, names[i]);
+            char *latest = entry ? json_get_string(entry, "version") : NULL;
+            if (latest && ver && is_newer(latest, ver)) {
+                printf("\033[1;32m%-18s\033[0m %-10s \033[1;33m%s\033[0m\n", names[i], ver, latest);
+                shown++;
+            }
+            free(entry); free(latest);
+        } else {
+            printf("\033[1;32m%-18s\033[0m %s\n", names[i], ver ? ver : "?");
+            shown++;
+        }
+        free(ver);
+    }
+
+    if (outdated_only) {
+        if (shown == 0) printf("Everything is up to date (%d package%s checked).\n", n, n == 1 ? "" : "s");
+        else printf("\n%d package(s) can be updated. Run \033[1mkh update --all\033[0m.\n", shown);
+    } else {
+        printf("\n%d package(s) installed.  In your .kh files: import \"<name>\"\n", shown);
+    }
+    free(registry);
+    free_strs(names, n);
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// CMD: kh freeze      name==version for every installed package (scriptable)
+// ---------------------------------------------------------------------------
+static int cmd_freeze(void) {
+    int n = 0;
+    char **names = installed_names(&n);
+    for (int i = 0; i < n; i++) {
+        char *ver = installed_version(names[i]);
+        printf("%s==%s\n", names[i], ver ? ver : "?");
+        free(ver);
+    }
+    free_strs(names, n);
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// CMD: kh search [term]     browse the registry (what `kh list` used to do)
+// ---------------------------------------------------------------------------
+static int cmd_search(const char *term) {
+    print_info_line("Fetching registry...");
+    char *registry = fetch_registry_or_err();
+    if (!registry) return 1;
+
+    print_header(term ? "\nMatching packages in the Kosh registry" : "\nKosh Package Registry");
     printf("%-16s %-8s  %s\n", "NAME", "VERSION", "DESCRIPTION");
     printf("%-16s %-8s  %s\n", "────────────────", "───────", "───────────────────────────────────");
 
@@ -814,106 +1126,223 @@ static int cmd_list(void) {
         char *name    = json_get_string(p, "name");
         char *version = json_get_string(p, "version");
         char *desc    = json_get_string(p, "description");
-
-        if (name && version && desc) {
-            // Truncate description to 52 chars
-            if (strlen(desc) > 52) desc[52] = '\0';
-            printf("\033[1;32m%-16s\033[0m %-8s  %s\n", name, version, desc);
+        if (name && version && desc && (ci_contains(name, term) || ci_contains(desc, term))) {
+            size_t cut = strlen(desc);
+            if (cut > 52) {
+                cut = 52;
+                while (cut > 0 && (((unsigned char)desc[cut]) & 0xC0) == 0x80) cut--;   // don't split UTF-8
+                desc[cut] = '\0';
+            }
+            int have = valid_pkg_name(name) && is_installed(name);
+            printf("\033[1;32m%-16s\033[0m %-8s  %s%s\n", name, version, desc, have ? "  \033[36m[installed]\033[0m" : "");
             count++;
         }
-
         free(name); free(version); free(desc);
         p++;
     }
     free(registry);
 
-    printf("\n%d package(s) available.\n", count);
-    printf("Run \033[1mkh install <name>\033[0m to install.\n");
+    if (count == 0) printf("No packages match.\n");
+    else printf("\n%d package(s) %s.  Run \033[1mkh install <name>\033[0m to install.\n", count, term ? "found" : "available");
     return 0;
 }
 
 // ---------------------------------------------------------------------------
-// CMD: kh installed
+// CMD: kh show <name>     details of an INSTALLED package (like `pip show`)
 // ---------------------------------------------------------------------------
-static int cmd_installed(void) {
-    char *pkgs_dir = get_packages_dir();
-
-    print_header("\nInstalled Kosh Packages");
-    printf("Location: %s\n\n", pkgs_dir);
-
-#ifdef _WIN32
-    // Use FindFirstFile / FindNextFile on Windows
-    char search[1024];
-    snprintf(search, sizeof(search), "%s/*", pkgs_dir);
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(search, &fd);
-    int count = 0;
-    if (h != INVALID_HANDLE_VALUE) {
-        do {
-            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                if (strcmp(fd.cFileName, ".") == 0 ||
-                    strcmp(fd.cFileName, "..") == 0) continue;
-
-                // Read version from package.json
-                char meta[1024];
-                snprintf(meta, sizeof(meta), "%s\\%s\\package.json",
-                         pkgs_dir, fd.cFileName);
-                char *version = NULL;
-                FILE *mf = fopen(meta, "r");
-                if (mf) {
-                    char buf[512]; size_t n = fread(buf, 1, 511, mf);
-                    buf[n] = '\0'; fclose(mf);
-                    version = json_get_string(buf, "version");
-                }
-                printf("\033[1;32m%-16s\033[0m %s\n",
-                       fd.cFileName, version ? version : "?");
-                free(version);
-                count++;
-            }
-        } while (FindNextFileA(h, &fd));
-        FindClose(h);
+static int cmd_show(const char *name) {
+    if (!is_installed(name)) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Package \"%s\" is not installed. (kh info %s shows the registry entry.)", name, name);
+        print_err(msg);
+        return 1;
     }
-#else
-    // Use popen("ls") to list directories — avoids needing dirent portability issues
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "ls \"%s\" 2>/dev/null", pkgs_dir);
-    FILE *fp = popen(cmd, "r");
-    int count = 0;
-    if (fp) {
-        char line[256];
-        while (fgets(line, sizeof(line), fp)) {
-            // Strip newline
-            line[strcspn(line, "\n")] = '\0';
-            if (strlen(line) == 0) continue;
+    char *pd = get_packages_dir();
+    char dir[1024];
+    snprintf(dir, sizeof(dir), "%s/%s", pd, name);
+    free(pd);
 
-            // Read version
-            char meta[1024];
-            snprintf(meta, sizeof(meta), "%s/%s/package.json", pkgs_dir, line);
-            char *version = NULL;
-            FILE *mf = fopen(meta, "r");
-            if (mf) {
-                char buf[512]; size_t n = fread(buf, 1, 511, mf);
-                buf[n] = '\0'; fclose(mf);
-                version = json_get_string(buf, "version");
-            }
-            printf("\033[1;32m%-16s\033[0m %s\n", line, version ? version : "?");
-            free(version);
-            count++;
-        }
-        pclose(fp);
+    char *meta = load_meta(name);
+    char *ver  = meta ? json_get_string(meta, "version") : NULL;
+    char *desc = meta ? json_get_string(meta, "description") : NULL;
+    int nfiles = 0, ndeps = 0;
+    char **files = meta ? json_get_string_array(meta, "files", &nfiles) : NULL;
+    char **deps  = meta ? json_get_string_array(meta, "dependencies", &ndeps) : NULL;
+    char probe[65];
+    int has_sums = meta && json_get_hash(meta, nfiles ? files[0] : name, probe);
+
+    print_header("");
+    printf("  \033[1mName:\033[0m        %s\n", name);
+    printf("  \033[1mVersion:\033[0m     %s\n", ver ? ver : "?");
+    printf("  \033[1mSummary:\033[0m     %s\n", desc && *desc ? desc : "?");
+    printf("  \033[1mLocation:\033[0m    %s\n", dir);
+    printf("  \033[1mChecksums:\033[0m   %s\n", has_sums ? "recorded at install (kh check re-verifies them)" : "not recorded (installed by an older kh, or with --no-verify)");
+
+    printf("  \033[1mRequires:\033[0m    ");
+    if (ndeps == 0) printf("(none)");
+    for (int i = 0; i < ndeps; i++) printf("%s%s", i ? ", " : "", deps[i]);
+    printf("\n");
+
+    printf("  \033[1mRequired-by:\033[0m ");
+    int n = 0, by = 0;
+    char **names = installed_names(&n);
+    for (int i = 0; i < n; i++) {
+        if (strcmp(names[i], name) == 0) continue;
+        char *m = load_meta(names[i]);
+        if (m && meta_requires(m, name)) { printf("%s%s", by ? ", " : "", names[i]); by++; }
+        free(m);
     }
-#endif
+    if (!by) printf("(none)");
+    printf("\n");
+    free_strs(names, n);
 
-    free(pkgs_dir);
-
-    if (count == 0) {
-        printf("No packages installed yet.\n");
-        printf("Run \033[1mkh install <name>\033[0m to install one.\n");
+    if (nfiles > 0) {
+        printf("  \033[1mFiles (%d):\033[0m\n", nfiles);
+        for (int i = 0; i < nfiles; i++) printf("    %s\n", files[i]);
     } else {
-        printf("\n%d package(s) installed.\n", count);
+        printf("  \033[1mFiles:\033[0m       %s.kh\n", name);
     }
-    printf("\nIn your .kh files, use: import \"<name>\"\n");
+    printf("\n  Use it with: \033[1mimport \"%s\"\033[0m\n", name);
+
+    free(meta); free(ver); free(desc);
+    free_strs(files, nfiles); free_strs(deps, ndeps);
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// CMD: kh check [name]    like `pip check`, offline. Reports, for every
+// installed package: missing files, files whose SHA-256 no longer matches what
+// was verified at install time, and dependencies that are not installed.
+// Exit code 1 when anything is wrong.
+// ---------------------------------------------------------------------------
+static int check_one(const char *name) {
+    int problems = 0;
+    char *pd = get_packages_dir();
+    char *meta = load_meta(name);
+    if (!meta) {
+        printf("\033[1;31m✗\033[0m %s: package.json is missing or unreadable (reinstall: kh install %s)\n", name, name);
+        free(pd);
+        return 1;
+    }
+    int nfiles = 0, ndeps = 0;
+    char **files = json_get_string_array(meta, "files", &nfiles);
+    char **deps  = json_get_string_array(meta, "dependencies", &ndeps);
+
+    char mainname[160];
+    snprintf(mainname, sizeof(mainname), "%s.kh", name);
+    int total = nfiles > 0 ? nfiles : 1;
+    for (int i = 0; i < total; i++) {
+        const char *rel = nfiles > 0 ? files[i] : mainname;
+        if (!valid_rel_file(rel)) {
+            printf("\033[1;31m✗\033[0m %s: package.json lists an unsafe file name\n", name);
+            problems++;
+            continue;
+        }
+        char path[2048];
+        snprintf(path, sizeof(path), "%s/%s/%s", pd, name, rel);
+        if (!file_readable(path)) {
+            printf("\033[1;31m✗\033[0m %s: missing file %s\n", name, rel);
+            problems++;
+            continue;
+        }
+        char want[65], got[65];
+        if (json_get_hash(meta, rel, want)) {
+            if (!hash_file_hex(path, got)) {
+                printf("\033[1;31m✗\033[0m %s: cannot read %s to verify it\n", name, rel);
+                problems++;
+            } else if (strcmp(want, got) != 0) {
+                printf("\033[1;31m✗\033[0m %s: %s was modified after install (SHA-256 differs)\n", name, rel);
+                problems++;
+            }
+        }
+    }
+    for (int i = 0; i < ndeps; i++) {
+        if (!valid_pkg_name(deps[i]) || !is_installed(deps[i])) {
+            printf("\033[1;31m✗\033[0m %s requires %s, which is not installed\n", name, deps[i]);
+            problems++;
+        }
+    }
+    free(pd); free(meta);
+    free_strs(files, nfiles); free_strs(deps, ndeps);
+    return problems;
+}
+
+static int cmd_check(const char *only) {
+    int problems = 0, checked = 0;
+    if (only) {
+        if (!is_installed(only)) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Package \"%s\" is not installed.", only);
+            print_err(msg);
+            return 1;
+        }
+        problems = check_one(only);
+        checked = 1;
+    } else {
+        int n = 0;
+        char **names = installed_names(&n);
+        for (int i = 0; i < n; i++) { problems += check_one(names[i]); checked++; }
+        free_strs(names, n);
+    }
+    if (problems == 0) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "No broken packages found (%d checked).", checked);
+        print_ok(msg);
+        return 0;
+    }
+    printf("\n%d problem(s) found. Reinstall with \033[1mkh install <name>\033[0m.\n", problems);
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// CMD: kh update <name> | kh update --all [--no-verify]
+// Reinstalls (verified, atomic) every named package whose registry version is newer.
+// ---------------------------------------------------------------------------
+static int cmd_update(const char *only, int verify) {
+    print_info_line("Checking the registry for newer versions...");
+    char *registry = fetch_registry_or_err();
+    if (!registry) return 1;
+
+    int n = 0;
+    char **names = NULL;
+    if (only) {
+        if (!is_installed(only)) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Package \"%s\" is not installed. Use kh install %s.", only, only);
+            print_err(msg);
+            free(registry);
+            return 1;
+        }
+        names = calloc(1, sizeof(char *));
+        if (names) { names[0] = malloc(strlen(only) + 1); if (names[0]) { strcpy(names[0], only); n = 1; } }
+    } else {
+        names = installed_names(&n);
+    }
+
+    int updated = 0, failed = 0, current = 0;
+    for (int i = 0; i < n; i++) {
+        char *ver = installed_version(names[i]);
+        char *entry = find_package_in_registry(registry, names[i]);
+        char *latest = entry ? json_get_string(entry, "version") : NULL;
+        if (!latest) {
+            printf("\033[1;33m!\033[0m %s is not in the registry; skipped.\n", names[i]);
+        } else if (ver && is_newer(latest, ver)) {
+            char m[300];
+            snprintf(m, sizeof(m), "Updating %s %s -> %s", names[i], ver, latest);
+            print_info_line(m);
+            if (cmd_install(names[i], verify) == 0) updated++; else failed++;
+        } else {
+            current++;
+        }
+        free(ver); free(entry); free(latest);
+    }
+    free(registry);
+    free_strs(names, n);
+
+    printf("\n%d updated, %d already up to date", updated, current);
+    if (failed) printf(", \033[1;31m%d failed\033[0m (nothing was changed for those)", failed);
+    printf(".\n");
+    return failed ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -952,6 +1381,15 @@ static int cmd_info(const char *name) {
     printf("  \033[1mAuthor:\033[0m      %s\n", author    ? author    : "?");
     printf("  \033[1mDescription:\033[0m %s\n", desc      ? desc      : "?");
     printf("  \033[1mURL:\033[0m         %s\n", url       ? url       : "?");
+    if (is_installed(name)) {
+        char *iv = installed_version(name);
+        printf("  \033[1mInstalled:\033[0m   %s%s\n", iv ? iv : "?",
+               (iv && version && is_newer(version, iv)) ? "  (update available: kh update " : "");
+        if (iv && version && is_newer(version, iv)) printf("%s)\n", name);
+        free(iv);
+    } else {
+        printf("  \033[1mInstalled:\033[0m   no\n");
+    }
     printf("\n  Install with: \033[1mkh install %s\033[0m\n", name);
 
     free(version); free(desc); free(author); free(developer); free(url);
@@ -968,10 +1406,15 @@ int main(int argc, char *argv[]) {
         printf("\nUsage:\n");
         printf("  kh install <name>    Install a package and its dependencies (every file is checked\n");
         printf("                       against the registry's SHA-256; --no-verify skips the check)\n");
-        printf("  kh remove  <name>    Remove a package\n");
-        printf("  kh list              List all available packages\n");
-        printf("  kh installed         Show installed packages\n");
-        printf("  kh info <name>       Show package details\n");
+        printf("  kh remove  <name>    Remove a package (alias: uninstall)\n");
+        printf("  kh list              List installed packages and versions (offline)\n");
+        printf("  kh list --outdated   Only packages with a newer version in the registry (alias: kh outdated)\n");
+        printf("  kh show <name>       Details of an installed package: files, requires, required-by\n");
+        printf("  kh update <name>     Update one installed package   (kh update --all: update everything)\n");
+        printf("  kh check [name]      Find missing/modified files and missing dependencies (offline)\n");
+        printf("  kh freeze            Print installed packages as name==version\n");
+        printf("  kh search [term]     Browse or search the registry\n");
+        printf("  kh info <name>       Show a package's registry entry\n");
         printf("  kh sha256 <file>     Print a file's SHA-256\n");
         printf("\nExample:\n");
         printf("  kh install math\n");
@@ -1011,16 +1454,47 @@ int main(int argc, char *argv[]) {
         }
         return cmd_install(argv[2], verify);
     }
-    if (strcmp(cmd, "remove") == 0) {
+    if (strcmp(cmd, "remove") == 0 || strcmp(cmd, "uninstall") == 0) {
         if (argc < 3) { print_err("Usage: kh remove <name>"); return 1; }
         if (!valid_pkg_name(argv[2])) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
         return cmd_remove(argv[2]);
     }
-    if (strcmp(cmd, "list") == 0) {
-        return cmd_list();
+    if (strcmp(cmd, "list") == 0 || strcmp(cmd, "installed") == 0 || strcmp(cmd, "outdated") == 0) {
+        int outdated = strcmp(cmd, "outdated") == 0;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--outdated") == 0 || strcmp(argv[i], "-o") == 0) outdated = 1;
+            else { char m[300]; snprintf(m, sizeof(m), "Unknown option \"%s\"", argv[i]); print_err(m); return 1; }
+        }
+        return cmd_list(outdated);
     }
-    if (strcmp(cmd, "installed") == 0) {
-        return cmd_installed();
+    if (strcmp(cmd, "freeze") == 0) {
+        return cmd_freeze();
+    }
+    if (strcmp(cmd, "search") == 0) {
+        if (argc > 3) { print_err("Usage: kh search [term]"); return 1; }
+        return cmd_search(argc == 3 ? argv[2] : NULL);
+    }
+    if (strcmp(cmd, "show") == 0) {
+        if (argc < 3) { print_err("Usage: kh show <name>"); return 1; }
+        if (!valid_pkg_name(argv[2])) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
+        return cmd_show(argv[2]);
+    }
+    if (strcmp(cmd, "check") == 0) {
+        if (argc > 3) { print_err("Usage: kh check [name]"); return 1; }
+        if (argc == 3 && !valid_pkg_name(argv[2])) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
+        return cmd_check(argc == 3 ? argv[2] : NULL);
+    }
+    if (strcmp(cmd, "update") == 0 || strcmp(cmd, "upgrade") == 0) {
+        const char *target = NULL; int all = 0, verify = 1;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--all") == 0) all = 1;
+            else if (strcmp(argv[i], "--no-verify") == 0) verify = 0;
+            else if (argv[i][0] != '-' && !target) target = argv[i];
+            else { char m[300]; snprintf(m, sizeof(m), "Unknown option \"%s\"", argv[i]); print_err(m); return 1; }
+        }
+        if (all == (target != NULL)) { print_err("Usage: kh update <name>   or   kh update --all"); return 1; }
+        if (target && !valid_pkg_name(target)) { print_err("Invalid package name (allowed: letters, digits, _ and -)."); return 1; }
+        return cmd_update(target, verify);
     }
     if (strcmp(cmd, "info") == 0) {
         if (argc < 3) { print_err("Usage: kh info <name>"); return 1; }

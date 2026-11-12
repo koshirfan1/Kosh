@@ -114,7 +114,7 @@ Running `kosh` with no arguments — the same trigger `python` uses — starts a
 
 ```
 $ kosh
-Kosh 0.016.0 — interactive mode. Type 'exit' or press Ctrl+D to quit.
+Kosh 0.016.1 — interactive mode. Type 'exit' or press Ctrl+D to quit.
 kosh> let x = 10
 kosh> x * 5
 50

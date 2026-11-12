@@ -11,6 +11,6 @@
  * the kind of inconsistency this project's docs otherwise go out of
  * their way to avoid. Bump to 1.0.0 when the roadmap says so, not
  * before. */
-#define KOSH_VERSION "0.016.0"
+#define KOSH_VERSION "0.016.1"
 
 #endif

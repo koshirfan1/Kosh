@@ -10,13 +10,19 @@ Kosh ships with `kh.exe` — a package manager that downloads packages from the 
 
 | Command | Description |
 |---|---|
-| `kh install <name>` | Download and install a package and its dependencies, verifying every file against the registry's SHA-256 |
-| `kh install <name> --no-verify` | Install without the checksum check (a registry you trust only) |
+| `kh install <n>` | Download and install a package and its dependencies, verifying every file against the registry's SHA-256 |
+| `kh install <n> --no-verify` | Install without the checksum check (a registry you trust only) |
+| `kh list` | Show the packages installed on this computer, with versions (like `pip list`; works offline) |
+| `kh list --outdated` / `kh outdated` | Only the installed packages that have a newer version in the registry |
+| `kh show <n>` | Details of an installed package: version, location, files, what it requires, what requires it |
+| `kh update <n>` / `kh update --all` | Reinstall (verified, atomic) packages whose registry version is newer; never downgrades |
+| `kh check [n]` | Offline health check: missing files, files changed since install, missing dependencies. Exit code 1 if anything is wrong |
+| `kh freeze` | Print installed packages as `name==version`, one per line |
+| `kh search [term]` | Browse the registry, or search names and descriptions (this is what `kh list` used to do) |
+| `kh info <n>` | Show a package's registry entry (and whether you have it installed) |
+| `kh remove <n>` / `kh uninstall <n>` | Remove an installed package and all its files; warns if another installed package needs it |
 | `kh sha256 <file>` | Print a file's SHA-256 |
-| `kh remove <name>` | Remove an installed package |
-| `kh list` | Show all available packages in the registry |
-| `kh installed` | Show locally installed packages |
-| `kh info <name>` | Show details about a package |
+| `kh installed` | Same as `kh list` (kept for older scripts) |
 
 ### How it works
 
@@ -46,9 +52,11 @@ What this protects against: corrupted or truncated downloads, a stale CDN cache 
 
 `--no-verify` skips step 2 and prints a warning. Use it only for a registry you trust.
 
+At install time `kh` also records the package's file list, dependencies and verified checksums in its local `package.json`. `kh show` reads them, and `kh check` uses the checksums to notice a file that was edited or corrupted afterwards. A package installed by an older `kh` (or with `--no-verify`) has no checksums recorded, so `kh check` can only look for missing files and dependencies there; reinstall it to record them.
+
 Environment variables (for mirrors and tests; only `https://` and `file://` are accepted, never plain `http://`): `KH_REGISTRY_URL` (the registry JSON) and `KH_RAW_BASE` (the folder holding the package files).
 
-Package authors: the registry's versions, file lists, dependencies and checksums are generated from each package's `package.json` by `python3 tools/gen_registry.py`. Run it after changing any shipped file and commit the result; CI fails if you forget. `kh remove` does not check whether other packages depend on the one you remove.
+Package authors: the registry's versions, file lists, dependencies and checksums are generated from each package's `package.json` by `python3 tools/gen_registry.py`. Run it after changing any shipped file and commit the result; CI fails if you forget. `kh remove` warns, but does not stop you, if another installed package depends on the one you remove.
 
 ## Packages
 
