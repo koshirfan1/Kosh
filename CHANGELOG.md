@@ -3,6 +3,54 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.016.2 - 2026-11-13
+
+webi HTTP-layer hardening (phase 1 of the review by a community reviewer). Every issue below
+was first reproduced against a running server, then fixed, then locked in with a test that
+fails on the old code.
+
+### Security
+- **Response-header injection.** A CR/LF in a value passed to `res_with_header()`,
+  `res_with_cookie()` or `res_with_secure_cookie()` (for example a field from a JSON body)
+  could add headers such as `Set-Cookie`. Those helpers now refuse such values, and the native
+  server drops any header, cookie or Content-Type containing a control character, so a response
+  map built by hand cannot bypass it. A cookie name/value/path with `;` is refused too, and
+  `same_site` is validated. Handlers can no longer override `Content-Length`,
+  `Transfer-Encoding` or `Connection`.
+- **Strict request parsing** (new `wb_read_request_strict`, one shared reader for the POSIX and
+  Windows servers). Refused with `400/413/414/431/501`: duplicate or non-numeric
+  `Content-Length`, `Transfer-Encoding` (with `Content-Length` = 400, alone = 501), folded
+  headers, header names that are not tokens, NUL/control characters/bare CR or LF, malformed or
+  over-long request lines, more than 100 header lines, a body shorter than `Content-Length`,
+  and NUL bytes in a body. Header names are matched exactly and case-insensitively:
+  `CONTENT-LENGTH` now works, `X-Content-Length` is no longer mistaken for it.
+- A client that disconnected in the middle of a response could kill the whole server
+  (`SIGPIPE`). Sends now retry partial writes and never raise `SIGPIPE`.
+
+### Fixed
+- **Binary files were truncated.** `serve_static()` read files into a C string, so a PNG/JPG/PDF
+  was cut at its first NUL byte (a 650-byte file was sent as 4 bytes). The native server now
+  streams static files byte for byte from disk (up to 64 MB). Text types still fill `body`.
+- **Long headers and cookies broke the response.** Headers were written through a 256-byte
+  buffer, which cut off the line terminator of anything longer (a typical JWT cookie), merged
+  the body into the headers and sent an empty body. Headers of any length are now written in full.
+- A request body containing a NUL byte made the server wait for the 30 s timeout and answer
+  with nothing; it is now an immediate `400`.
+- Status `429` (and 408, 413, 414, 431, 501, ...) now carry their proper reason phrase instead of "OK".
+- **Compiler:** `import "name"` crashed (a multi-exabyte `malloc`) when a *folder* called `name`
+  sat next to the importing file, because folders were opened as if they were modules. Folders
+  are now skipped, and the real package is found.
+
+### Tests
+- `tests/webi_http/test_http_hardening.py`: 82 checks against a real server over raw sockets,
+  also run under ASan/UBSan with halt-on-error; checked against deliberately broken builds.
+- `tests/fixtures/import_dir_shadow/check.kh` for the compiler fix. Both run in CI (Linux/macOS).
+
+### Notes
+- webi is now `1.2.1`. `kh update webi` picks it up.
+- Not changed here, on purpose (next release, because it can change existing apps' output):
+  `render()` auto-escaping, CORS and cookie defaults, security-headers middleware.
+
 ## v0.016.1 - 2026-11-13
 
 ### Added

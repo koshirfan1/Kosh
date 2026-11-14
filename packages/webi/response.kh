@@ -125,10 +125,39 @@ fn res_no_content():
     return _res_base(204, "", "text/plain")
 
 # ---------------------------------------------------------------------------
+# Internal: input checks for headers and cookies
+# ---------------------------------------------------------------------------
+fn _webi_has_crlf(s):
+    return contains(s, "\r") or contains(s, "\n")
+
+# A cookie name/value may not contain ";" (it would start a new attribute),
+# CR or LF. A name also may not contain "=", "," or spaces.
+fn _webi_cookie_ok(name, value):
+    let n = str(name)
+    let v = str(value)
+    if len(n) == 0:
+        return false
+    if _webi_has_crlf(n) or _webi_has_crlf(v):
+        return false
+    if contains(n, ";") or contains(n, "=") or contains(n, ",") or contains(n, " ") or contains(n, "\t"):
+        return false
+    if contains(v, ";"):
+        return false
+    return true
+
+# ---------------------------------------------------------------------------
 # res_with_header(res, key, value) -> response
 # Add a custom header to an existing response
 # ---------------------------------------------------------------------------
+#
+# CR or LF in a header name or value would let an attacker (whose input ends
+# up in the header) add headers of their own — "response splitting". Such a
+# header is refused: it is not set, and a warning is printed. The native
+# server drops any header with a control character too, as a second layer.
 fn res_with_header(res, key, value):
+    if _webi_has_crlf(str(key)) or _webi_has_crlf(str(value)):
+        print "[webi] res_with_header: refused header '" + str(key) + "' (CR/LF not allowed in a header name or value)"
+        return res
     res["headers"][key] = value
     return res
 
@@ -142,6 +171,9 @@ fn res_with_header(res, key, value):
 # across sites (CSRF).
 # ---------------------------------------------------------------------------
 fn res_with_cookie(res, name, value):
+    if not _webi_cookie_ok(name, value):
+        print "[webi] res_with_cookie: refused cookie '" + str(name) + "' (name/value may not contain ; CR LF, and a name may not contain = , or spaces)"
+        return res
     res["cookies"] = push(res["cookies"], name + "=" + value + "; Path=/")
     return res
 
@@ -178,6 +210,14 @@ fn res_with_secure_cookie(res, name, value, opts):
     let path = "/"
     if has(opts, "path"):
         path = opts["path"]
+
+    if not _webi_cookie_ok(name, value) or contains(str(path), ";") or _webi_has_crlf(str(path)) or _webi_has_crlf(str(same_site)):
+        print "[webi] res_with_secure_cookie: refused cookie '" + str(name) + "' (name/value/path may not contain ; CR LF, and a name may not contain = , or spaces)"
+        return res
+    let ss_lower = lower(str(same_site))
+    if ss_lower != "strict" and ss_lower != "lax" and ss_lower != "none":
+        print "[webi] res_with_secure_cookie: same_site must be Strict, Lax or None (got '" + str(same_site) + "') - using Lax"
+        same_site = "Lax"
 
     let cookie = name + "=" + value + "; Path=" + path + "; SameSite=" + same_site
 

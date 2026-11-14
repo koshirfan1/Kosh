@@ -169,6 +169,17 @@ res = res_with_secure_cookie(res, "session", token, {"http_only": true, "max_age
 res = res_cors(res, req)   # apply your configured CORS origin to this one response
 ```
 
+**Header and cookie values are checked.** A CR or LF in a header name/value (or in a
+cookie) would let an attacker whose input ends up there add headers of their own
+("response splitting"), so `res_with_header()`, `res_with_cookie()` and
+`res_with_secure_cookie()` refuse such values: nothing is set and a `[webi] ... refused`
+warning is printed. A cookie name/value/path also may not contain `;` (it would start a new
+attribute), and a name may not contain `=`, `,` or spaces; `same_site` must be `Strict`,
+`Lax` or `None`. The native server applies the same rules a second time to every header
+and cookie it writes, so a response map built by hand cannot bypass them. Handlers cannot
+override `Content-Length`, `Transfer-Encoding` or `Connection`. Long headers and cookies
+(JWTs, for example) are sent in full.
+
 ---
 
 ## Middleware
@@ -360,6 +371,11 @@ folder, whether the escape attempt is a literal `..`, a percent-encoded
 `%2e%2e%2f`, or (on POSIX) a symlink pointing outside it. This is the
 same class of bug as the classic `GET /static/../../server.kh` attack.
 
+Files are sent **byte for byte, straight from disk** by the native server, so PNG/JPG/PDF/
+fonts/video arrive intact (a single file may be up to 64 MB). The response map carries the
+path in a `body_file` key; text types (`text/*`, JavaScript, JSON, XML) also keep `body`
+filled in for code that inspects the response in-process.
+
 ```kosh
 app = serve_static(app, "/static", "public")
 app = serve_static(app, "/assets", "vendor/assets")   # mount as many as you need
@@ -381,9 +397,38 @@ it's exposed mainly so tests can dispatch a request without actually
 opening a socket (see `examples/webi_phase3_test.kh` for an example).
 
 ```kosh
-print webi_version()    # "webi/1.2.0 (Kosh)"
+print webi_version()    # "webi/1.2.1 (Kosh)"
 print webi_routes(app)  # list every registered route, for debugging
 ```
+
+---
+
+## How requests are read (strict by design)
+
+The native server reads and validates every request **before** any of it reaches Kosh
+code. Ambiguous input is refused with a short plain-text error rather than guessed at,
+because ambiguity is what request smuggling and header injection are made of.
+
+| Input | Result |
+|---|---|
+| Request line not exactly `METHOD /target HTTP/1.0` or `HTTP/1.1` | `400` |
+| Target longer than 511 bytes | `414` |
+| Header name that is not a valid token, a line without `:`, folded (continued) header lines, NUL / control characters / bare CR or LF | `400` |
+| More than 100 header lines, or headers over 64 KB | `431` |
+| More than one `Content-Length`, or one that is not plain digits | `400` |
+| `Content-Length` over 10 MB | `413` |
+| `Transfer-Encoding` together with `Content-Length` | `400` |
+| `Transfer-Encoding` on its own (chunked bodies are not implemented) | `501` |
+| Body shorter than `Content-Length` (client left or stalled) | `400` / `408` |
+| NUL byte in the body | `400` |
+
+Header names are matched case-insensitively and exactly (`X-Content-Length` is not
+`Content-Length`). The limits are compile-time constants in `src/webi_lib.c`
+(`WB_MAX_HEADER_SIZE`, `WB_MAX_BODY_SIZE`, `WB_MAX_HEADER_LINES`, `WB_SOCKET_TIMEOUT_SEC`);
+making them configurable is planned. There is a 30 s read timeout per `recv`, but not yet a
+limit on the *total* time one request may take, so a client that trickles one byte every
+29 s can still occupy the (single-threaded) server. A client that disconnects mid-response
+no longer risks killing the server.
 
 ---
 
@@ -396,14 +441,10 @@ print webi_routes(app)  # list every registered route, for debugging
   a global lock around request dispatch (simplest), a worker-process
   pool, or a fully thread-safe interpreter, since nothing in
   `interpreter.c` is locked today.
-- **Strings are C-strings, not byte buffers.** `read_file()`/response
-  bodies rely on `strlen()`/NUL-termination under the hood, so a file
-  containing an embedded NUL byte truncates at that byte. Text assets
-  (html/css/js/svg/json/txt) essentially never contain one; many
-  real-world binary formats (png/jpg/etc.) do somewhere in the file and
-  can come back truncated through `serve_static()`. Fine for text-based
-  static assets; true binary-safe serving would need Kosh's string type
-  to carry an explicit length instead of relying on NUL-termination.
+- **Strings are still C-strings inside Kosh code.** A Kosh string cannot hold a NUL byte.
+  Static files do not go through a Kosh string any more (see *Static files*), so binary
+  assets are safe. But a *request body* containing a NUL byte is refused with `400`, and a
+  handler that builds a binary response body as a Kosh string still cannot include NULs.
 - **No per-app persistent state across requests.** Each request gets a
   fresh copy of `app` — that's why rate limiting counts live in native
   code rather than on the Kosh map. If you need shared mutable state

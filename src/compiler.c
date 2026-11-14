@@ -1,3 +1,4 @@
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -271,16 +272,32 @@ static void compile_block(AstNodeList *stmts, int line);
 static void emit_name_op(uint8_t narrow, uint8_t wide, const char *name, int line);
 
 static char *compiler_read_file(const char *path) {
+    // Only regular files are importable. fopen() happily opens a directory on
+    // Linux and ftell() then reports LONG_MAX, so `import "webi"` crashed with a
+    // huge malloc whenever a folder called "webi" sat next to the importing file.
+    // Returning NULL means "not found here", and the caller tries its next candidate.
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return NULL;
     FILE *file = fopen(path, "rb");
     if (!file) return NULL;
     fseek(file, 0L, SEEK_END);
     long size = ftell(file);
     rewind(file);
-    char *buffer = malloc(size + 1);
-    size_t n = fread(buffer, 1, size, file);
+    if (size < 0 || size > 512L * 1024 * 1024) { fclose(file); return NULL; }
+    char *buffer = malloc((size_t)size + 1);
+    if (!buffer) { fclose(file); return NULL; }
+    size_t n = fread(buffer, 1, (size_t)size, file);
     buffer[n] = '\0';
     fclose(file);
     return buffer;
+}
+
+// fopen() for an import candidate, but only if it is a regular file: a folder
+// that happens to share the module's name must be skipped, not "found".
+static FILE *compiler_open_regular(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return NULL;
+    return fopen(path, "rb");
 }
 
 static void compile_import(const char *path, int line) {
@@ -307,14 +324,14 @@ static void compile_import(const char *path, int line) {
     // Resolve path (logic from interpreter.c)
     if (current->imports->current_import_dir) {
         snprintf(full_path, sizeof(full_path), "%s/%s", current->imports->current_import_dir, path);
-        file = fopen(full_path, "rb");
+        file = compiler_open_regular(full_path);
     }
     if (!file && current->imports->base_path) {
         snprintf(full_path, sizeof(full_path), "%s/%s", current->imports->base_path, path);
-        file = fopen(full_path, "rb");
+        file = compiler_open_regular(full_path);
     }
     if (!file) {
-        file = fopen(path, "rb");
+        file = compiler_open_regular(path);
         if (file) strncpy(full_path, path, sizeof(full_path));
     }
     if (!file) {
@@ -324,7 +341,7 @@ static void compile_import(const char *path, int line) {
         if (is_pkg) {
             // 1. Try local packages folder
             snprintf(full_path, sizeof(full_path), "packages/%s/%s.kh", path, path);
-            file = fopen(full_path, "rb");
+            file = compiler_open_regular(full_path);
 
             if (!file) {
                 // 2. Try home directory cache
@@ -336,7 +353,7 @@ static void compile_import(const char *path, int line) {
 #else
                     snprintf(full_path, sizeof(full_path), "%s/.kosh/packages/%s/%s.kh", home, path, path);
 #endif
-                    file = fopen(full_path, "rb");
+                    file = compiler_open_regular(full_path);
                 }
             }
         }

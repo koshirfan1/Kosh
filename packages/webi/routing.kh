@@ -81,6 +81,16 @@ fn webi_error(app, handler):
 # resolving the real filesystem path and checking where it actually
 # landed.
 # ---------------------------------------------------------------------------
+# Internal: is this MIME type text (safe to hold in a Kosh string)?
+# ---------------------------------------------------------------------------
+fn _webi_mime_is_text(mime):
+    if len(mime) >= 5 and substring(mime, 0, 5) == "text/":
+        return true
+    if contains(mime, "javascript") or contains(mime, "json") or contains(mime, "xml"):
+        return true
+    return false
+
+# ---------------------------------------------------------------------------
 fn _webi_static_not_found():
     return {
         "status":       404,
@@ -103,11 +113,20 @@ fn _webi_serve_static_file(req, prefix, resolved_folder):
     if safe_path == nil:
         return _webi_static_not_found()
 
-    let content = read_file(safe_path)
     let mime = _webi_mime_type(safe_path)
+
+    # The file's bytes are sent by the native server straight from disk
+    # ("body_file"), so binary files (PNG/JPG/PDF/fonts/...) arrive intact:
+    # a Kosh string cannot carry a NUL byte, and used to cut every binary file
+    # at its first one. Text types also keep "body" filled in, so code that
+    # looks at the response in-process (tests, after-hooks) still sees it.
+    let body = ""
+    if _webi_mime_is_text(mime):
+        body = read_file(safe_path)
     return {
         "status":       200,
-        "body":         content,
+        "body":         body,
+        "body_file":    safe_path,
         "content_type": mime,
         "headers":      {},
         "cookies":      []

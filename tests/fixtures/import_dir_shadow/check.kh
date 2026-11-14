@@ -1,0 +1,11 @@
+# Regression test: a folder whose name matches a package must not shadow it.
+# Run from the project root:   ./kosh tests/fixtures/import_dir_shadow/check.kh
+# Exits 0 and prints PASS when `import "uuid"` finds the real package.
+import "uuid"
+
+let id = uuid_v4()
+if len(id) == 36:
+    print "PASS: import skipped the folder named 'uuid' and used packages/uuid"
+else:
+    print "FAIL: unexpected uuid " + str(id)
+    exit(1)

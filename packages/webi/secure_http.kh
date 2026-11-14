@@ -176,7 +176,7 @@ let WSEC_PROOF_HTML = "<!doctype html><html lang=\"en\"><head><meta charset=\"ut
 fn _wsec_proof_json(store):
     return {
         "protocol": "kosh-webi/1",
-        "webi_version": "1.2.0",
+        "webi_version": "1.2.1",
         "primitives": {
             "kex": "X25519 (RFC 7748), ephemeral",
             "kdf": "HKDF-SHA256 (RFC 5869)",

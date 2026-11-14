@@ -44,6 +44,7 @@ typedef int wb_sock_t;
 #include <time.h>
 #include <ctype.h>
 #include <sys/stat.h>
+#include <signal.h>
 #ifndef _WIN32
 #include <limits.h>
 #endif
@@ -70,6 +71,7 @@ typedef int wb_sock_t;
 #define WB_MAX_HEADER_SIZE   (64 * 1024)          /* 64 KB */
 #define WB_MAX_BODY_SIZE     (10 * 1024 * 1024)   /* 10 MB */
 #define WB_SOCKET_TIMEOUT_SEC 30
+#define WB_MAX_STATIC_FILE   (64 * 1024 * 1024)  /* 64 MB cap on a single static file */
 
 /* Bridge: call Kosh function by name from C */
 extern Value kosh_call_fn(Interpreter *interp, Environment *env,
@@ -235,41 +237,6 @@ static int wb_str_arg(Interpreter *interp, const char *fn, int idx,
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Internal: read a full HTTP request from a socket fd
-// Returns malloc'd raw request string, caller frees.
-// ---------------------------------------------------------------------------
-static char *wb_read_request(wb_sock_t fd) {
-    char *buf = NULL;
-    int len = 0, cap = 0;
-    char tmp[4096];
-    ssize_t n;
-
-    // Read until we have headers (double CRLF), or give up if the client
-    // sends more than WB_MAX_HEADER_SIZE without ever completing them.
-    while ((n = recv(fd, tmp, sizeof(tmp), 0)) > 0) {
-        if (len + n + 1 > cap) {
-            cap = cap ? (cap + (int)n) * 2 : 8192;
-            buf = realloc(buf, cap);
-        }
-        memcpy(buf + len, tmp, n);
-        len += n;
-        buf[len] = '\0';
-
-        // Check if we have the header terminator
-        if (strstr(buf, "\r\n\r\n")) break;
-
-        if (len > WB_MAX_HEADER_SIZE) {
-            fprintf(stderr, "[webi] request headers exceeded %d bytes — dropping connection\n",
-                    WB_MAX_HEADER_SIZE);
-            free(buf);
-            return strdup("");
-        }
-    }
-    if (!buf) buf = strdup("");
-    return buf;
-}
-
-// ---------------------------------------------------------------------------
 // Internal: parse the first line of an HTTP request
 // Sets method, path, query (all must point to caller-allocated char[512])
 // ---------------------------------------------------------------------------
@@ -287,145 +254,418 @@ static void wb_parse_request_line(const char *raw,
 }
 
 // ---------------------------------------------------------------------------
-// Internal: extract all headers from raw request into a single string
-// "Key: Value\r\nKey2: Value2\r\n..."
+// Low-level send helpers
 // ---------------------------------------------------------------------------
-static char *wb_extract_headers(const char *raw) {
-    const char *start = strstr(raw, "\r\n");
-    if (!start) return strdup("");
-    start += 2; // skip first line
-    const char *end = strstr(start, "\r\n\r\n");
-    if (!end) end = start + strlen(start);
-    int len = (int)(end - start);
-    char *h = malloc(len + 1);
-    memcpy(h, start, len);
-    h[len] = '\0';
-    return h;
+static int wb_streq_ci(const char *a, const char *b);   /* defined with the MIME table below */
+
+static const char *wb_reason(long status) {
+    switch (status) {
+        case 200: return "OK";
+        case 201: return "Created";
+        case 204: return "No Content";
+        case 301: return "Moved Permanently";
+        case 302: return "Found";
+        case 304: return "Not Modified";
+        case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 403: return "Forbidden";
+        case 404: return "Not Found";
+        case 405: return "Method Not Allowed";
+        case 408: return "Request Timeout";
+        case 409: return "Conflict";
+        case 413: return "Payload Too Large";
+        case 414: return "URI Too Long";
+        case 415: return "Unsupported Media Type";
+        case 422: return "Unprocessable Entity";
+        case 426: return "Upgrade Required";
+        case 429: return "Too Many Requests";
+        case 431: return "Request Header Fields Too Large";
+        case 500: return "Internal Server Error";
+        case 501: return "Not Implemented";
+        case 503: return "Service Unavailable";
+        default:  return "OK";
+    }
+}
+
+// Send every byte, retrying on partial writes. A client that vanishes
+// mid-response must never kill the server: MSG_NOSIGNAL where it exists, and
+// the POSIX server loop also ignores SIGPIPE.
+static void wb_send_all(wb_sock_t fd, const char *buf, size_t len) {
+#ifdef MSG_NOSIGNAL
+    const int flags = MSG_NOSIGNAL;
+#else
+    const int flags = 0;
+#endif
+    size_t off = 0;
+    while (off < len) {
+        size_t chunk = len - off;
+        if (chunk > (1u << 20)) chunk = (1u << 20);
+        long n = (long)send(fd, buf + off, (int)chunk, flags);
+        if (n <= 0) return;
+        off += (size_t)n;
+    }
+}
+
+static void wb_send_error(wb_sock_t fd, int status) {
+    char msg[320];
+    const char *reason = wb_reason(status);
+    int blen = (int)strlen(reason) + 1;
+    int n = snprintf(msg, sizeof(msg),
+        "HTTP/1.1 %d %s\r\nContent-Type: text/plain; charset=utf-8\r\n"
+        "Content-Length: %d\r\nConnection: close\r\n\r\n%s\n",
+        status, reason, blen, reason);
+    if (n > 0) wb_send_all(fd, msg, (size_t)n);
 }
 
 // ---------------------------------------------------------------------------
-// Internal: extract Content-Length from headers, read body from socket
+// Strict HTTP/1.x request reader
+//
+// Reads one request and validates it BEFORE any of it reaches Kosh code.
+// Anything ambiguous is refused, because ambiguity is what request-smuggling
+// and header-injection attacks are made of:
+//   * request line must be exactly "METHOD target HTTP/1.0|1.1"; target must
+//     start with "/" (or be "*") and fit the 512-byte buffers below
+//   * header names must be RFC 7230 tokens; no obs-fold, no NUL, no control
+//     characters, no bare CR/LF; at most WB_MAX_HEADER_LINES lines
+//   * Content-Length: at most one, digits only, <= WB_MAX_BODY_SIZE; the body
+//     must arrive in full (a short body is an error, not a silent truncation)
+//   * Transfer-Encoding is not implemented: 501 (400 if Content-Length is
+//     also present, which is the classic smuggling shape)
+//   * a request body may not contain a NUL byte (Kosh request bodies are
+//     text; truncating at a NUL would let the checker and the app disagree)
+// Returns 0 on success; an HTTP status (400, 408, 413, 414, 431, 501) the
+// caller should answer with; or -1 if the client sent nothing and left.
 // ---------------------------------------------------------------------------
-static char *wb_read_body(wb_sock_t fd, const char *raw) {
-    const char *cl = strstr(raw, "Content-Length:");
-    if (!cl) cl = strstr(raw, "content-length:");
-    if (!cl) return strdup("");
+#define WB_MAX_HEADER_LINES 100
 
-    long content_length = 0;
-    sscanf(cl + 15, "%ld", &content_length);
-    if (content_length <= 0) return strdup("");
+typedef struct {
+    char  *raw;       // request line + headers (+ any body bytes read with them), NUL-terminated
+    size_t rawlen;
+    char  *headers;   // "Key: Value\r\nKey2: Value2" (request line excluded)
+    char  *body;      // exactly Content-Length bytes, NUL-terminated
+} wb_request_t;
 
-    // Reject absurd/hostile Content-Length values instead of trusting the
-    // client and allocating whatever they ask for.
-    if (content_length > WB_MAX_BODY_SIZE) {
-        fprintf(stderr, "[webi] request body Content-Length %ld exceeds %d byte limit — rejecting\n",
-                content_length, WB_MAX_BODY_SIZE);
-        return NULL;
+static int wb_is_tchar(unsigned char c) {
+    if (c == 0) return 0;
+    if (isalnum(c)) return 1;
+    return strchr("!#$%&'*+-.^_`|~", c) != NULL;
+}
+
+static int wb_name_is(const char *s, size_t len, const char *want) {
+    size_t wl = strlen(want);
+    if (len != wl) return 0;
+    for (size_t i = 0; i < len; i++)
+        if (tolower((unsigned char)s[i]) != want[i]) return 0;
+    return 1;
+}
+
+static long wb_find_header_end(const char *buf, size_t len, size_t from) {
+    for (size_t i = from; i + 3 < len; i++)
+        if (buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n')
+            return (long)i;
+    return -1;
+}
+
+// Validate buf[0..hend) (the request line plus headers, without the final
+// CRLFCRLF). Returns 0 or an HTTP status; *clen gets the Content-Length.
+static int wb_validate_head(const char *buf, size_t hend, size_t *clen) {
+    *clen = 0;
+    if (memchr(buf, '\0', hend)) return 400;
+
+    // ---- request line ----
+    size_t e = 0;
+    while (e < hend && !(buf[e] == '\r' && e + 1 < hend && buf[e + 1] == '\n')) e++;
+    const char *sp1 = memchr(buf, ' ', e);
+    if (!sp1) return 400;
+    const char *sp2 = memchr(sp1 + 1, ' ', e - (size_t)(sp1 + 1 - buf));
+    if (!sp2) return 400;
+    size_t mlen = (size_t)(sp1 - buf);
+    if (mlen == 0 || mlen > 16) return 400;
+    for (size_t i = 0; i < mlen; i++) if (!wb_is_tchar((unsigned char)buf[i])) return 400;
+    size_t tlen = (size_t)(sp2 - (sp1 + 1));
+    if (tlen == 0) return 400;
+    if (tlen > 511) return 414;
+    const char *target = sp1 + 1;
+    if (!(target[0] == '/' || (tlen == 1 && target[0] == '*'))) return 400;
+    for (size_t i = 0; i < tlen; i++) {
+        unsigned char c = (unsigned char)target[i];
+        if (c <= 0x20 || c == 0x7f) return 400;
     }
+    const char *ver = sp2 + 1;
+    size_t vlen = e - (size_t)(ver - buf);
+    if (!((vlen == 8) && (memcmp(ver, "HTTP/1.1", 8) == 0 || memcmp(ver, "HTTP/1.0", 8) == 0))) return 400;
 
-    // Body starts after \r\n\r\n
-    const char *body_start = strstr(raw, "\r\n\r\n");
-    if (body_start) {
-        body_start += 4;
-        int already = (int)strlen(body_start);
-        if (already >= content_length) {
-            char *b = malloc(content_length + 1);
-            memcpy(b, body_start, content_length);
-            b[content_length] = '\0';
-            return b;
+    // ---- header lines ----
+    int lines = 0, cl_seen = 0, te_seen = 0;
+    size_t pos = e + 2;
+    while (e < hend && pos <= hend) {
+        size_t le = pos;
+        while (le < hend && !(buf[le] == '\r' && le + 1 < hend && buf[le + 1] == '\n')) le++;
+        size_t llen = le - pos;
+        if (llen == 0) return 400;
+        if (++lines > WB_MAX_HEADER_LINES) return 431;
+        const char *line = buf + pos;
+        if (line[0] == ' ' || line[0] == '\t') return 400;      // obsolete line folding
+        const char *colon = memchr(line, ':', llen);
+        if (!colon || colon == line) return 400;
+        size_t nlen = (size_t)(colon - line);
+        for (size_t i = 0; i < nlen; i++) if (!wb_is_tchar((unsigned char)line[i])) return 400;
+        const char *val = colon + 1;
+        size_t vl = llen - nlen - 1;
+        for (size_t i = 0; i < vl; i++) {
+            unsigned char c = (unsigned char)val[i];
+            if ((c < 0x20 && c != '\t') || c == 0x7f) return 400;  // includes bare CR / LF
+        }
+        if (wb_name_is(line, nlen, "content-length")) {
+            if (++cl_seen > 1) return 400;
+            while (vl && (*val == ' ' || *val == '\t')) { val++; vl--; }
+            while (vl && (val[vl - 1] == ' ' || val[vl - 1] == '\t')) vl--;
+            if (vl == 0 || vl > 18) return 400;
+            unsigned long long n = 0;
+            for (size_t i = 0; i < vl; i++) {
+                if (val[i] < '0' || val[i] > '9') return 400;
+                n = n * 10 + (unsigned)(val[i] - '0');
+            }
+            if (n > (unsigned long long)WB_MAX_BODY_SIZE) return 413;
+            *clen = (size_t)n;
+        } else if (wb_name_is(line, nlen, "transfer-encoding")) {
+            te_seen = 1;
+        }
+        pos = le + 2;
+        if (le >= hend) break;
+    }
+    if (te_seen) return cl_seen ? 400 : 501;
+    return 0;
+}
+
+static int wb_timed_out(void) {
+#ifdef _WIN32
+    return WSAGetLastError() == WSAETIMEDOUT;
+#else
+    return errno == EAGAIN || errno == EWOULDBLOCK;
+#endif
+}
+
+static int wb_read_request_strict(wb_sock_t fd, wb_request_t *out) {
+    memset(out, 0, sizeof(*out));
+    size_t cap = 8192, len = 0, scan = 0;
+    char *buf = malloc(cap);
+    if (!buf) return 500;
+    char tmp[4096];
+    long hend = -1;
+
+    for (;;) {
+        long n = (long)recv(fd, tmp, (int)sizeof(tmp), 0);
+        if (n <= 0) {
+            int timed_out = (n < 0) && wb_timed_out();
+            free(buf);
+            if (len == 0 && !timed_out) return -1;              // connected and left
+            return timed_out ? 408 : 400;                        // stalled / cut off mid-headers
+        }
+        if (len + (size_t)n + 1 > cap) {
+            while (len + (size_t)n + 1 > cap) cap *= 2;
+            char *nb = realloc(buf, cap);
+            if (!nb) { free(buf); return 500; }
+            buf = nb;
+        }
+        memcpy(buf + len, tmp, (size_t)n);
+        size_t before = len;
+        len += (size_t)n;
+        buf[len] = '\0';
+        hend = wb_find_header_end(buf, len, before >= 3 ? before - 3 : 0);
+        if (hend >= 0) break;
+        scan = len;
+        if (len > (size_t)WB_MAX_HEADER_SIZE) {
+            fprintf(stderr, "[webi] request headers exceeded %d bytes — rejecting\n", WB_MAX_HEADER_SIZE);
+            free(buf);
+            return 431;
         }
     }
+    (void)scan;
+    if ((size_t)hend > (size_t)WB_MAX_HEADER_SIZE) { free(buf); return 431; }
 
-    // Need to read more from socket
-    char *body = malloc(content_length + 1);
-    int received = 0;
-    if (body_start) {
-        int already = (int)strlen(body_start);
-        if (already > 0) {
-            memcpy(body, body_start, already);
-            received = already;
+    size_t clen = 0;
+    int st = wb_validate_head(buf, (size_t)hend, &clen);
+    if (st != 0) { free(buf); return st; }
+
+    // ---- body: exactly Content-Length bytes, all of them ----
+    size_t start = (size_t)hend + 4;
+    size_t have = len - start;
+    char *body = malloc(clen + 1);
+    if (!body) { free(buf); return 500; }
+    size_t got = have < clen ? have : clen;
+    if (got) memcpy(body, buf + start, got);
+    while (got < clen) {
+        long n = (long)recv(fd, body + got, (int)(clen - got > 65536 ? 65536 : clen - got), 0);
+        if (n <= 0) {
+            int timed_out = (n < 0) && wb_timed_out();
+            free(body); free(buf);
+            return timed_out ? 408 : 400;
         }
+        got += (size_t)n;
     }
-    while (received < content_length) {
-        ssize_t n = recv(fd, body + received, content_length - received, 0);
-        if (n <= 0) break;
-        received += n;
+    body[clen] = '\0';
+    if (clen && memchr(body, '\0', clen)) {
+        fprintf(stderr, "[webi] request body contains a NUL byte — rejecting (binary request bodies are not supported)\n");
+        free(body); free(buf);
+        return 400;
     }
-    body[received] = '\0';
-    return body;
+
+    // headers string: everything after the request line
+    const char *first_crlf = strstr(buf, "\r\n");
+    char *headers;
+    if (!first_crlf || (size_t)(first_crlf - buf) >= (size_t)hend) {
+        headers = strdup("");
+    } else {
+        const char *hs = first_crlf + 2;
+        size_t hl = (size_t)hend - (size_t)(hs - buf);
+        headers = malloc(hl + 1);
+        if (headers) { memcpy(headers, hs, hl); headers[hl] = '\0'; }
+    }
+    if (!headers) { free(body); free(buf); return 500; }
+
+    out->raw = buf; out->rawlen = len;
+    out->headers = headers;
+    out->body = body;
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
-// Internal: build HTTP response string from a webi response map
+// Binary-safe file read for responses (used for static files)
 // ---------------------------------------------------------------------------
-static char *wb_build_http_response(Value *res_map) {
+static char *wb_read_file_bytes(const char *path, size_t *outlen) {
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return NULL;
+    if (st.st_size < 0 || (unsigned long long)st.st_size > (unsigned long long)WB_MAX_STATIC_FILE) return NULL;
+    size_t size = (size_t)st.st_size;
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    char *data = malloc(size + 1);
+    if (!data) { fclose(f); return NULL; }
+    size_t got = size ? fread(data, 1, size, f) : 0;
+    fclose(f);
+    if (got != size) { free(data); return NULL; }
+    data[size] = '\0';
+    *outlen = size;
+    return data;
+}
+
+// ---------------------------------------------------------------------------
+// Response builder
+//
+// Builds the whole HTTP response (returns a malloc'd buffer, *out_len bytes —
+// it may contain NUL bytes, so never use strlen on it).
+//   * no fixed-size line buffers: long headers/cookies are written in full
+//   * a header or cookie containing CR, LF, NUL or another control character,
+//     or a header whose name is not a valid token, is DROPPED (and logged)
+//     rather than being sent: that is what stops response-header injection
+//   * content-length / transfer-encoding / connection cannot be overridden
+//     from the headers map
+//   * the body length comes from the string's own length, not strlen
+//   * res["body_file"] (set by serve_static) is read here as raw bytes, so
+//     PNG/JPG/PDF/... are sent byte-for-byte
+// ---------------------------------------------------------------------------
+static int wb_header_name_ok(const char *s) {
+    if (!*s) return 0;
+    for (; *s; s++) if (!wb_is_tchar((unsigned char)*s)) return 0;
+    return 1;
+}
+static int wb_header_value_ok(const char *s) {
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if ((c < 0x20 && c != '\t') || c == 0x7f) return 0;
+    }
+    return 1;
+}
+
+static char *wb_build_http_response(Value *res_map, size_t *out_len) {
     Value *status_v = map_get(res_map, "status");
     Value *body_v   = map_get(res_map, "body");
     Value *ct_v     = map_get(res_map, "content_type");
     Value *hdrs_v   = map_get(res_map, "headers");
+    Value *file_v   = map_get(res_map, "body_file");
 
-    long   status = status_v ? (long)status_v->as.number : 200;
-    const char *body    = (body_v && body_v->type == VAL_STRING) ? body_v->as.string : "";
-    const char *ct      = (ct_v  && ct_v->type  == VAL_STRING)  ? ct_v->as.string   : "text/plain; charset=utf-8";
+    long status = status_v ? (long)status_v->as.number : 200;
+    if (status < 100 || status > 599) status = 500;
+    const char *body = (body_v && body_v->type == VAL_STRING) ? body_v->as.string : "";
+    size_t body_len  = (body_v && body_v->type == VAL_STRING) ? str_length(body_v->as.string) : 0;
+    const char *ct   = (ct_v && ct_v->type == VAL_STRING) ? ct_v->as.string : "text/plain; charset=utf-8";
+    if (!wb_header_value_ok(ct)) {
+        fprintf(stderr, "[webi] dropped an unsafe Content-Type (control characters)\n");
+        ct = "text/plain; charset=utf-8";
+    }
 
-    // Map status code to reason phrase
-    const char *reason = "OK";
-    if      (status == 200) reason = "OK";
-    else if (status == 201) reason = "Created";
-    else if (status == 204) reason = "No Content";
-    else if (status == 301) reason = "Moved Permanently";
-    else if (status == 302) reason = "Found";
-    else if (status == 400) reason = "Bad Request";
-    else if (status == 401) reason = "Unauthorized";
-    else if (status == 403) reason = "Forbidden";
-    else if (status == 404) reason = "Not Found";
-    else if (status == 405) reason = "Method Not Allowed";
-    else if (status == 500) reason = "Internal Server Error";
-
-    int body_len = (int)strlen(body);
+    char *file_data = NULL;
+    if (file_v && file_v->type == VAL_STRING) {
+        size_t flen = 0;
+        file_data = wb_read_file_bytes(file_v->as.string, &flen);
+        if (file_data) {
+            body = file_data; body_len = flen;
+        } else {
+            fprintf(stderr, "[webi] static file '%s' could not be read — sending 500\n", file_v->as.string);
+            status = 500;
+            body = "500 Internal Server Error"; body_len = strlen(body);
+            ct = "text/plain; charset=utf-8";
+        }
+    }
+    if (body_len > (size_t)INT_MAX / 4) {
+        status = 500; body = "500 Internal Server Error"; body_len = strlen(body);
+        ct = "text/plain; charset=utf-8";
+    }
 
     char *out = NULL; int olen = 0, ocap = 0;
-    char line[256];
+    char num[64];
 
-    // Status line
-    snprintf(line, sizeof(line), "HTTP/1.1 %ld %s\r\n", status, reason);
-    wb_buf_str(&out, &olen, &ocap, line);
-
-    // Standard headers
-    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.2.0 (Kosh)\r\n");
+    snprintf(num, sizeof(num), "HTTP/1.1 %ld ", status);
+    wb_buf_str(&out, &olen, &ocap, num);
+    wb_buf_str(&out, &olen, &ocap, wb_reason(status));
+    wb_buf_str(&out, &olen, &ocap, "\r\n");
+    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.2.1 (Kosh)\r\n");
     wb_buf_str(&out, &olen, &ocap, "Connection: close\r\n");
-    snprintf(line, sizeof(line), "Content-Type: %s\r\n", ct);
-    wb_buf_str(&out, &olen, &ocap, line);
-    snprintf(line, sizeof(line), "Content-Length: %d\r\n", body_len);
-    wb_buf_str(&out, &olen, &ocap, line);
+    wb_buf_str(&out, &olen, &ocap, "Content-Type: ");
+    wb_buf_str(&out, &olen, &ocap, ct);
+    wb_buf_str(&out, &olen, &ocap, "\r\n");
+    snprintf(num, sizeof(num), "Content-Length: %zu\r\n", body_len);
+    wb_buf_str(&out, &olen, &ocap, num);
 
-    // Extra headers from res["headers"] map
     if (hdrs_v && hdrs_v->type == VAL_MAP) {
         for (int i = 0; i < AS_MAP_COUNT(*hdrs_v); i++) {
             const char *hk = AS_MAP_ENTRIES(*hdrs_v)[i].key;
             Value *hv_ptr = AS_MAP_ENTRIES(*hdrs_v)[i].value;
-            if (hv_ptr && hv_ptr->type == VAL_STRING) {
-                snprintf(line, sizeof(line), "%s: %s\r\n", hk, hv_ptr->as.string);
-                wb_buf_str(&out, &olen, &ocap, line);
+            if (!hv_ptr || hv_ptr->type != VAL_STRING) continue;
+            const char *hv = hv_ptr->as.string;
+            if (!wb_header_name_ok(hk) || !wb_header_value_ok(hv) ||
+                wb_streq_ci(hk, "Content-Length") || wb_streq_ci(hk, "Transfer-Encoding") ||
+                wb_streq_ci(hk, "Connection")) {
+                fprintf(stderr, "[webi] dropped response header '%.40s' (invalid name/value or reserved)\n", hk);
+                continue;
             }
+            wb_buf_str(&out, &olen, &ocap, hk);
+            wb_buf_str(&out, &olen, &ocap, ": ");
+            wb_buf_str(&out, &olen, &ocap, hv);
+            wb_buf_str(&out, &olen, &ocap, "\r\n");
         }
     }
 
-    // Cookies from res["cookies"] array (v1.1.1)
     Value *cookies_v = map_get(res_map, "cookies");
     if (cookies_v && cookies_v->type == VAL_ARRAY) {
         for (int i = 0; i < AS_ARRAY_COUNT(*cookies_v); i++) {
             Value cv = AS_ARRAY_ITEMS(*cookies_v)[i];
-            if (cv.type == VAL_STRING) {
-                snprintf(line, sizeof(line), "Set-Cookie: %s\r\n", cv.as.string);
-                wb_buf_str(&out, &olen, &ocap, line);
+            if (cv.type != VAL_STRING) continue;
+            if (!wb_header_value_ok(cv.as.string) || !strchr(cv.as.string, '=')) {
+                fprintf(stderr, "[webi] dropped a Set-Cookie value (control characters or no name=value)\n");
+                continue;
             }
+            wb_buf_str(&out, &olen, &ocap, "Set-Cookie: ");
+            wb_buf_str(&out, &olen, &ocap, cv.as.string);
+            wb_buf_str(&out, &olen, &ocap, "\r\n");
         }
     }
 
     wb_buf_str(&out, &olen, &ocap, "\r\n");
-    if (body_len > 0) wb_buf_str(&out, &olen, &ocap, body);
-
+    if (body_len > 0) wb_buf_append(&out, &olen, &ocap, body, (int)body_len);
+    free(file_data);
+    *out_len = (size_t)olen;
     return out;
 }
 
@@ -643,6 +883,7 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         interp->had_runtime_error = 1; *result = value_nil(); return;
     }
 
+    signal(SIGPIPE, SIG_IGN);       /* a client that disconnects mid-response must not kill the server */
     g_webi_env = interp->base_env;  /* store env for accept loop */
     printf("[webi] Listening on port %d\n", port);
     fflush(stdout);
@@ -665,21 +906,19 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         wb_timeout.tv_usec = 0;
         setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &wb_timeout, sizeof(wb_timeout));
 
-        // Read request
-        char *raw = wb_read_request(client_fd);
-        char method[512], path[512], query[512];
-        wb_parse_request_line(raw, method, path, query);
-        char *headers_str = wb_extract_headers(raw);
-        char *body_str    = wb_read_body(client_fd, raw);
-        if (!body_str) {
-            // Body exceeded WB_MAX_BODY_SIZE — reject without buffering it.
-            const char *resp =
-                "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(client_fd, resp, strlen(resp), 0);
-            free(raw); free(headers_str);
+        // Read and strictly validate the request (see wb_read_request_strict)
+        wb_request_t rq;
+        int rq_status = wb_read_request_strict(client_fd, &rq);
+        if (rq_status != 0) {
+            if (rq_status > 0) wb_send_error(client_fd, rq_status);
             close(client_fd);
             continue;
         }
+        char *raw = rq.raw;
+        char *headers_str = rq.headers;
+        char *body_str    = rq.body;
+        char method[512], path[512], query[512];
+        wb_parse_request_line(raw, method, path, query);
         char  client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
 
@@ -711,8 +950,9 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
             map_set(&res_map, "content_type", value_string("text/plain"));
             map_set(&res_map, "headers",      value_map_empty());
         }
-        char *http_response = wb_build_http_response(&res_map);
-        send(client_fd, http_response, strlen(http_response), 0);
+        size_t http_len = 0;
+        char *http_response = wb_build_http_response(&res_map, &http_len);
+        wb_send_all(client_fd, http_response, http_len);
 
         // Cleanup
         // NOTE: call_args are NOT freed here — kosh_call_fn() binds them as
@@ -929,45 +1169,19 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         DWORD wb_timeout_ms = WB_SOCKET_TIMEOUT_SEC * 1000;
         setsockopt(cli, SOL_SOCKET, SO_RCVTIMEO, (const char *)&wb_timeout_ms, sizeof(wb_timeout_ms));
 
-        /* Read raw request */
-        char *raw = NULL;
-        int rlen = 0, rcap = 0;
-        char rbuf[4096];
-        int n;
-        int header_too_big = 0;
-        while ((n = recv(cli, rbuf, sizeof(rbuf), 0)) > 0) {
-            if (rlen + n + 1 > rcap) {
-                rcap = rcap ? rcap * 2 : 8192;
-                raw = realloc(raw, rcap);
-            }
-            memcpy(raw + rlen, rbuf, n);
-            rlen += n;
-            raw[rlen] = '\0';
-            if (strstr(raw, "\r\n\r\n")) break;
-            if (rlen > WB_MAX_HEADER_SIZE) { header_too_big = 1; break; }
-        }
-        if (!raw) { closesocket(cli); continue; }
-        if (header_too_big) {
-            const char *resp =
-                "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(cli, resp, (int)strlen(resp), 0);
-            free(raw);
+        // Read and strictly validate the request (see wb_read_request_strict)
+        wb_request_t rq;
+        int rq_status = wb_read_request_strict(cli, &rq);
+        if (rq_status != 0) {
+            if (rq_status > 0) wb_send_error(cli, rq_status);
             closesocket(cli);
             continue;
         }
-
+        char *raw = rq.raw;
+        char *headers_str = rq.headers;
+        char *body_str    = rq.body;
         char method[512], path[512], query[512];
         wb_parse_request_line(raw, method, path, query);
-        char *headers_str = wb_extract_headers(raw);
-        char *body_str    = wb_read_body(cli, raw);
-        if (!body_str) {
-            const char *resp =
-                "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(cli, resp, (int)strlen(resp), 0);
-            free(raw); free(headers_str);
-            closesocket(cli);
-            continue;
-        }
 
         char client_ip[INET6_ADDRSTRLEN] = "";
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
@@ -993,8 +1207,9 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
             map_set(&res_map, "headers",      value_map_empty());
         }
 
-        char *http_response = wb_build_http_response(&res_map);
-        send(cli, http_response, (int)strlen(http_response), 0);
+        size_t http_len = 0;
+        char *http_response = wb_build_http_response(&res_map, &http_len);
+        wb_send_all(cli, http_response, http_len);
 
         // NOTE: call_args are NOT freed here — see POSIX loop comment above;
         // kosh_call_fn's internal env_free already owns/frees each param.

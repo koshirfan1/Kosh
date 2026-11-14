@@ -98,7 +98,7 @@ There is no published pre-built binary release yet. Details, the Inno Setup inst
 
 | Package | Version | Description |
 |---|---|---|
-| [`webi`](docs/webi.md) | 1.2.0 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
+| [`webi`](docs/webi.md) | 1.2.1 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
 | `requests` | 1.1.0 | HTTP client: get, post, post_json, put, delete with auto JSON decode |
 | `sqlite` | 1.0.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
 | `vision` | 3.0.0 | Full classical computer-vision toolkit |

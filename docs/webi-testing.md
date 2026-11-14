@@ -13,6 +13,8 @@ What is covered, how to run it, and how much to trust it.
 | `tests/test_webi_bot.kh`, `tests/test_dns.kh` | | Crawler verification (mock DNS) and the DNS natives |
 | `tests/test_rate_limit.kh` | | The native rate limiter (regression for the old fail-open bug) |
 | `tests/test_webi_client_serve.kh` | | `/_webi/client.js`, bootstrap shell, proof page, counters, generated-file drift |
+| `tests/webi_http/test_http_hardening.py` | `python3 tests/webi_http/test_http_hardening.py` (`KOSH=...` to pick the binary) | Starts a real server and attacks the native HTTP layer over raw sockets: response-header/cookie injection, long headers and cookies, binary static files, smuggling shapes (duplicate/odd `Content-Length`, `Transfer-Encoding`), malformed request lines/headers, truncated bodies, clients that disconnect mid-response. 82 checks; each fails on the pre-0.016.2 server |
+| `tests/fixtures/import_dir_shadow/check.kh` | `./kosh tests/fixtures/import_dir_shadow/check.kh` | A folder named like a package must not shadow it (the compiler used to crash) |
 | `tests/js/test_webi_js_vectors.js` | `node tests/js/test_webi_js_vectors.js` | JS client crypto: official RFC vectors and Node OpenSSL cross-checks |
 | `tests/js/test_webi_js_e2e.js` | `node tests/js/test_webi_js_e2e.js` | JS client against a real Kosh server over sockets |
 | `tests/js/test_webi_js_browser.js` | `JSDOM_PATH=... node tests/js/test_webi_js_browser.js` | Shell bootstrap and the proof page in jsdom, against a healthy server and a deliberately broken one |
