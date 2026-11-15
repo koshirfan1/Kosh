@@ -1,4 +1,4 @@
-# Kosh webi package v1.3.0
+# Kosh webi package v1.4.0
 # Usage: import "webi"
 #
 # webi is a lightweight web framework for Kosh — inspired by Flask.
@@ -42,7 +42,8 @@
 #   production.kh  webi_production(), webi_limits(), security headers, cookie policy,
 #                  API keys from the environment                              (v1.3.0)
 #   server.kh      dispatch, the native-bridge handler, webi_run / webi_run_host
-#   template.kh    render() / render_file() + html_escape()      (v1.1.2)
+#   template.kh    render() / render_raw() / render_file() + html_escape()
+#                  ({{key}} is HTML-escaped by default since v1.4.0)
 #   meta.kh        webi_version() / webi_routes()
 #   requests.kh    thin http_* re-export — `from webi import requests`
 #   json.kh        thin json_* re-export — `from webi import json`

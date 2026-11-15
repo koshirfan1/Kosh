@@ -135,7 +135,7 @@
     },
     {
       "name": "webi",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "developer": "Irfan Khan",
       "description": "Lightweight web framework: routing, requests, responses, middleware, HTTP server",
       "author": "koshirfan1",
@@ -160,7 +160,7 @@
         "json.kh"
       ],
       "sha256": {
-        "webi.kh": "5ca7f57b6386bf558b750de8ca15d3500844effb2aaa609732d5fd065be3146e",
+        "webi.kh": "c5f9f9d1d577305dcb98b37dd36aaac4d5e644c65b55f184897015a66854cb21",
         "util.kh": "85105e8e9beb763219f29eee07f0c221971c92e40beb604427d399df5592795b",
         "app.kh": "953702eca6d8896c78f205c662c127982d94ca1f31f9b0c270b004b140bce607",
         "routing.kh": "8c23ca27deefdf4245ef4f4abd9847a499b77a1ef7d4d1e597b29ad2ca8546b5",
@@ -170,12 +170,12 @@
         "security.kh": "152834f48bcd374535474bf1292ee893815a4f027f039c2ed48a542caac57b62",
         "production.kh": "e3d9bedb9ef22cd764cdfe6b81f3f961973000f0386c0285ca746babcd331696",
         "server.kh": "3f4c488513d50caf395c873fb0a92d37f47e7ac60ee2c2ab87cffff3ecb597ec",
-        "template.kh": "34b9815eb3143d4b76ee355b3fe9be3eb298a41a85383816c5e569503a81664f",
-        "meta.kh": "c206243510cf5021cfeadee8d1e4cbfe1bfc8191e2244f94536ef1330f2d99b7",
+        "template.kh": "81d761d6768a809d7c38283c802c50a91aab39d6c39da6c941413a795ed8be7a",
+        "meta.kh": "4eca59b575aef19ad2bebc6d237d6cc23bf3d4a48d5ca72fb241f60086ead5fe",
         "secure.kh": "a26fc0abbd6abf2b0b527ea0be23570c0fb31e57bf4540774c3e298c1e7271a4",
         "bot.kh": "70d4ce319201efee55132677d0f48c64ed1911fc0595ea41996e997615873ee5",
         "client_js.kh": "1a5fbd39d7efcba217fd7e101e6648e96251ae7cbc3ef37e4e45fba3ec485dcf",
-        "secure_http.kh": "cead20dc60789b21a15742a258a2c1c249d79513a96f74a27a6e3270f2d81a3b",
+        "secure_http.kh": "0a4fd0ae5520f9cffb238fef9e1df2946858d2c3b8d0662ee3c00306c92959cd",
         "requests.kh": "69bd236c8589255dd28c017edc7d30b6ad29818383e4b512f54a51e00d8a58c7",
         "json.kh": "916f7b081d49efa958aff3097db638d5e03a9554827d4d5253d62792acee8118"
       }

@@ -42,7 +42,7 @@
 ; compiling or running this doesn't work as described, that's a bug —
 ; please open an issue with what happened.
 
-#define KoshVersion "0.016.3"
+#define KoshVersion "0.017.0"
 #define KoshAppName "Kosh"
 #define KoshPublisher "Kosh Language Project"
 #define KoshURL "https://github.com/koshirfan1/Kosh"

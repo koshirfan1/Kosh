@@ -404,7 +404,39 @@ claims a huge `Content-Length` costs memory only for the bytes it actually sends
 let html = render("<h1>Hello, {{name}}!</h1>", {"name": "Irfan"})
 ```
 
-`{{key}}` placeholders are replaced with `str(vars[key])`.
+**`{{key}}` is HTML-escaped** (`&` `<` `>` `"` `'` become `&amp;` `&lt;` `&gt;` `&quot;` `&#39;`),
+so a value that came from a user cannot inject markup or script (XSS):
+
+```kosh
+render("<p>Hello {{name}}</p>", {"name": "<script>alert(1)</script>"})
+# <p>Hello &lt;script&gt;alert(1)&lt;/script&gt;</p>
+```
+
+To insert HTML that **you** built and know is safe, use three braces for that placeholder:
+`{{{page_body}}}` inserts the value exactly as given. `render_raw(template, vars)` is the
+whole-template opt-out (`{{key}}` unescaped), mainly for migrating old code.
+
+| In the template | Result |
+|---|---|
+| `{{key}}` | `str(vars[key])`, HTML-escaped |
+| `{{{key}}}` | `str(vars[key])`, as is |
+| `{{missing}}` | left exactly as written |
+| `{{ key }}` (spaces) | not a placeholder: keys match exactly |
+
+The template is scanned **once**; inserted values are never scanned again, so a value that
+contains `{{other}}` stays literal text and cannot read your other template variables.
+Rendering is native code and linear in the template size.
+
+Escaping protects text between tags and quoted attribute values (`<a title="{{t}}">`). It does
+**not** make these safe, so never put `{{...}}` in them: inside `<script>` or `<style>`, in an
+unquoted attribute, in an event-handler attribute (`onclick="..."`), or at the start of a URL
+(`href="{{url}}"` accepts `javascript:...`; check the scheme yourself). Don't escape a value
+twice (`html_escape()` and then `{{key}}`), or `&` will show as `&amp;`.
+
+> **Upgrading from webi < 1.4.0:** `render()` used to insert values unescaped. If a placeholder
+> carries HTML you built yourself, change it from `{{x}}` to `{{{x}}}` (or use `render_raw()`
+> / `render_file_raw()` for a whole template). Placeholders holding plain text need no change,
+> and now come out correctly escaped (an `&` in a name shows as `&`, not as broken markup).
 
 To read a template off disk instead of inlining the string:
 
@@ -415,7 +447,7 @@ if html == nil:
 return res_html(html)
 ```
 
-`render_file(path, vars)`:
+`render_file(path, vars)` escapes exactly like `render()` (`render_file_raw()` does not):
 - Resolves `path` relative to whichever `.kh` file is calling it (same
   directory-aware resolution `import` uses), not the process's current
   directory.
@@ -429,8 +461,8 @@ return res_html(html)
 - Returns `nil` on any rejection instead of raising, so a broken template
   path doesn't take the whole app down — always check for `nil`.
 
-`html_escape(s)` escapes `&`, `<`, `>`, `"`, `'` — use it on any
-user-supplied value you interpolate into HTML to avoid XSS:
+`html_escape(s)` escapes `&`, `<`, `>`, `"`, `'` — you only need it for HTML you assemble by
+hand (string concatenation, `{{{key}}}`, `render_raw`); `{{key}}` already does it:
 
 ```kosh
 let safe_name = html_escape(req["query"]["name"])
@@ -490,7 +522,7 @@ it's exposed mainly so tests can dispatch a request without actually
 opening a socket (see `examples/webi_phase3_test.kh` for an example).
 
 ```kosh
-print webi_version()    # "webi/1.3.0 (Kosh)"
+print webi_version()    # "webi/1.4.0 (Kosh)"
 print webi_routes(app)  # list every registered route, for debugging
 ```
 

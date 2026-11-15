@@ -3,23 +3,45 @@
 
 # ---------------------------------------------------------------------------
 # render(template, vars) -> string
-# Simple string template renderer.
-# Replace {{key}} placeholders with values from vars map.
 #
-# Example:
-#   let html = render("<h1>Hello, {{name}}!</h1>", {"name": "Irfan"})
+# Fills {{key}} placeholders from the vars map, HTML-ESCAPING every value
+# (& < > " ' become &amp; &lt; &gt; &quot; &#39;), so a value that comes from a
+# user cannot inject markup or script:
+#
+#   let html = render("<h1>Hello, {{name}}!</h1>", {"name": "<script>alert(1)</script>"})
+#   # <h1>Hello, &lt;script&gt;alert(1)&lt;/script&gt;!</h1>
+#
+# To insert HTML you built yourself (and know is safe), use THREE braces for
+# that one placeholder:  {{{page_body}}}  inserts the value as-is.
+#
+# Rules:
+#   * The template is scanned once; inserted values are never scanned again, so
+#     a value containing "{{other}}" stays literal text.
+#   * A placeholder whose key is not in vars is left exactly as written.
+#   * Keys match exactly ("{{ name }}" with spaces is not a placeholder).
+#   * Numbers, booleans and nil are converted with str() first.
+#
+# Escaping protects text between tags and quoted attribute values
+# (<a title="{{t}}">). It does NOT make these safe, so never put {{...}} there:
+# inside <script> or <style>, in an unquoted attribute, in an event-handler
+# attribute (onclick="..."), or as the start of a URL (href="{{url}}" accepts
+# "javascript:..."). Check URLs yourself before inserting them.
+#
+# (Before webi 1.4.0 render() did NOT escape. If you relied on that, use
+# {{{key}}} for the placeholders that carry HTML, or render_raw() for the old
+# behaviour of a whole template.)
 # ---------------------------------------------------------------------------
 fn render(template, vars):
-    let result = template
-    let ks = keys(vars)
-    let i = 0
-    while i < len(ks):
-        let k = ks[i]
-        let placeholder = "{{" + k + "}}"
-        let v = str(vars[k])
-        result = str_replace(result, placeholder, v)
-        i = i + 1
-    return result
+    return _webi_render(template, vars)
+
+# ---------------------------------------------------------------------------
+# render_raw(template, vars) -> string
+# Like render(), but {{key}} inserts the value WITHOUT escaping (the pre-1.4.0
+# behaviour; still single-pass). Only for templates whose values are all
+# trusted HTML. Prefer {{{key}}} on individual placeholders with render().
+# ---------------------------------------------------------------------------
+fn render_raw(template, vars):
+    return _webi_render_raw(template, vars)
 
 # ---------------------------------------------------------------------------
 # Internal: does `path` end in a recognized template extension?
@@ -76,25 +98,37 @@ fn _webi_has_template_ext(path):
 #       return res_server_error("template error")
 #   return res_html(html)
 # ---------------------------------------------------------------------------
-fn render_file(path, vars):
+fn _webi_read_template(path, who):
     let base_dir = _webi_script_dir()
     let safe_path = _webi_safe_static_path(base_dir, path)
 
     if safe_path == nil:
-        print "[webi] render_file: rejected '" + path + "' (missing, or escapes its own directory)"
+        print "[webi] " + who + ": rejected '" + path + "' (missing, or escapes its own directory)"
         return nil
 
     if not _webi_has_template_ext(safe_path):
-        print "[webi] render_file: rejected '" + path + "' (not a recognized template extension: .html/.htm/.txt/.xml/.svg)"
+        print "[webi] " + who + ": rejected '" + path + "' (not a recognized template extension: .html/.htm/.txt/.xml/.svg)"
         return nil
 
     let content = read_file(safe_path)
 
     if len(content) > 2000000:
-        print "[webi] render_file: rejected '" + path + "' (file too large, over 2MB)"
+        print "[webi] " + who + ": rejected '" + path + "' (file too large, over 2MB)"
         return nil
+    return content
 
+fn render_file(path, vars):
+    let content = _webi_read_template(path, "render_file")
+    if content == nil:
+        return nil
     return render(content, vars)
+
+# render_file() without escaping {{key}} (see render_raw()).
+fn render_file_raw(path, vars):
+    let content = _webi_read_template(path, "render_file_raw")
+    if content == nil:
+        return nil
+    return render_raw(content, vars)
 
 # ---------------------------------------------------------------------------
 # html_escape(str) -> string

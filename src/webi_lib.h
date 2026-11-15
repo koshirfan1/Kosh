@@ -38,6 +38,8 @@ void fn_http_head(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_secure_token(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_env_var(Value *result, Interpreter *interp, int argc, Value *args);
+void fn_webi_render(Value *result, Interpreter *interp, int argc, Value *args);
+void fn_webi_render_raw(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_rate_limit_check(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_dns_reverse(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_dns_resolves_to(Value *result, Interpreter *interp, int argc, Value *args);

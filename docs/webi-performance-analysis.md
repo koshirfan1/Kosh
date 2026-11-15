@@ -8,6 +8,10 @@ When loading the portfolio page in Chrome, the server takes **36–48 seconds** 
 
 ### 1. The `render()` function in `packages/webi/template.kh` (PRIMARY BOTTLENECK)
 
+> **Resolved in v0.017.0 (webi 1.4.0):** `render()` is now a native, single-pass C function
+> (`fn_webi_render` in `src/webi_lib.c`), so the per-variable `str_replace` loop described
+> below no longer exists. The analysis is kept for the record.
+
 ```kosh
 fn render(template, vars):
     let result = template

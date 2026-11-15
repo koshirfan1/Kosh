@@ -62,6 +62,10 @@ fn h_len(req):
 fn h_hello(req):
     return res_text("hello")
 
+fn h_page(req):
+    let n = req["body_json"]["n"]
+    return res_html(render("<p>Hello {{name}}</p><i>{{{trusted}}}</i><b>{{secret}}</b>", {"name": n, "trusted": "<u>ok</u>", "secret": "SECRET"}))
+
 let app = webi_app()
 app = route(app, "POST", "/hdr", h_hdr)
 app = route(app, "POST", "/cookie", h_cookie)
@@ -71,6 +75,7 @@ app = route(app, "GET", "/clen", h_clen)
 app = route(app, "GET", "/429", h_429)
 app = route(app, "POST", "/len", h_len)
 app = route(app, "GET", "/", h_hello)
+app = route(app, "POST", "/page", h_page)
 app = serve_static(app, "/static", "%(static)s")
 %(extra)s
 %(run)s
@@ -326,6 +331,15 @@ def run():
                   (b"Set-Cookie: sid=" + val) in r["head"] and has_header(r, "X-After") and r["body"] == b"ok" and b"Content-Length: 2" in r["head"], r["head"][-120:])
         r = S.post("/hdr", b'{"v": "' + b"B" * 4000 + b'"}')
         check("a 4000-byte header value is sent in full", (b"X-Custom: " + b"B" * 4000) in r["head"] and r["body"] == b"ok")
+
+        # ---------------------------------------------------- templates: {{value}} is escaped on the wire
+        r = S.post("/page", b'{"n": "<script>alert(1)</script>"}')
+        check("render(): a script tag in a user value is escaped in the HTTP response", b"<script>" not in r["body"] and b"&lt;script&gt;alert(1)&lt;/script&gt;" in r["body"], r["body"])
+        check("render(): {{{trusted}}} is inserted as given", b"<i><u>ok</u></i>" in r["body"], r["body"])
+        r = S.post("/page", b'{"n": "{{secret}}"}')
+        check("render(): a user value cannot pull in another template variable", b"SECRET</b>" in r["body"] and b"Hello {{secret}}" in r["body"] and r["body"].count(b"SECRET") == 1, r["body"])
+        r = S.post("/page", b'{"n": "\\" onmouseover=\\"x"}')
+        check("render(): quotes are escaped so a value cannot break out of an attribute", b"&quot;" in r["body"] and b'" onmouseover=' not in r["body"], r["body"])
 
         # ---------------------------------------------------- binary static files
         for name, data in S.files.items():

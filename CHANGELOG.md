@@ -3,6 +3,45 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.017.0 - 2026-11-15
+
+**Breaking change in webi 1.4.0: `render()` now HTML-escapes `{{key}}`.** This closes the
+biggest remaining item of the community security review (cross-site scripting through templates)
+and is the "auto-escaping by default" item of `docs/phase5-hardening-and-design-plan.md`. It gets
+its own version because it can change what an existing app outputs.
+
+### Changed (breaking)
+- **`{{key}}` is escaped** (`&` `<` `>` `"` `'`), in `render()` and `render_file()`. Verified on a
+  running server before the change: a request value `<script>alert(1)</script>` came out of
+  `render()` verbatim.
+- **`{{{key}}}` (three braces) inserts a value as-is**, for HTML you built yourself.
+  `render_raw()` / `render_file_raw()` keep the old unescaped behaviour for a whole template
+  (also available while migrating).
+- **How to upgrade:** a placeholder that carries plain text needs no change (and is now correct:
+  an `&` in a name used to produce broken markup). A placeholder that carries HTML you built:
+  change `{{x}}` to `{{{x}}}`. Don't pass an already-escaped value to `{{x}}` (it would be
+  escaped twice).
+
+### Fixed
+- **A value could read other template variables.** The old `render()` replaced one key after
+  another over the whole string, so a user-supplied value containing `{{other}}` was expanded by a
+  later key (order dependent). Rendering is now a single left-to-right pass; inserted values are
+  never scanned again.
+- `render()` was written in Kosh and called `str_replace` once per variable (see
+  `docs/webi-performance-analysis.md`). It is now native C, linear in the template size, and
+  rejects non-string templates / non-map variables with a clear error.
+
+### Notes
+- Escaping covers text and quoted attribute values. It does not make `<script>`/`<style>`
+  content, unquoted or event-handler attributes, or URLs (`href="{{url}}"` with `javascript:`)
+  safe; this is spelled out in `docs/webi.md`.
+- Still open: the old per-request header parsing in `webi_handle` (duplicate headers,
+  percent-decoding of query/form values).
+
+### Tests
+- `tests/test_webi_template.kh` (41 checks; 16 fail on the old `render()`), plus 4 checks on the
+  wire in `tests/webi_http/test_http_hardening.py` (117 in total).
+
 ## v0.016.3 - 2026-11-15
 
 webi production hardening (phase 2 of the community review). As before, each problem was

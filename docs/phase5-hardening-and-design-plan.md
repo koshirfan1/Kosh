@@ -182,6 +182,8 @@ Unchanged from the previous version, with one addition:
 - Auto-escaping by default in `render()`/`render_file()` (`{{var}}`
   escapes, an explicit `{{{var}}}` opts out) — still the single highest-leverage
   XSS fix, still a breaking change worth its own changelog note.
+  **Done in v0.017.0 / webi 1.4.0** (native single-pass renderer, `{{{var}}}` and
+  `render_raw()` opt-outs).
 - JSON parser recursion depth limit — still a live, verified bug, still
   small and worth fixing early and in isolation.
 - WAF patterns stay non-backtracking (no ReDoS).

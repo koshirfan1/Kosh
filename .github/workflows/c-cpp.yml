@@ -183,6 +183,9 @@ jobs:
       shell: msys2 {0}
       run: ./kosh.exe tests/test_webi_secure_http.kh
 
+    - name: Run webi template tests
+      run: ./kosh tests/test_webi_template.kh
+
     - name: Run webi production-hardening tests
       run: ./kosh tests/test_webi_production.kh
 

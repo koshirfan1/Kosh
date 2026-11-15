@@ -1,0 +1,81 @@
+# Tests for webi's template engine: render(), render_raw(), render_file()
+# (src/webi_lib.c native renderer + packages/webi/template.kh).
+#
+#   ./kosh tests/test_webi_template.kh        (run from the project root)
+import "../packages/webi/webi.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("webi templates: escaping by default, single pass")
+
+# ---------------------------------------------------------------- escaping
+t = test_eq(t, "plain text is unchanged", render("Hello {{name}}!", {"name": "Irfan"}), "Hello Irfan!")
+t = test_eq(t, "< and > are escaped", render("{{x}}", {"x": "<b>hi</b>"}), "&lt;b&gt;hi&lt;/b&gt;")
+t = test_eq(t, "& is escaped", render("{{x}}", {"x": "a & b"}), "a &amp; b")
+t = test_eq(t, "double quote is escaped", render("{{x}}", {"x": "say \"hi\""}), "say &quot;hi&quot;")
+t = test_eq(t, "single quote is escaped", render("{{x}}", {"x": "it's"}), "it&#39;s")
+t = test_eq(t, "a script tag cannot get through", render("<p>{{x}}</p>", {"x": "<script>alert(1)</script>"}), "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>")
+t = test_eq(t, "an attribute breakout is neutralised", render("<a title=\"{{x}}\">", {"x": "\" onmouseover=\"alert(1)"}), "<a title=\"&quot; onmouseover=&quot;alert(1)\">")
+t = test_eq(t, "an already-escaped value is escaped again (not magically trusted)", render("{{x}}", {"x": "&lt;"}), "&amp;lt;")
+t = test_eq(t, "non-ASCII text passes through", render("{{x}}", {"x": "کراچی — naïve"}), "کراچی — naïve")
+t = test_eq(t, "empty value", render("[{{x}}]", {"x": ""}), "[]")
+
+# ---------------------------------------------------------------- opting out with three braces
+t = test_eq(t, "{{{key}}} inserts the value as-is", render("{{{x}}}", {"x": "<b>ok</b>"}), "<b>ok</b>")
+t = test_eq(t, "{{key}} and {{{key}}} side by side", render("{{x}} | {{{x}}}", {"x": "<i>"}), "&lt;i&gt; | <i>")
+t = test_eq(t, "render_raw() does not escape {{key}}", render_raw("{{x}}", {"x": "<i>"}), "<i>")
+t = test_eq(t, "render_raw() also takes {{{key}}}", render_raw("{{{x}}}", {"x": "<i>"}), "<i>")
+
+# ---------------------------------------------------------------- value types
+t = test_eq(t, "numbers", render("n={{n}}", {"n": 20}), "n=20")
+t = test_eq(t, "booleans", render("{{a}} {{b}}", {"a": true, "b": false}), "true false")
+t = test_eq(t, "nil", render("{{a}}", {"a": nil}), "nil")
+t = test_eq(t, "an array is converted with str() (as before) and the result is escaped", render("{{a}}", {"a": ["<x>", 1]}), "&lt;array len=2&gt;")
+
+# ---------------------------------------------------------------- single pass: values are never re-scanned
+let secret = {"first": "{{second}}", "second": "SECRET"}
+t = test_eq(t, "a value that looks like a placeholder stays literal (key order 1)", render("[{{first}}|{{second}}]", secret), "[{{second}}|SECRET]")
+let secret2 = {"second": "SECRET", "first": "{{second}}"}
+t = test_eq(t, "... and in the other key order", render("[{{first}}|{{second}}]", secret2), "[{{second}}|SECRET]")
+t = test_eq(t, "a {{{raw}}} value that looks like a placeholder is not re-expanded either", render("{{{a}}}{{b}}", {"a": "{{b}}", "b": "X"}), "{{b}}X")
+t = test_eq(t, "render_raw() is single pass too", render_raw("{{a}}{{b}}", {"a": "{{b}}", "b": "X"}), "{{b}}X")
+
+# ---------------------------------------------------------------- what is NOT a placeholder
+t = test_eq(t, "missing key stays as written", render("Hello {{name}}", {}), "Hello {{name}}")
+t = test_eq(t, "missing triple-brace key stays as written", render("Hello {{{name}}}", {}), "Hello {{{name}}}")
+t = test_eq(t, "spaces inside the braces: not a placeholder", render("{{ name }}", {"name": "x", " name ": "y"}), "y")
+t = test_eq(t, "... unless exactly that key exists", render("{{ name }}", {"name": "x"}), "{{ name }}")
+t = test_eq(t, "unterminated {{ is literal", render("a {{name", {"name": "x"}), "a {{name")
+t = test_eq(t, "stray }} is literal", render("a }} b", {"name": "x"}), "a }} b")
+t = test_eq(t, "single braces are literal", render("{x} {{x}}", {"x": "1"}), "{x} 1")
+t = test_eq(t, "JSON braces in a template are untouched", render("var o = {\"a\": {\"b\": 1}}; {{x}}", {"x": "2"}), "var o = {\"a\": {\"b\": 1}}; 2")
+t = test_eq(t, "a key containing a newline is not matched", render("{{a\nb}}", {"a\nb": "x"}), "{{a\nb}}")
+t = test_eq(t, "adjacent placeholders", render("{{a}}{{b}}{{a}}", {"a": "1", "b": "2"}), "121")
+t = test_eq(t, "{{{x}}} where only x exists as {{x}}: braces around are kept", render("{{x}}}", {"x": "1"}), "1}")
+t = test_eq(t, "four braces: the inner {{{x}}} is the placeholder, the outer ones are literal", render("{{{{x}}}}", {"x": "1"}), "{1}")
+t = test_eq(t, "empty key {{}} is literal", render("a{{}}b", {"": "z"}), "azb")
+t = test_eq(t, "no placeholders at all", render("nothing here", {"x": "1"}), "nothing here")
+
+# ---------------------------------------------------------------- bad arguments
+t = test_nil(t, "render_file refuses a path outside its directory", render_file("../secret.txt", {}))
+
+# ---------------------------------------------------------------- performance (the old Kosh-level version was quadratic)
+let big = ""
+let i = 0
+let chunk = "<li>{{a}}</li><li>{{b}}</li>\n"
+while i < 2000:
+    big = big + chunk
+    i = i + 1
+let t0 = clock()
+let out = render(big, {"a": "x<y", "b": "z&w"})
+let dt = clock() - t0
+t = test_true(t, "a 56 KB template with 4000 placeholders renders in well under a second", dt < 1.0)
+t = test_eq(t, "... and the result is right", len(out), 2000 * len("<li>x&lt;y</li><li>z&amp;w</li>\n"))
+
+# ---------------------------------------------------------------- render_file
+let page = render_file("fixtures/template/page.html", {"name": "<Irfan>", "title": "say \"hi\""})
+t = test_eq(t, "render_file escapes {{x}}, passes {{{x}}}, keeps unknown keys",
+    page, "<p>Hi &lt;Irfan&gt; / <Irfan></p><i title=\"say &quot;hi&quot;\">{{missing}}</i>\n")
+let page_raw = render_file_raw("fixtures/template/page.html", {"name": "<Irfan>", "title": "T"})
+t = test_eq(t, "render_file_raw does not escape", page_raw, "<p>Hi <Irfan> / <Irfan></p><i title=\"T\">{{missing}}</i>\n")
+
+test_run(t)

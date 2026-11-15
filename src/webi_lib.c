@@ -50,6 +50,7 @@ typedef int wb_sock_t;
 #endif
 
 #include "webi_lib.h"
+#include "kosh_stdlib.h"
 #include "vm.h"
 #include "json_lib.h"
 
@@ -729,7 +730,7 @@ static char *wb_build_http_response(Value *res_map, size_t *out_len) {
     wb_buf_str(&out, &olen, &ocap, num);
     wb_buf_str(&out, &olen, &ocap, wb_reason(status));
     wb_buf_str(&out, &olen, &ocap, "\r\n");
-    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.3.0 (Kosh)\r\n");
+    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.4.0 (Kosh)\r\n");
     wb_buf_str(&out, &olen, &ocap, "Connection: close\r\n");
     wb_buf_str(&out, &olen, &ocap, "Content-Type: ");
     wb_buf_str(&out, &olen, &ocap, ct);
@@ -1655,6 +1656,100 @@ void fn_secure_token(Value *result, Interpreter *interp, int argc, Value *args) 
 
     *result = value_string(out);
     free(out);
+}
+
+// ===========================================================================
+// Template rendering (used by webi/template.kh: render, render_raw, render_file)
+//
+//   {{key}}   the value, HTML-escaped (& < > " ')          <- default, XSS-safe for text and
+//                                                              quoted attribute values
+//   {{{key}}} the value exactly as given (opt out of escaping, for HTML you built yourself)
+//
+// The template is scanned ONCE, left to right, and inserted values are never
+// scanned again. (The old Kosh implementation replaced one key after another over
+// the whole string, so a value containing "{{other}}" got expanded by a later key:
+// a user-supplied value could read other template variables.) A placeholder whose
+// key is not in `vars` is left exactly as written. Keys are matched exactly:
+// "{{ name }}" with spaces is not a placeholder.
+// ===========================================================================
+#define WB_RENDER_KEY_MAX   128
+#define WB_RENDER_MAX_OUT   (64 * 1024 * 1024)
+
+static void wb_append_html_escaped(char **out, int *olen, int *ocap, const char *s, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        switch (s[i]) {
+            case '&':  wb_buf_str(out, olen, ocap, "&amp;");  break;
+            case '<':  wb_buf_str(out, olen, ocap, "&lt;");   break;
+            case '>':  wb_buf_str(out, olen, ocap, "&gt;");   break;
+            case '"':  wb_buf_str(out, olen, ocap, "&quot;"); break;
+            case '\'': wb_buf_str(out, olen, ocap, "&#39;");  break;
+            default:   wb_buf_char(out, olen, ocap, s[i]);    break;
+        }
+    }
+}
+
+// Find the end of a placeholder key starting at t[from]; the closing delimiter is
+// `ndelim` '}' characters. Returns the key length, or -1 if this is not a placeholder.
+static long wb_render_key_len(const char *t, size_t tl, size_t from, int ndelim) {
+    size_t j = from;
+    while (j < tl && j - from <= WB_RENDER_KEY_MAX) {
+        if (t[j] == '{' || t[j] == '\n' || t[j] == '\r') return -1;
+        if (t[j] == '}') {
+            for (int d = 1; d < ndelim; d++) if (j + (size_t)d >= tl || t[j + d] != '}') return -1;
+            return (long)(j - from);
+        }
+        j++;
+    }
+    return -1;
+}
+
+static void wb_render_impl(Value *result, Interpreter *interp, int argc, Value *args, int escape_default, const char *name) {
+    if (argc != 2 || args[0].type != VAL_STRING || args[1].type != VAL_MAP) {
+        fprintf(stderr, "Runtime error: %s(template, vars) needs a string template and a map of variables\n", name);
+        interp->had_runtime_error = 1; *result = value_nil(); return;
+    }
+    const char *t = args[0].as.string;
+    size_t tl = strlen(t);
+    char *out = NULL; int olen = 0, ocap = 0;
+    size_t i = 0;
+    while (i < tl) {
+        if (t[i] == '{' && i + 1 < tl && t[i + 1] == '{') {
+            int triple = (i + 2 < tl && t[i + 2] == '{');
+            size_t kstart = i + (triple ? 3 : 2);
+            long klen = wb_render_key_len(t, tl, kstart, triple ? 3 : 2);
+            if (klen >= 0) {
+                char key[WB_RENDER_KEY_MAX + 1];
+                memcpy(key, t + kstart, (size_t)klen); key[klen] = '\0';
+                Value *v = map_get(&args[1], key);
+                if (v) {
+                    Value tmp; int own = 0;
+                    const char *sv; size_t svl;
+                    if (v->type == VAL_STRING) { sv = v->as.string; svl = strlen(sv); }
+                    else { fn_str(&tmp, interp, 1, v); own = 1; sv = tmp.as.string; svl = strlen(sv); }
+                    if (triple || !escape_default) wb_buf_append(&out, &olen, &ocap, sv, (int)svl);
+                    else wb_append_html_escaped(&out, &olen, &ocap, sv, svl);
+                    if (own) value_free(tmp);
+                    i = kstart + (size_t)klen + (triple ? 3 : 2);
+                    if (olen > WB_RENDER_MAX_OUT) {
+                        fprintf(stderr, "Runtime error: %s: output larger than %d bytes\n", name, WB_RENDER_MAX_OUT);
+                        free(out); interp->had_runtime_error = 1; *result = value_nil(); return;
+                    }
+                    continue;
+                }
+            }
+        }
+        wb_buf_char(&out, &olen, &ocap, t[i]);
+        i++;
+    }
+    *result = value_string(out ? out : "");
+    free(out);
+}
+
+void fn_webi_render(Value *result, Interpreter *interp, int argc, Value *args) {
+    wb_render_impl(result, interp, argc, args, 1, "render");
+}
+void fn_webi_render_raw(Value *result, Interpreter *interp, int argc, Value *args) {
+    wb_render_impl(result, interp, argc, args, 0, "render_raw");
 }
 
 // Kosh: env_var(name, default = nil) -> the process environment variable, as a string
