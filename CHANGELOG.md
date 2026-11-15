@@ -3,6 +3,61 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.016.3 - 2026-11-15
+
+webi production hardening (phase 2 of the community review). As before, each problem was
+reproduced on a running server first, then fixed, then locked in with a test that fails on the
+old behaviour. **Nothing here changes an app that does not opt in**, except the three fixes
+marked *(behaviour change)*.
+
+### Added
+- **`webi_production(app, opts)`**: debug off (and `webi_debug(app, true)` refused), security
+  headers on every response, a cookie policy, and CORS closed by default, in one call.
+- **`webi_security_headers(app, opts)`**: `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, optional `Content-Security-Policy` (or report-only), `Permissions-Policy`,
+  and `Strict-Transport-Security` (sent only for requests a TLS proxy marks as https). Applies to
+  404s, middleware rejections and static files too; a header the handler set is never overwritten.
+- **`webi_cookie_policy(app, opts)`**: adds `Secure`, `HttpOnly` and `SameSite` to any cookie that
+  lacks them, with a `js_readable` list of cookie names that must not get `HttpOnly`.
+- **`webi_limits(app, opts)`**: `max_header_bytes`, `max_body_bytes`, `read_timeout_seconds` and
+  `request_timeout_seconds` are now configurable. Out-of-range or mistyped values stop the server
+  from starting with a message instead of being ignored.
+- **Whole-request timeout** (default 60 s). Before, only each single `recv` had a 30 s timeout, so
+  a client sending a byte every 29 s could hold the single-threaded server for ever. The deadline
+  is checked before every read, and also bounds how long the server waits on a client that
+  stops reading its response (`SO_SNDTIMEO`).
+- **`webi_api_keys_from_env(app, "VAR")`** loads API keys from an environment variable instead
+  of source code; unset/empty fails closed. New native **`env_var(name, default)`**.
+- Unknown options to any of these functions are reported (typo protection).
+
+### Fixed
+- **`webi_run_host(app, "127.0.0.1", port)` did not bind 127.0.0.1.** The host was ignored and the
+  server always listened on every interface, so a "local-only" dev server was reachable from the
+  network. The host is now honoured (IPv4 address, `localhost`, or `0.0.0.0`); an invalid host
+  stops the server with a message. `webi_run()` still listens on every interface. *(behaviour change)*
+- **`header_get()` was case-sensitive.** HTTP header names are case-insensitive, and proxies and
+  HTTP/2 send them lower-cased, so `x-api-key`, `origin`, `cookie` and `x-csrf-token` could be
+  missed: API-key auth rejected valid clients, and CORS/CSRF checks looked at the wrong thing.
+  Lookup is now case-insensitive everywhere. *(behaviour change)*
+- The CSRF token comparison used `==`; it is now constant-time (API keys already were).
+- A request body is allocated as it arrives instead of `Content-Length` bytes up front, so a client
+  claiming a huge body costs memory only for what it sends.
+- `mw_cors` without `webi_set_cors_origins()` now prints a one-time warning that it allows every
+  origin; in production mode the default is no cross-origin access. *(behaviour change in production mode only)*
+- Debug mode combined with listening on every interface now prints a warning.
+
+### Tests
+- `tests/test_webi_production.kh` (67 checks) and 31 more socket-level checks in
+  `tests/webi_http/test_http_hardening.py` (113 in total): limits, idle/trickle/slow-body timeouts,
+  security headers and cookie flags on the wire, host binding, invalid configuration. Mutation
+  checks caught every deliberately broken build; a weak timeout test found that way was rewritten.
+
+### Notes
+- webi is now `1.3.0`; `kh update webi` picks it up.
+- Still not changed (next release, because it can change existing output): `render()` auto-escaping
+  and its `{{value}}` re-substitution, and the old per-request header parsing in `webi_handle`
+  (duplicate headers, percent-decoding of query/form values).
+
 ## v0.016.2 - 2026-11-13
 
 webi HTTP-layer hardening (phase 1 of the review by a community reviewer). Every issue below

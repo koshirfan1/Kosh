@@ -1,0 +1,320 @@
+# webi/production.kh — production hardening: limits, security headers,
+# cookie policy, env-based API keys, and the one-call webi_production().
+#
+#   app = webi_production(app)                        # sensible secure defaults
+#   app = webi_production(app, {"csp": "default-src 'self'"})
+#
+#   app = webi_limits(app, {"max_body_bytes": 1048576, "request_timeout_seconds": 20})
+#   app = webi_security_headers(app, {"frame": "SAMEORIGIN"})
+#   app = webi_api_keys_from_env(app, "MYAPP_API_KEYS")   # comma-separated
+#
+# All configuration lives on the app map (webi has no closures), is read per
+# request by the after-hooks registered here, and is validated when you call
+# the function, so a typo is reported immediately instead of being ignored.
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+fn _webi_warn(msg):
+    print "[webi] WARNING: " + msg
+
+fn _webi_has_header(h, name):
+    let want = lower(name)
+    let ks = keys(h)
+    let i = 0
+    while i < len(ks):
+        if lower(ks[i]) == want:
+            return true
+        i = i + 1
+    return false
+
+fn _webi_known_opts(fn_name, opts, allowed):
+    # Returns true if every key in opts is one of `allowed`; prints each unknown key.
+    let ok = true
+    let ks = keys(opts)
+    let i = 0
+    while i < len(ks):
+        let found = false
+        let j = 0
+        while j < len(allowed):
+            if allowed[j] == ks[i]:
+                found = true
+            j = j + 1
+        if not found:
+            let valid = ""
+            let a = 0
+            while a < len(allowed):
+                if a > 0:
+                    valid = valid + ", "
+                valid = valid + allowed[a]
+                a = a + 1
+            print "[webi] " + fn_name + ": unknown option '" + str(ks[i]) + "' (valid: " + valid + ")"
+            ok = false
+        i = i + 1
+    return ok
+
+fn _webi_safe_text(s):
+    # header-safe: no CR / LF (the native server also refuses control characters)
+    return not contains(s, "\r") and not contains(s, "\n")
+
+# ---------------------------------------------------------------------------
+# webi_limits(app, opts) -> app
+#
+# Configurable request limits, enforced by the native server. Every option is
+# optional; the default is shown. A value outside the allowed range stops the
+# server from starting (with a message) instead of being silently ignored.
+#
+#   max_header_bytes         65536      (1024 .. 1048576)   request line + headers
+#   max_body_bytes           10485760   (0 .. 1073741824)   largest Content-Length accepted
+#   read_timeout_seconds     30         (1 .. 600)          longest single wait for the client
+#   request_timeout_seconds  60         (1 .. 3600)         longest the WHOLE request may take
+#
+# request_timeout_seconds is what stops a client that trickles one byte at a
+# time from holding the (single-threaded) server; it also bounds how long the
+# server waits on a client that stops reading the response.
+# ---------------------------------------------------------------------------
+fn webi_limits(app, opts):
+    let allowed = ["max_header_bytes", "max_body_bytes", "read_timeout_seconds", "request_timeout_seconds"]
+    if not _webi_known_opts("webi_limits", opts, allowed):
+        return app
+    app["limits"] = opts
+    return app
+
+# ---------------------------------------------------------------------------
+# webi_security_headers(app, opts) -> app
+#
+# Adds standard security headers to EVERY response (404s, middleware rejections
+# and static files included). A header your handler already set is never
+# overwritten. Options (defaults shown):
+#
+#   nosniff              true                               X-Content-Type-Options: nosniff
+#   frame                "DENY"                             X-Frame-Options ("DENY", "SAMEORIGIN", or false to omit)
+#   referrer             "strict-origin-when-cross-origin"  Referrer-Policy (false to omit)
+#   csp                  ""                                 Content-Security-Policy (omitted when empty)
+#   csp_report_only      false                              send it as Content-Security-Policy-Report-Only
+#   permissions_policy   ""                                 Permissions-Policy (omitted when empty)
+#   hsts                 0                                  Strict-Transport-Security max-age in seconds (0 = off)
+#   include_subdomains   false                              add includeSubDomains to HSTS
+#   hsts_always          false                              send HSTS even if the request was not HTTPS
+#
+# HSTS is only meaningful over HTTPS and webi itself speaks plain HTTP, so it
+# is sent only when a TLS-terminating proxy marks the request with
+# "X-Forwarded-Proto: https" (or you set hsts_always).
+# ---------------------------------------------------------------------------
+fn webi_security_headers(app, opts):
+    let allowed = ["nosniff", "frame", "referrer", "csp", "csp_report_only", "permissions_policy", "hsts", "include_subdomains", "hsts_always"]
+    if not _webi_known_opts("webi_security_headers", opts, allowed):
+        return app
+    let cfg = {
+        "nosniff": true,
+        "frame": "DENY",
+        "referrer": "strict-origin-when-cross-origin",
+        "csp": "",
+        "csp_report_only": false,
+        "permissions_policy": "",
+        "hsts": 0,
+        "include_subdomains": false,
+        "hsts_always": false
+    }
+    let ks = keys(opts)
+    let i = 0
+    while i < len(ks):
+        let k = ks[i]
+        let v = opts[k]
+        if (k == "csp" or k == "permissions_policy") and not _webi_safe_text(str(v)):
+            print "[webi] webi_security_headers: '" + k + "' may not contain CR or LF - ignored"
+        elif k == "frame" and v != false and v != "DENY" and v != "SAMEORIGIN":
+            print "[webi] webi_security_headers: frame must be \"DENY\", \"SAMEORIGIN\" or false - using DENY"
+        elif k == "referrer" and v != false and not _webi_safe_text(str(v)):
+            print "[webi] webi_security_headers: 'referrer' may not contain CR or LF - ignored"
+        elif k == "hsts" and (type(v) != "number" or v < 0):
+            print "[webi] webi_security_headers: hsts must be a number of seconds >= 0 - ignored"
+        else:
+            cfg[k] = v
+        i = i + 1
+    app["_sec_headers"] = cfg
+    if not has(app, "_sec_hook"):
+        app["_sec_hook"] = true
+        app = after(app, _webi_sec_headers_hook)
+    return app
+
+fn _webi_sec_headers_hook(req, res):
+    let app = req["_app"]
+    if not has(app, "_sec_headers"):
+        return res
+    let cfg = app["_sec_headers"]
+    let h = res["headers"]
+    if cfg["nosniff"] and not _webi_has_header(h, "X-Content-Type-Options"):
+        h["X-Content-Type-Options"] = "nosniff"
+    if cfg["frame"] != false and not _webi_has_header(h, "X-Frame-Options"):
+        h["X-Frame-Options"] = cfg["frame"]
+    if cfg["referrer"] != false and not _webi_has_header(h, "Referrer-Policy"):
+        h["Referrer-Policy"] = cfg["referrer"]
+    if cfg["csp"] != "":
+        let csp_name = "Content-Security-Policy"
+        if cfg["csp_report_only"]:
+            csp_name = "Content-Security-Policy-Report-Only"
+        if not _webi_has_header(h, csp_name):
+            h[csp_name] = cfg["csp"]
+    if cfg["permissions_policy"] != "" and not _webi_has_header(h, "Permissions-Policy"):
+        h["Permissions-Policy"] = cfg["permissions_policy"]
+    if cfg["hsts"] > 0 and not _webi_has_header(h, "Strict-Transport-Security"):
+        let proto = lower(header_get(req, "X-Forwarded-Proto", ""))
+        if proto == "https" or cfg["hsts_always"]:
+            let v = "max-age=" + str(floor(cfg["hsts"]))
+            if cfg["include_subdomains"]:
+                v = v + "; includeSubDomains"
+            h["Strict-Transport-Security"] = v
+    res["headers"] = h
+    return res
+
+# ---------------------------------------------------------------------------
+# Cookie policy (used by webi_production, or call webi_cookie_policy directly)
+#
+# Rewrites every Set-Cookie on the way out so a cookie that forgot its flags
+# cannot leak: Secure, HttpOnly and SameSite are added where missing. A cookie
+# that already sets an attribute keeps its own value (SameSite=None without
+# Secure gets Secure added, since browsers reject it otherwise).
+#
+#   secure              true     add Secure
+#   http_only           true     add HttpOnly
+#   same_site           "Lax"    "Strict", "Lax" or "None"
+#   js_readable         []       cookie NAMES that scripts must be able to read:
+#                                these do not get HttpOnly
+#
+# Secure cookies are only sent back by browsers over HTTPS (localhost excepted),
+# so use secure:false while developing over plain http on another host.
+# ---------------------------------------------------------------------------
+fn webi_cookie_policy(app, opts):
+    let allowed = ["secure", "http_only", "same_site", "js_readable"]
+    if not _webi_known_opts("webi_cookie_policy", opts, allowed):
+        return app
+    let pol = {"secure": true, "http_only": true, "same_site": "Lax", "js_readable": []}
+    let ks = keys(opts)
+    let i = 0
+    while i < len(ks):
+        let k = ks[i]
+        let v = opts[k]
+        if k == "same_site":
+            let l = lower(str(v))
+            if l != "strict" and l != "lax" and l != "none":
+                print "[webi] webi_cookie_policy: same_site must be Strict, Lax or None - using Lax"
+            else:
+                pol["same_site"] = str(v)
+        else:
+            pol[k] = v
+        i = i + 1
+    app["_cookie_policy"] = pol
+    if not has(app, "_cookie_hook"):
+        app["_cookie_hook"] = true
+        app = after(app, _webi_cookie_policy_hook)
+    return app
+
+fn _webi_cookie_has_attr(cookie, attr):
+    let parts = split(cookie, ";")
+    let i = 1
+    while i < len(parts):
+        let p = lower(trim(parts[i]))
+        if p == attr:
+            return true
+        if len(p) > len(attr) and substring(p, 0, len(attr) + 1) == attr + "=":
+            return true
+        i = i + 1
+    return false
+
+fn _webi_cookie_name(cookie):
+    let parts = split(cookie, ";")
+    let first = trim(parts[0])
+    let eq = split(first, "=")
+    return trim(eq[0])
+
+fn _webi_cookie_policy_hook(req, res):
+    let app = req["_app"]
+    if not has(app, "_cookie_policy"):
+        return res
+    let pol = app["_cookie_policy"]
+    let cookies = res["cookies"]
+    let out = []
+    let i = 0
+    while i < len(cookies):
+        let c = cookies[i]
+        if pol["secure"] and not _webi_cookie_has_attr(c, "secure"):
+            c = c + "; Secure"
+        if pol["http_only"] and not _webi_cookie_has_attr(c, "httponly"):
+            if not contains_str_in_list(pol["js_readable"], _webi_cookie_name(c)):
+                c = c + "; HttpOnly"
+        if not _webi_cookie_has_attr(c, "samesite"):
+            c = c + "; SameSite=" + pol["same_site"]
+        elif pol["secure"] and _webi_cookie_has_attr(c, "samesite") and contains(lower(c), "samesite=none") and not _webi_cookie_has_attr(c, "secure"):
+            c = c + "; Secure"
+        out = push(out, c)
+        i = i + 1
+    res["cookies"] = out
+    return res
+
+# ---------------------------------------------------------------------------
+# webi_api_keys_from_env(app, var_name) -> app
+#
+# Load the accepted API keys from an environment variable (comma-separated)
+# instead of hard-coding them in source. Use it together with
+# `use(app, mw_require_api_key)`. If the variable is unset or empty NO key is
+# accepted (every protected request gets 401), so a missing variable fails
+# closed. Keys shorter than 16 characters are reported as weak.
+# ---------------------------------------------------------------------------
+fn webi_api_keys_from_env(app, var_name):
+    let raw = env_var(var_name, "")
+    let keys_out = []
+    let parts = split(raw, ",")
+    let i = 0
+    while i < len(parts):
+        let k = trim(parts[i])
+        if len(k) > 0:
+            keys_out = push(keys_out, k)
+            if len(k) < 16:
+                _webi_warn("an API key in $" + var_name + " is shorter than 16 characters; use something like secure_token(24)")
+        i = i + 1
+    if len(keys_out) == 0:
+        _webi_warn("$" + var_name + " is unset or empty: every request to an API-key protected route will be rejected")
+    app["_api_keys"] = keys_out
+    return app
+
+# ---------------------------------------------------------------------------
+# webi_production(app, opts = {}) -> app
+#
+# One call for a production-safe configuration:
+#   * debug mode off, and it cannot be switched back on (webi_debug refuses)
+#   * security headers (nosniff, X-Frame-Options: DENY, Referrer-Policy) and, behind
+#     a TLS proxy, HSTS (180 days)
+#   * cookie policy: Secure + HttpOnly + SameSite=Lax added to every cookie
+#   * CORS: mw_cors allows NO cross-origin requests unless you configure
+#     webi_set_cors_origins(app, [...]) (outside production the default is "*")
+#
+# opts: any webi_security_headers option, plus "cookies" (false to skip the
+# cookie policy), and the webi_cookie_policy options "secure", "http_only",
+# "same_site", "js_readable". Call webi_limits() separately to tune limits.
+# ---------------------------------------------------------------------------
+fn webi_production(app, opts):
+    let allowed = ["nosniff", "frame", "referrer", "csp", "csp_report_only", "permissions_policy", "hsts", "include_subdomains", "hsts_always", "cookies", "secure", "http_only", "same_site", "js_readable"]
+    if not _webi_known_opts("webi_production", opts, allowed):
+        return app
+    app["production"] = true
+    app["debug"] = false
+
+    let hdr = {"hsts": 15552000}
+    let cook = {}
+    let want_cookies = true
+    let ks = keys(opts)
+    let i = 0
+    while i < len(ks):
+        let k = ks[i]
+        if k == "cookies":
+            want_cookies = opts[k]
+        elif k == "secure" or k == "http_only" or k == "same_site" or k == "js_readable":
+            cook[k] = opts[k]
+        else:
+            hdr[k] = opts[k]
+        i = i + 1
+    app = webi_security_headers(app, hdr)
+    if want_cookies:
+        app = webi_cookie_policy(app, cook)
+    return app

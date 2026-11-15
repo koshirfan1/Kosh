@@ -72,14 +72,15 @@ app = route(app, "GET", "/429", h_429)
 app = route(app, "POST", "/len", h_len)
 app = route(app, "GET", "/", h_hello)
 app = serve_static(app, "/static", "%(static)s")
-webi_run(app, %(port)d)
+%(extra)s
+%(run)s
 '''
 
 def free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 class Server:
-    def __init__(self):
+    def __init__(self, extra="", run=None, env=None, wait=True):
         self.dir = tempfile.mkdtemp(prefix="webi_hard_")
         self.static = os.path.join(self.dir, "public"); os.makedirs(self.static)
         self.files = {
@@ -94,10 +95,11 @@ class Server:
         self.port = free_port()
         app = os.path.join(self.dir, "app.kh")
         webi = os.path.join(ROOT, "packages", "webi", "webi.kh").replace("\\", "/")
-        open(app, "w").write(APP % {"webi": webi, "static": self.static.replace("\\", "/"), "port": self.port})
+        run = (run or "webi_run(app, %(port)d)") % {"port": self.port}
+        open(app, "w").write(APP % {"webi": webi, "static": self.static.replace("\\", "/"), "port": self.port, "extra": extra, "run": run})
         self.log = open(os.path.join(self.dir, "server.log"), "wb")
-        self.p = subprocess.Popen([KOSH, app], stdout=self.log, stderr=subprocess.STDOUT, cwd=self.dir)
-        for _ in range(100):
+        self.p = subprocess.Popen([KOSH, app], stdout=self.log, stderr=subprocess.STDOUT, cwd=self.dir, env=dict(os.environ, **(env or {})))
+        for _ in range(100 if wait else 0):
             try: socket.create_connection(("127.0.0.1", self.port), timeout=0.2).close(); break
             except OSError: time.sleep(0.1)
     def alive(self):
@@ -136,11 +138,152 @@ class Server:
         return self.parse(self.raw(b"POST " + path.encode() + b" HTTP/1.1\r\nHost: x\r\nContent-Type: " + ctype +
                                    b"\r\nContent-Length: " + str(len(body)).encode() + b"\r\n" + extra + b"Connection: close\r\n\r\n" + body))
     def status_of(self, request_bytes): return self.parse(self.raw(request_bytes))["status"]
+    def logtext(self):
+        self.log.flush(); return open(os.path.join(self.dir, "server.log"), "rb").read().decode("utf-8", "replace")
     def stop(self):
         self.p.kill(); self.p.wait(); self.log.close(); shutil.rmtree(self.dir, ignore_errors=True)
 
 def has_header(r, name):
     return any(h.lower().startswith(name.lower().encode() + b":") for h in r["headers"])
+
+def trickle(port, first, per_byte_s, total_s):
+    """Send `first` one byte at a time, like a slowloris client; return (response, seconds taken)."""
+    s = socket.create_connection(("127.0.0.1", port), timeout=10)
+    t0 = time.time(); out = b""
+    try:
+        for b in first:
+            if time.time() - t0 > total_s: break
+            s.sendall(bytes([b])); time.sleep(per_byte_s)
+            s.settimeout(0.01)
+            try:
+                c = s.recv(65536)
+                if c: out += c; break
+            except OSError: pass
+        s.settimeout(10)
+        if not out:
+            try: out = s.recv(65536)
+            except OSError: pass
+    except OSError: pass
+    s.close(); return out, time.time() - t0
+
+def linux_loopback_aliases():
+    return sys.platform.startswith("linux")
+
+def run_phase2():
+    CONF = ('app = webi_limits(app, {"max_body_bytes": 1000, "max_header_bytes": 2048, "read_timeout_seconds": 2, "request_timeout_seconds": 3})\n'
+            'app = webi_production(app, {})')
+    S = Server(extra=CONF, run='webi_run_host(app, "127.0.0.1", %(port)d)')
+    try:
+        check("server with limits + production + host=127.0.0.1 starts", S.alive())
+        check("startup line says it is bound to one address only", "bound address only" in S.logtext(), S.logtext())
+
+        # ---------------------------------------------------- configurable limits
+        P = b"POST /len HTTP/1.1\r\nHost: x\r\n"
+        check("body within max_body_bytes (500) is accepted", S.parse(S.raw(P + b"Content-Length: 500\r\nConnection: close\r\n\r\n" + b"a" * 500))["body"].startswith(b"body-len=500"))
+        check("Content-Length above max_body_bytes (1001 > 1000) -> 413", S.status_of(P + b"Content-Length: 1001\r\n\r\n") == 413)
+        check("exactly max_body_bytes (1000) is accepted", S.parse(S.raw(P + b"Content-Length: 1000\r\nConnection: close\r\n\r\n" + b"a" * 1000))["status"] == 200)
+        check("headers above max_header_bytes (2048) -> 431", S.status_of(b"GET / HTTP/1.1\r\nX-Big: " + b"a" * 3000 + b"\r\n\r\n") == 431)
+        check("headers within max_header_bytes are accepted", S.status_of(b"GET / HTTP/1.1\r\nHost: x\r\nX-Big: " + b"a" * 1500 + b"\r\nConnection: close\r\n\r\n") == 200)
+
+        # ---------------------------------------------------- timeouts (read 2 s, whole request 3 s)
+        s = socket.create_connection(("127.0.0.1", S.port), timeout=10); t0 = time.time(); got = s.recv(1000); dt = time.time() - t0; s.close()
+        check("an idle connection (sends nothing) is closed by the read timeout (~2 s) with 408", got.startswith(b"HTTP/1.1 408") and 1.5 < dt < 2.8, "%r after %.2fs (read timeout is 2 s; the whole-request limit is 3 s)" % (got[:30], dt))
+        hdr = b"GET / HTTP/1.1\r\nHost: x\r\nX-Pad: " + b"a" * 200 + b"\r\n\r\n"
+        out, dt = trickle(S.port, hdr, 0.25, 12)
+        check("headers trickled one byte at a time are cut off at the whole-request limit (3 s), not after minutes",
+              out.startswith(b"HTTP/1.1 408") and dt < 6.5, "%r after %.1fs" % (out[:30], dt))
+        # fast trickle: data keeps arriving, so only the whole-request deadline (3 s) can stop it
+        fast = b"GET / HTTP/1.1\r\nHost: x\r\nX-Pad: " + b"a" * 400 + b"\r\nConnection: close\r\n\r\n"     # ~440 bytes at 12 ms = ~5.3 s
+        out, dt = trickle(S.port, fast, 0.012, 15)
+        check("headers that keep arriving (one byte every 12 ms) are still cut off at 3 s with 408", out.startswith(b"HTTP/1.1 408") and dt < 4.2, "%r after %.1fs" % (out[:30], dt))
+        s = socket.create_connection(("127.0.0.1", S.port), timeout=15)
+        s.sendall(b"POST /len HTTP/1.1\r\nHost: x\r\nContent-Length: 900\r\nConnection: close\r\n\r\n")
+        t0 = time.time(); out = b""
+        try:
+            for i in range(900):
+                s.sendall(b"x"); time.sleep(0.012)
+                s.settimeout(0.001)
+                try:
+                    c = s.recv(65536)
+                    if c: out += c; break
+                except OSError: pass
+                s.settimeout(15)
+        except OSError: pass
+        s.settimeout(5)
+        if not out:
+            try: out = s.recv(65536)
+            except OSError: pass
+        dt = time.time() - t0; s.close()
+        check("a body that keeps arriving (900 bytes at 12 ms = ~11 s) is cut off at 3 s with 408", out.startswith(b"HTTP/1.1 408") and dt < 4.2, "%r after %.1fs" % (out[:30], dt))
+        body_hdr = b"POST /len HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n"
+        s = socket.create_connection(("127.0.0.1", S.port), timeout=10); s.sendall(body_hdr)
+        t0 = time.time(); out = b""
+        try:
+            for i in range(60):
+                s.sendall(b"x"); time.sleep(0.4)
+                s.settimeout(0.01)
+                try:
+                    c = s.recv(65536)
+                    if c: out += c; break
+                except OSError: pass
+                s.settimeout(10)
+        except OSError: pass
+        dt = time.time() - t0; s.close()
+        check("a body trickled slowly is cut off at the whole-request limit with 408", out.startswith(b"HTTP/1.1 408") and dt < 6.5, "%r after %.1fs" % (out[:30], dt))
+        check("server still answers normal requests after the slow clients", S.alive())
+
+        # ---------------------------------------------------- production mode over the wire
+        r = S.get("/")
+        check("production: X-Content-Type-Options on a normal response", b"X-Content-Type-Options: nosniff" in r["head"], r["head"])
+        check("production: X-Frame-Options and Referrer-Policy", b"X-Frame-Options: DENY" in r["head"] and b"Referrer-Policy: strict-origin-when-cross-origin" in r["head"])
+        check("production: no HSTS over plain HTTP", not has_header(r, "Strict-Transport-Security"))
+        r = S.get("/", extra=b"X-Forwarded-Proto: https\r\n")
+        check("production: HSTS when a TLS proxy marks the request https", b"Strict-Transport-Security: max-age=15552000" in r["head"], r["head"])
+        check("production: security headers on a 404", b"X-Content-Type-Options: nosniff" in S.get("/nope")["head"])
+        check("production: security headers on static files", b"X-Content-Type-Options: nosniff" in S.get("/static/page.html")["head"])
+        r = S.post("/cookie", b'{"n": "sid", "v": "abc"}')
+        check("production: a plain cookie is sent Secure; HttpOnly; SameSite=Lax", b"Set-Cookie: sid=abc; Path=/; Secure; HttpOnly; SameSite=Lax" in r["head"], r["head"])
+        r = S.post("/scookie", b'{"n": "sid", "v": "abc"}')
+        check("production: a secure cookie keeps its flags without duplicates", r["head"].count(b"HttpOnly") == 1 and r["head"].count(b"Secure") == 1 and b"SameSite=Lax" in r["head"], r["head"])
+        check("production: a lower-cased request header is matched case-insensitively", S.status_of(b"GET / HTTP/1.1\r\nhost: x\r\nx-forwarded-proto: https\r\nconnection: close\r\n\r\n") == 200)
+
+        # ---------------------------------------------------- host binding
+        if linux_loopback_aliases():
+            try:
+                socket.create_connection(("127.0.0.2", S.port), timeout=2).close(); reachable = True
+            except OSError: reachable = False
+            check("webi_run_host(app, '127.0.0.1', ...) is NOT reachable on another local address (127.0.0.2)", not reachable)
+    finally:
+        S.stop()
+
+    # default host: every interface
+    S = Server()
+    try:
+        if linux_loopback_aliases():
+            try:
+                socket.create_connection(("127.0.0.2", S.port), timeout=2).close(); reachable = True
+            except OSError: reachable = False
+            check("the default host still listens on every interface (reachable on 127.0.0.2)", reachable)
+        check("startup line says all interfaces", "all interfaces" in S.logtext(), S.logtext())
+        check("no security headers by default (existing apps unchanged)", not has_header(S.get("/"), "X-Content-Type-Options"))
+        r = S.post("/cookie", b'{"n": "sid", "v": "abc"}')
+        check("no cookie flags added by default", b"Set-Cookie: sid=abc; Path=/\r\n" in r["head"] + b"\r\n", r["head"])
+    finally:
+        S.stop()
+
+    # bad configuration must stop the server from starting, with a message
+    def refuses(name, extra, run, needle):
+        X = Server(extra=extra, run=run, wait=False)
+        try:
+            try: X.p.wait(timeout=8); code = X.p.returncode
+            except subprocess.TimeoutExpired: code = None
+            txt = X.logtext()
+            check(name, code is not None and needle in txt and "Listening on port" not in txt, "exit=%s log=%r" % (code, txt[-300:]))
+        finally: X.stop()
+    refuses("a host that is not an IPv4 address stops the server", "", 'webi_run_host(app, "not-an-ip", %(port)d)', "cannot bind to host")
+    refuses("a negative limit stops the server", 'app = webi_limits(app, {"max_body_bytes": -5})', None, "max_body_bytes")
+    refuses("a limit of the wrong type stops the server", 'app = webi_limits(app, {"request_timeout_seconds": "fast"})', None, "request_timeout_seconds")
+    refuses("an out-of-range timeout stops the server", 'app = webi_limits(app, {"read_timeout_seconds": 100000})', None, "read_timeout_seconds")
 
 def run():
     S = Server()
@@ -271,6 +414,7 @@ def run():
         check("server is still healthy after all of the above", S.alive())
     finally:
         S.stop()
+    run_phase2()
     print("\n  %d/%d passed   |   %d failed" % (passed, passed + failed, failed))
     return 1 if failed else 0
 

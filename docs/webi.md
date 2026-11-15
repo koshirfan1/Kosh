@@ -272,9 +272,14 @@ Everything here is **opt-in** — nothing runs unless you wire it up with
 ### CORS
 
 ```kosh
-app = webi_set_cors_origins(app, ["https://example.com"])  # default: ["*"]
+app = webi_set_cors_origins(app, ["https://example.com"])  # default: ["*"], or [] in production mode
 app = use(app, mw_cors)
 ```
+
+Without `webi_set_cors_origins()`, `mw_cors` allows **every** origin (and prints a one-time
+warning saying so). In production mode (`webi_production(app)`) the default flips to *no*
+cross-origin access until you list origins. `Origin` is matched case-insensitively by header
+name, so a proxy that lower-cases headers still works.
 
 ### Rate limiting
 
@@ -294,6 +299,20 @@ app = webi_require_api_key(app, ["secret-key-1", "secret-key-2"])
 app = use(app, mw_require_api_key)   # checks Authorization: Bearer <key>
 ```
 
+Keys do not have to live in source code. Load them from an environment variable
+(comma-separated); an unset or empty variable accepts **no** key, so a missing variable fails
+closed:
+
+```kosh
+app = webi_api_keys_from_env(app, "MYAPP_API_KEYS")    # export MYAPP_API_KEYS="key-one,key-two"
+app = use(app, mw_require_api_key)
+```
+
+Keys are compared in constant time, and the header names (`X-API-Key`, `Authorization`) are
+found whatever case the client or proxy sends them in. Keys shorter than 16 characters are
+reported as weak (`secure_token(24)` makes a good one). `env_var(name, default)` is the
+underlying native if you need other settings from the environment.
+
 ### CSRF
 
 ```kosh
@@ -309,6 +328,73 @@ app = use(app, mw_csrf)   # verifies the cookie against the submitted token on P
 token (`/dev/urandom` on POSIX, `CryptGenRandom` on Windows), not Kosh's
 `random()`, which is seeded `rand()` and predictable enough to never use
 for anything security-sensitive.
+
+---
+
+### Production mode (v1.3.0)
+
+```kosh
+app = webi_production(app)                                   # secure defaults in one call
+app = webi_production(app, {"csp": "default-src 'self'"})    # plus a Content-Security-Policy
+```
+
+`webi_production()` turns on, in one call:
+
+- **debug off**, and `webi_debug(app, true)` is refused afterwards;
+- **security headers** on *every* response, 404s, middleware rejections and static files
+  included: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, and (behind a TLS proxy that sends
+  `X-Forwarded-Proto: https`) `Strict-Transport-Security` for 180 days. A header your handler
+  sets itself is never overwritten;
+- a **cookie policy** that adds `Secure`, `HttpOnly` and `SameSite=Lax` to any cookie that
+  forgot them (a cookie that sets its own `SameSite` keeps it; `SameSite=None` gets `Secure`);
+- **CORS closed by default** (see above).
+
+Nothing here changes an app that does not call it. The pieces are also available separately,
+with the same option checking (an unknown option is reported and ignored, so a typo cannot
+silently leave you unprotected):
+
+```kosh
+app = webi_security_headers(app, {"frame": "SAMEORIGIN", "csp": "default-src 'self'",
+                                  "hsts": 31536000, "include_subdomains": true,
+                                  "permissions_policy": "geolocation=()"})
+app = webi_cookie_policy(app, {"same_site": "Strict", "js_readable": ["theme"]})
+```
+
+| `webi_security_headers` option | Default | Header |
+|---|---|---|
+| `nosniff` | `true` | `X-Content-Type-Options: nosniff` |
+| `frame` | `"DENY"` | `X-Frame-Options` (`"SAMEORIGIN"`, or `false` to omit) |
+| `referrer` | `"strict-origin-when-cross-origin"` | `Referrer-Policy` (`false` to omit) |
+| `csp` / `csp_report_only` | `""` / `false` | `Content-Security-Policy` (or `-Report-Only`); omitted when empty |
+| `permissions_policy` | `""` | `Permissions-Policy` |
+| `hsts` / `include_subdomains` / `hsts_always` | `0` / `false` / `false` | `Strict-Transport-Security` `max-age` (0 = off); only sent for HTTPS-marked requests unless `hsts_always` |
+
+`Secure` cookies are only sent back by browsers over HTTPS (localhost excepted): when
+developing over plain http on another host, pass `{"secure": false}` to the cookie policy.
+Cookie names in `js_readable` are the ones your scripts must read, so they do not get
+`HttpOnly`. A `Content-Security-Policy` is not on by default because a good one depends on
+your pages (inline scripts and styles need nonces or hashes).
+
+### Request limits
+
+```kosh
+app = webi_limits(app, {"max_body_bytes": 1048576, "request_timeout_seconds": 20})
+```
+
+| Option | Default | Range | Meaning |
+|---|---|---|---|
+| `max_header_bytes` | 65536 | 1024 .. 1048576 | request line + headers (`431` beyond) |
+| `max_body_bytes` | 10485760 | 0 .. 1073741824 | largest `Content-Length` (`413` beyond) |
+| `read_timeout_seconds` | 30 | 1 .. 600 | longest single wait for the client |
+| `request_timeout_seconds` | 60 | 1 .. 3600 | longest the **whole** request may take (`408` beyond) |
+
+A value outside its range, or of the wrong type, stops the server from starting with a
+message, rather than being silently ignored. `request_timeout_seconds` is what stops a client
+that trickles bytes (a "slowloris") from holding the single-threaded server: it is checked
+before every read and also bounds how long the server waits on a client that stops reading
+the response. The request body is allocated as it arrives, not up front, so a client that
+claims a huge `Content-Length` costs memory only for the bytes it actually sends.
 
 ---
 
@@ -390,6 +476,13 @@ webi_run(app, 8080)              # binds 0.0.0.0:8080
 webi_run_host(app, "127.0.0.1", 8080)   # bind a specific host
 ```
 
+`webi_run_host()` binds exactly that IPv4 address (`"127.0.0.1"` or `"localhost"` for this
+machine only, `"0.0.0.0"` for every interface; anything else stops the server with a message).
+Before webi 1.3.0 the host was silently ignored and the server always listened on every
+interface, so `webi_run_host(app, "127.0.0.1", ...)` was **not** local-only. `webi_run()` still
+listens on every interface; while developing, prefer `webi_run_host(app, "127.0.0.1", port)`.
+Debug mode prints a warning when it is combined with listening on every interface.
+
 Both block forever, dispatching one request at a time through
 `webi_handle()` — the same bridge function the native C accept loop
 calls per connection. You normally don't call `webi_handle()` yourself;
@@ -397,7 +490,7 @@ it's exposed mainly so tests can dispatch a request without actually
 opening a socket (see `examples/webi_phase3_test.kh` for an example).
 
 ```kosh
-print webi_version()    # "webi/1.2.1 (Kosh)"
+print webi_version()    # "webi/1.3.0 (Kosh)"
 print webi_routes(app)  # list every registered route, for debugging
 ```
 
@@ -423,12 +516,9 @@ because ambiguity is what request smuggling and header injection are made of.
 | NUL byte in the body | `400` |
 
 Header names are matched case-insensitively and exactly (`X-Content-Length` is not
-`Content-Length`). The limits are compile-time constants in `src/webi_lib.c`
-(`WB_MAX_HEADER_SIZE`, `WB_MAX_BODY_SIZE`, `WB_MAX_HEADER_LINES`, `WB_SOCKET_TIMEOUT_SEC`);
-making them configurable is planned. There is a 30 s read timeout per `recv`, but not yet a
-limit on the *total* time one request may take, so a client that trickles one byte every
-29 s can still occupy the (single-threaded) server. A client that disconnects mid-response
-no longer risks killing the server.
+`Content-Length`). The limits are configurable with `webi_limits()` (see *Request limits*);
+`WB_MAX_HEADER_LINES` (100) is a compile-time constant in `src/webi_lib.c`. A client that
+disconnects mid-response no longer risks killing the server.
 
 ---
 
@@ -436,7 +526,8 @@ no longer risks killing the server.
 
 - **Single-threaded server.** `http_serve()` handles one connection fully
   (read → dispatch → respond → close) before accepting the next. A slow
-  client currently blocks every other visitor. A threaded version is
+  client blocks every other visitor for as long as the request is allowed to take
+  (`request_timeout_seconds`, 60 s by default, see *Request limits*). A threaded version is
   planned but not yet built — see the project's roadmap; it needs either
   a global lock around request dispatch (simplest), a worker-process
   pool, or a fully thread-safe interpreter, since nothing in

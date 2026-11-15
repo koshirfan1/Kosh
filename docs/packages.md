@@ -86,7 +86,7 @@ Every package installs the same way, regardless of category: `kh install <name>`
 
 | Package | Version | Description |
 |---|---|---|
-| [`webi`](webi.md) | 1.2.1 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
+| [`webi`](webi.md) | 1.3.0 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
 | `webi_auth` | 1.0.0 | Authentication middleware for Webi |
 | `webi_socket` | 1.0.0 | WebSocket support for Webi framework |
 | `morgos` | 1.0.0 | Morgan-style HTTP request logger for webi: colored status, elapsed time, response size — as a swappable after-hook |

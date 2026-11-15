@@ -58,20 +58,33 @@ typedef int wb_sock_t;
 #endif
 
 // ---------------------------------------------------------------------------
-// Security limits (v1.1.1)
-//   - WB_MAX_HEADER_SIZE: caps how much we'll buffer while waiting for the
+// Security limits (v1.1.1; configurable since v0.016.3)
+//   - max header bytes: caps how much we buffer while waiting for the
 //     \r\n\r\n header terminator, so a client that never sends one can't
 //     grow our buffer forever.
-//   - WB_MAX_BODY_SIZE: caps how large a request body we'll allocate for,
-//     regardless of what Content-Length claims.
-//   - WB_SOCKET_TIMEOUT_SEC: read timeout on an accepted connection, so a
-//     client that connects and then sends data slowly (or not at all)
-//     can't hold a connection open indefinitely (slowloris-style).
+//   - max body bytes: caps the Content-Length we will accept.
+//   - read timeout: longest single wait for data on an accepted connection.
+//   - request timeout: longest the WHOLE request may take, so a client that
+//     trickles one byte at a time (slowloris) can't hold the single-threaded
+//     server for longer than this.
 // ---------------------------------------------------------------------------
-#define WB_MAX_HEADER_SIZE   (64 * 1024)          /* 64 KB */
-#define WB_MAX_BODY_SIZE     (10 * 1024 * 1024)   /* 10 MB */
-#define WB_SOCKET_TIMEOUT_SEC 30
-#define WB_MAX_STATIC_FILE   (64 * 1024 * 1024)  /* 64 MB cap on a single static file */
+#define WB_DEFAULT_MAX_HEADER   (64 * 1024)          /* 64 KB */
+#define WB_DEFAULT_MAX_BODY     (10 * 1024 * 1024)   /* 10 MB */
+#define WB_DEFAULT_READ_TIMEOUT 30                   /* seconds per recv */
+#define WB_DEFAULT_REQ_TIMEOUT  60                   /* seconds for the WHOLE request */
+#define WB_MAX_STATIC_FILE      (64 * 1024 * 1024)   /* 64 MB cap on a single static file */
+
+// Runtime limits. Defaults above; overridden at server start from the app
+// map's "limits" key (see webi_limits() in webi/limits.kh), validated by
+// wb_load_limits().
+typedef struct {
+    size_t max_header;        // bytes buffered while waiting for the header terminator
+    size_t max_body;          // largest Content-Length accepted
+    int    read_timeout_s;    // longest single wait for data from the client
+    int    request_timeout_s; // longest the whole request (headers + body) may take
+} wb_limits_t;
+static wb_limits_t g_lim = { WB_DEFAULT_MAX_HEADER, WB_DEFAULT_MAX_BODY,
+                             WB_DEFAULT_READ_TIMEOUT, WB_DEFAULT_REQ_TIMEOUT };
 
 /* Bridge: call Kosh function by name from C */
 extern Value kosh_call_fn(Interpreter *interp, Environment *env,
@@ -318,6 +331,88 @@ static void wb_send_error(wb_sock_t fd, int status) {
 }
 
 // ---------------------------------------------------------------------------
+// Time, socket timeouts, and configurable limits
+// ---------------------------------------------------------------------------
+static unsigned long long wb_now_ms(void) {
+#ifdef _WIN32
+    return (unsigned long long)GetTickCount64();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long long)ts.tv_sec * 1000ULL + (unsigned long long)(ts.tv_nsec / 1000000L);
+#endif
+}
+
+static void wb_set_timeouts_ms(wb_sock_t fd, unsigned long long recv_ms, unsigned long long send_ms) {
+#ifdef _WIN32
+    DWORD r = (DWORD)recv_ms, w = (DWORD)send_ms;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&r, sizeof(r));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&w, sizeof(w));
+#else
+    struct timeval r, w;
+    r.tv_sec = (time_t)(recv_ms / 1000); r.tv_usec = (suseconds_t)((recv_ms % 1000) * 1000);
+    w.tv_sec = (time_t)(send_ms / 1000); w.tv_usec = (suseconds_t)((send_ms % 1000) * 1000);
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &r, sizeof(r));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &w, sizeof(w));
+#endif
+}
+
+// Called before every recv() of a request: returns 1 if the whole-request
+// deadline has already passed; otherwise arms the socket's receive timeout to
+// min(read timeout, time left), so a blocked recv wakes up in time.
+static int wb_arm_timeout(wb_sock_t fd, unsigned long long start_ms) {
+    unsigned long long total = (unsigned long long)g_lim.request_timeout_s * 1000ULL;
+    unsigned long long used  = wb_now_ms() - start_ms;
+    if (used >= total) return 1;
+    unsigned long long left = total - used;
+    unsigned long long per  = (unsigned long long)g_lim.read_timeout_s * 1000ULL;
+    wb_set_timeouts_ms(fd, left < per ? (left < 50 ? 50 : left) : per, total);
+    return 0;
+}
+
+// Read one numeric option from the app's "limits" map. Absent = keep the
+// default. Present but not a number in [lo, hi] = a configuration error: the
+// server refuses to start rather than silently ignoring a typo.
+static int wb_limit_opt(Value *lim, const char *key, double lo, double hi, double *out) {
+    Value *v = lim ? map_get(lim, key) : NULL;
+    if (!v) return 1;
+    if (v->type != VAL_NUMBER || v->as.number < lo || v->as.number > hi) {
+        fprintf(stderr, "[webi] limits: '%s' must be a number between %.0f and %.0f\n", key, lo, hi);
+        return 0;
+    }
+    *out = v->as.number;
+    return 1;
+}
+
+static int wb_load_limits(Value *app) {
+    wb_limits_t l = { WB_DEFAULT_MAX_HEADER, WB_DEFAULT_MAX_BODY,
+                      WB_DEFAULT_READ_TIMEOUT, WB_DEFAULT_REQ_TIMEOUT };
+    Value *lim = map_get(app, "limits");
+    if (lim && lim->type != VAL_MAP) lim = NULL;
+    double v;
+    v = (double)l.max_header;   if (!wb_limit_opt(lim, "max_header_bytes", 1024, 1048576, &v)) return 0; l.max_header = (size_t)v;
+    v = (double)l.max_body;     if (!wb_limit_opt(lim, "max_body_bytes", 0, 1073741824.0, &v)) return 0;  l.max_body = (size_t)v;
+    v = l.read_timeout_s;       if (!wb_limit_opt(lim, "read_timeout_seconds", 1, 600, &v)) return 0;     l.read_timeout_s = (int)v;
+    v = l.request_timeout_s;    if (!wb_limit_opt(lim, "request_timeout_seconds", 1, 3600, &v)) return 0; l.request_timeout_s = (int)v;
+    if (l.read_timeout_s > l.request_timeout_s) l.read_timeout_s = l.request_timeout_s;
+    g_lim = l;
+    return 1;
+}
+
+// app["host"] -> IPv4 address to bind. "" / "0.0.0.0" / "*" = every interface.
+// (Before 0.016.3 the host was ignored and the server always bound every
+// interface, even for webi_run_host(app, "127.0.0.1", port).)
+static int wb_parse_host(Value *app, struct in_addr *out) {
+    Value *h = map_get(app, "host");
+    const char *host = (h && h->type == VAL_STRING) ? h->as.string : "";
+    if (!*host || strcmp(host, "0.0.0.0") == 0 || strcmp(host, "*") == 0) { out->s_addr = htonl(INADDR_ANY); return 1; }
+    if (strcmp(host, "localhost") == 0) { out->s_addr = htonl(INADDR_LOOPBACK); return 1; }
+    if (inet_pton(AF_INET, host, out) == 1) return 1;
+    fprintf(stderr, "[webi] cannot bind to host '%s': use an IPv4 address, 'localhost', or '0.0.0.0' for every interface\n", host);
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // Strict HTTP/1.x request reader
 //
 // Reads one request and validates it BEFORE any of it reaches Kosh code.
@@ -327,7 +422,7 @@ static void wb_send_error(wb_sock_t fd, int status) {
 //     start with "/" (or be "*") and fit the 512-byte buffers below
 //   * header names must be RFC 7230 tokens; no obs-fold, no NUL, no control
 //     characters, no bare CR/LF; at most WB_MAX_HEADER_LINES lines
-//   * Content-Length: at most one, digits only, <= WB_MAX_BODY_SIZE; the body
+//   * Content-Length: at most one, digits only, <= g_lim.max_body; the body
 //     must arrive in full (a short body is an error, not a silent truncation)
 //   * Transfer-Encoding is not implemented: 501 (400 if Content-Length is
 //     also present, which is the classic smuggling shape)
@@ -426,7 +521,7 @@ static int wb_validate_head(const char *buf, size_t hend, size_t *clen) {
                 if (val[i] < '0' || val[i] > '9') return 400;
                 n = n * 10 + (unsigned)(val[i] - '0');
             }
-            if (n > (unsigned long long)WB_MAX_BODY_SIZE) return 413;
+            if (n > (unsigned long long)g_lim.max_body) return 413;
             *clen = (size_t)n;
         } else if (wb_name_is(line, nlen, "transfer-encoding")) {
             te_seen = 1;
@@ -453,11 +548,13 @@ static int wb_read_request_strict(wb_sock_t fd, wb_request_t *out) {
     if (!buf) return 500;
     char tmp[4096];
     long hend = -1;
+    unsigned long long t_start = wb_now_ms();
 
     for (;;) {
-        long n = (long)recv(fd, tmp, (int)sizeof(tmp), 0);
+        int expired = wb_arm_timeout(fd, t_start);
+        long n = expired ? -1 : (long)recv(fd, tmp, (int)sizeof(tmp), 0);
         if (n <= 0) {
-            int timed_out = (n < 0) && wb_timed_out();
+            int timed_out = expired || ((n < 0) && wb_timed_out());
             free(buf);
             if (len == 0 && !timed_out) return -1;              // connected and left
             return timed_out ? 408 : 400;                        // stalled / cut off mid-headers
@@ -475,14 +572,14 @@ static int wb_read_request_strict(wb_sock_t fd, wb_request_t *out) {
         hend = wb_find_header_end(buf, len, before >= 3 ? before - 3 : 0);
         if (hend >= 0) break;
         scan = len;
-        if (len > (size_t)WB_MAX_HEADER_SIZE) {
-            fprintf(stderr, "[webi] request headers exceeded %d bytes — rejecting\n", WB_MAX_HEADER_SIZE);
+        if (len > (size_t)g_lim.max_header) {
+            fprintf(stderr, "[webi] request headers exceeded %zu bytes — rejecting\n", g_lim.max_header);
             free(buf);
             return 431;
         }
     }
     (void)scan;
-    if ((size_t)hend > (size_t)WB_MAX_HEADER_SIZE) { free(buf); return 431; }
+    if ((size_t)hend > (size_t)g_lim.max_header) { free(buf); return 431; }
 
     size_t clen = 0;
     int st = wb_validate_head(buf, (size_t)hend, &clen);
@@ -491,14 +588,26 @@ static int wb_read_request_strict(wb_sock_t fd, wb_request_t *out) {
     // ---- body: exactly Content-Length bytes, all of them ----
     size_t start = (size_t)hend + 4;
     size_t have = len - start;
-    char *body = malloc(clen + 1);
-    if (!body) { free(buf); return 500; }
+    // Allocate as the bytes arrive, not "Content-Length" up front: a client
+    // claiming 1 GB must actually send it before it costs us 1 GB.
     size_t got = have < clen ? have : clen;
+    size_t bcap = clen < 65536 ? clen : 65536;
+    if (bcap < got) bcap = got;
+    char *body = malloc(bcap + 1);
+    if (!body) { free(buf); return 500; }
     if (got) memcpy(body, buf + start, got);
     while (got < clen) {
-        long n = (long)recv(fd, body + got, (int)(clen - got > 65536 ? 65536 : clen - got), 0);
+        if (got == bcap) {
+            size_t ncap = bcap * 2 > clen ? clen : bcap * 2;
+            char *nb = realloc(body, ncap + 1);
+            if (!nb) { free(body); free(buf); return 500; }
+            body = nb; bcap = ncap;
+        }
+        int expired = wb_arm_timeout(fd, t_start);
+        size_t want = bcap - got; if (want > 65536) want = 65536;
+        long n = expired ? -1 : (long)recv(fd, body + got, (int)want, 0);
         if (n <= 0) {
-            int timed_out = (n < 0) && wb_timed_out();
+            int timed_out = expired || ((n < 0) && wb_timed_out());
             free(body); free(buf);
             return timed_out ? 408 : 400;
         }
@@ -620,7 +729,7 @@ static char *wb_build_http_response(Value *res_map, size_t *out_len) {
     wb_buf_str(&out, &olen, &ocap, num);
     wb_buf_str(&out, &olen, &ocap, wb_reason(status));
     wb_buf_str(&out, &olen, &ocap, "\r\n");
-    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.2.1 (Kosh)\r\n");
+    wb_buf_str(&out, &olen, &ocap, "Server: webi/1.3.0 (Kosh)\r\n");
     wb_buf_str(&out, &olen, &ocap, "Connection: close\r\n");
     wb_buf_str(&out, &olen, &ocap, "Content-Type: ");
     wb_buf_str(&out, &olen, &ocap, ct);
@@ -866,10 +975,11 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
+    if (!wb_load_limits(&app)) { close(server_fd); value_free(app); interp->had_runtime_error = 1; *result = value_nil(); return; }
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
+    if (!wb_parse_host(&app, &addr.sin_addr)) { close(server_fd); value_free(app); interp->had_runtime_error = 1; *result = value_nil(); return; }
     addr.sin_port        = htons((uint16_t)port);
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -885,7 +995,7 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
 
     signal(SIGPIPE, SIG_IGN);       /* a client that disconnects mid-response must not kill the server */
     g_webi_env = interp->base_env;  /* store env for accept loop */
-    printf("[webi] Listening on port %d\n", port);
+    printf("[webi] Listening on port %d (%s)\n", port, addr.sin_addr.s_addr == htonl(INADDR_ANY) ? "all interfaces" : "bound address only");
     fflush(stdout);
 
     // Accept loop
@@ -899,12 +1009,10 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
             break;
         }
 
-        // Read timeout so a client that connects and stalls can't hold the
-        // connection (and this single-threaded server) open forever.
-        struct timeval wb_timeout;
-        wb_timeout.tv_sec = WB_SOCKET_TIMEOUT_SEC;
-        wb_timeout.tv_usec = 0;
-        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &wb_timeout, sizeof(wb_timeout));
+        // Timeouts so a client that connects and stalls (or stops reading our
+        // response) can't hold this single-threaded server open forever.
+        wb_set_timeouts_ms(client_fd, (unsigned long long)g_lim.read_timeout_s * 1000ULL,
+                           (unsigned long long)g_lim.request_timeout_s * 1000ULL);
 
         // Read and strictly validate the request (see wb_read_request_strict)
         wb_request_t rq;
@@ -1146,16 +1254,20 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
     int opt = 1;
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
+    if (!wb_load_limits(&app)) { closesocket(srv); WSACleanup(); value_free(app); *result = value_nil(); return; }
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
+    if (!wb_parse_host(&app, &addr.sin_addr)) { closesocket(srv); WSACleanup(); value_free(app); *result = value_nil(); return; }
     addr.sin_port = htons((u_short)port);
-    bind(srv, (struct sockaddr *)&addr, sizeof(addr));
+    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        fprintf(stderr, "[webi] bind() failed: %d\n", WSAGetLastError());
+        closesocket(srv); WSACleanup(); value_free(app); *result = value_nil(); return;
+    }
     listen(srv, 64);
 
     if (interp) g_webi_env = interp->base_env;
-    printf("[webi] Listening on port %d\n", port);
+    printf("[webi] Listening on port %d (%s)\n", port, addr.sin_addr.s_addr == htonl(INADDR_ANY) ? "all interfaces" : "bound address only");
     fflush(stdout);
 
     while (1) {
@@ -1164,10 +1276,10 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
         SOCKET cli = accept(srv, (struct sockaddr *)&client_addr, &client_len);
         if (cli == INVALID_SOCKET) continue;
 
-        // Read timeout so a client that connects and stalls can't hold the
-        // connection (and this single-threaded server) open forever.
-        DWORD wb_timeout_ms = WB_SOCKET_TIMEOUT_SEC * 1000;
-        setsockopt(cli, SOL_SOCKET, SO_RCVTIMEO, (const char *)&wb_timeout_ms, sizeof(wb_timeout_ms));
+        // Timeouts so a client that connects and stalls (or stops reading our
+        // response) can't hold this single-threaded server open forever.
+        wb_set_timeouts_ms(cli, (unsigned long long)g_lim.read_timeout_s * 1000ULL,
+                           (unsigned long long)g_lim.request_timeout_s * 1000ULL);
 
         // Read and strictly validate the request (see wb_read_request_strict)
         wb_request_t rq;
@@ -1543,6 +1655,17 @@ void fn_secure_token(Value *result, Interpreter *interp, int argc, Value *args) 
 
     *result = value_string(out);
     free(out);
+}
+
+// Kosh: env_var(name, default = nil) -> the process environment variable, as a string
+void fn_env_var(Value *result, Interpreter *interp, int argc, Value *args) {
+    if (argc < 1 || args[0].type != VAL_STRING) {
+        fprintf(stderr, "Runtime error: env_var(name, default = nil) needs a string name\n");
+        interp->had_runtime_error = 1; *result = value_nil(); return;
+    }
+    const char *v = getenv(args[0].as.string);
+    if (v) { *result = value_string(v); return; }
+    *result = (argc >= 2) ? value_copy(args[1]) : value_nil();
 }
 
 // ===========================================================================

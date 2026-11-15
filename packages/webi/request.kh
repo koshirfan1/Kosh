@@ -28,6 +28,16 @@ fn header_get(req, key, default):
     let h = req["headers"]
     if has(h, key):
         return h[key]
+    # HTTP header names are case-insensitive, and proxies / HTTP/2 send them
+    # lower-cased ("x-api-key", "origin", "cookie"): fall back to a
+    # case-insensitive scan so those are still found.
+    let want = lower(key)
+    let ks = keys(h)
+    let i = 0
+    while i < len(ks):
+        if lower(ks[i]) == want:
+            return h[ks[i]]
+        i = i + 1
     return default
 
 # ---------------------------------------------------------------------------

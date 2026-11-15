@@ -32,6 +32,9 @@ fn webi_app():
 # Enable or disable debug mode (verbose logging)
 # ---------------------------------------------------------------------------
 fn webi_debug(app, enabled):
+    if enabled and has(app, "production") and app["production"]:
+        print "[webi] WARNING: webi_debug(app, true) ignored: this app is in production mode (webi_production)"
+        return app
     app["debug"] = enabled
     return app
 

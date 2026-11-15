@@ -166,7 +166,16 @@ fn webi_handle(app, method, path, query_str, headers_str, body, ip):
 # HTTP request, calls webi_handle(app, method, path, ...) and writes
 # the returned response map back to the socket.
 # ---------------------------------------------------------------------------
+fn _webi_startup_checks(app):
+    if has(app, "production") and app["production"] and app["debug"]:
+        print "[webi] WARNING: debug mode is ignored in production mode"
+        app["debug"] = false
+    if app["debug"] and (app["host"] == "0.0.0.0" or app["host"] == ""):
+        print "[webi] WARNING: debug mode is ON and the server listens on every network interface. Use webi_run_host(app, \"127.0.0.1\", port) while developing."
+    return app
+
 fn webi_run(app, port):
+    app = _webi_startup_checks(app)
     app["port"] = port
     print "[webi] " + app["name"] + " starting on http://" + app["host"] + ":" + str(port)
     if app["debug"]:

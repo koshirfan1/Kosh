@@ -118,11 +118,19 @@ fn contains_str_in_list(list, s):
 # usually no OPTIONS route registered, so it would otherwise 404).
 # Add as first middleware: app = use(app, mw_cors)
 # ---------------------------------------------------------------------------
+let _webi_cors_warned = false
+
 fn mw_cors(req):
     let app = req["_app"]
     let origins = ["*"]
     if has(app, "_cors_origins"):
         origins = app["_cors_origins"]
+    elif has(app, "production") and app["production"]:
+        # production default: no cross-origin access until webi_set_cors_origins() says otherwise
+        origins = []
+    elif not _webi_cors_warned:
+        _webi_cors_warned = true
+        print "[webi] WARNING: mw_cors is allowing EVERY origin (Access-Control-Allow-Origin: *) because webi_set_cors_origins() was never called. Fine for a public API; for anything else list your origins, or call webi_production(app)."
 
     let origin_header = header_get(req, "Origin", "")
     let allow_origin = "*"

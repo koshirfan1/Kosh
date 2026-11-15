@@ -1,6 +1,6 @@
 {
   "name": "webi",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Lightweight Flask-inspired web framework for Kosh: routing, request/response helpers, middleware, CSRF/rate-limit/API-key security, templates, and an HTTP server, plus an opt-in encrypted channel (X25519 + ChaCha20-Poly1305 with replay protection, secure.kh).",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
@@ -14,6 +14,7 @@
     "response.kh",
     "middleware.kh",
     "security.kh",
+    "production.kh",
     "server.kh",
     "template.kh",
     "meta.kh",

@@ -1,0 +1,197 @@
+# Tests for webi/production.kh (webi_production, webi_limits, security headers,
+# cookie policy, API keys from the environment) and the related fixes:
+# case-insensitive header_get, constant-time CSRF compare, production CORS.
+#
+#   ./kosh tests/test_webi_production.kh
+#
+# These go through webi_handle(), the same bridge the native server calls.
+# The socket-level parts (limits, timeouts, host binding) are covered by
+# tests/webi_http/test_http_hardening.py.
+import "../packages/webi/webi.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("webi production hardening")
+
+fn h_plain(req):
+    return res_text("hello")
+
+fn h_cookie(req):
+    let r = res_text("c")
+    r = res_with_cookie(r, "theme", "dark")
+    r = res_with_secure_cookie(r, "sid", "abc", {"same_site": "Strict"})
+    return r
+
+fn h_js_cookie(req):
+    return res_with_cookie(res_text("c"), "csrf_js", "tok")
+
+fn h_none_cookie(req):
+    let r = res_text("c")
+    r["cookies"] = push(r["cookies"], "x=1; SameSite=None")
+    return r
+
+fn h_own_headers(req):
+    let r = res_text("own")
+    r = res_with_header(r, "x-frame-options", "SAMEORIGIN")
+    r = res_with_header(r, "X-Content-Type-Options", "custom")
+    return r
+
+fn base_app():
+    let app = webi_app()
+    app = route(app, "GET", "/", h_plain)
+    app = route(app, "GET", "/cookie", h_cookie)
+    app = route(app, "GET", "/jscookie", h_js_cookie)
+    app = route(app, "GET", "/none", h_none_cookie)
+    app = route(app, "GET", "/own", h_own_headers)
+    app = route(app, "POST", "/post", h_plain)
+    return app
+
+fn call(app, method, path, headers_str):
+    return webi_handle(app, method, path, "", headers_str, "", "127.0.0.1")
+
+fn has_cookie_with(res, needle):
+    let i = 0
+    while i < len(res["cookies"]):
+        if contains(res["cookies"][i], needle):
+            return true
+        i = i + 1
+    return false
+
+fn hdr(res, name):
+    let ks = keys(res["headers"])
+    let i = 0
+    while i < len(ks):
+        if lower(ks[i]) == lower(name):
+            return res["headers"][ks[i]]
+        i = i + 1
+    return nil
+
+fn hdr_count(res, name):
+    let n = 0
+    let ks = keys(res["headers"])
+    let i = 0
+    while i < len(ks):
+        if lower(ks[i]) == lower(name):
+            n = n + 1
+        i = i + 1
+    return n
+
+# ---------------------------------------------------------------- header_get is case-insensitive
+let req_lc = {"headers": {"x-api-key": "k1", "origin": "https://a.example"}}
+t = test_eq(t, "header_get finds a lower-case header", header_get(req_lc, "X-API-Key", ""), "k1")
+t = test_eq(t, "header_get finds 'origin' for 'Origin'", header_get(req_lc, "Origin", ""), "https://a.example")
+t = test_eq(t, "header_get exact match still wins", header_get({"headers": {"X-A": "1"}}, "X-A", "d"), "1")
+t = test_eq(t, "header_get default when absent", header_get(req_lc, "X-Missing", "d"), "d")
+t = test_eq(t, "cookie_get works with a lower-case 'cookie' header", cookie_get({"headers": {"cookie": "a=1; b=2"}}, "b", ""), "2")
+
+let app_key = use(webi_require_api_key(webi_app(), ["secret-key-1234567"]), mw_require_api_key)
+app_key = route(app_key, "GET", "/", h_plain)
+t = test_eq(t, "API key sent as lower-case 'x-api-key' is accepted", call(app_key, "GET", "/", "x-api-key: secret-key-1234567")["status"], 200)
+t = test_eq(t, "wrong API key is still rejected", call(app_key, "GET", "/", "x-api-key: nope")["status"], 401)
+t = test_eq(t, "missing API key is still rejected", call(app_key, "GET", "/", "")["status"], 401)
+t = test_eq(t, "'authorization: Bearer <key>' (lower-case name) works", call(app_key, "GET", "/", "authorization: Bearer secret-key-1234567")["status"], 200)
+
+# ---------------------------------------------------------------- no hardening unless asked
+let plain = call(base_app(), "GET", "/", "")
+t = test_nil(t, "no security headers by default (nothing changes for existing apps)", hdr(plain, "X-Content-Type-Options"))
+t = test_eq(t, "plain cookie untouched by default", call(base_app(), "GET", "/cookie", "")["cookies"][0], "theme=dark; Path=/")
+
+# ---------------------------------------------------------------- security headers
+let app_h = webi_security_headers(base_app(), {})
+let rh = call(app_h, "GET", "/", "")
+t = test_eq(t, "nosniff added", hdr(rh, "X-Content-Type-Options"), "nosniff")
+t = test_eq(t, "X-Frame-Options DENY added", hdr(rh, "X-Frame-Options"), "DENY")
+t = test_eq(t, "Referrer-Policy added", hdr(rh, "Referrer-Policy"), "strict-origin-when-cross-origin")
+t = test_nil(t, "no CSP unless configured", hdr(rh, "Content-Security-Policy"))
+t = test_nil(t, "no HSTS unless configured", hdr(rh, "Strict-Transport-Security"))
+t = test_eq(t, "headers are added to a 404 too", hdr(call(app_h, "GET", "/nope", ""), "X-Content-Type-Options"), "nosniff")
+let ro = call(app_h, "GET", "/own", "")
+t = test_eq(t, "a header the handler set (other case) is not overwritten", hdr(ro, "X-Frame-Options"), "SAMEORIGIN")
+t = test_eq(t, "... nor X-Content-Type-Options", hdr(ro, "X-Content-Type-Options"), "custom")
+t = test_eq(t, "... and X-Frame-Options is not duplicated under another case", hdr_count(ro, "X-Frame-Options"), 1)
+t = test_eq(t, "... same for X-Content-Type-Options", hdr_count(ro, "X-Content-Type-Options"), 1)
+
+let app_c = webi_security_headers(base_app(), {"csp": "default-src 'self'", "frame": "SAMEORIGIN", "referrer": false, "permissions_policy": "geolocation=()", "hsts": 600, "include_subdomains": true})
+let rc = call(app_c, "GET", "/", "")
+t = test_eq(t, "CSP set", hdr(rc, "Content-Security-Policy"), "default-src 'self'")
+t = test_eq(t, "frame SAMEORIGIN", hdr(rc, "X-Frame-Options"), "SAMEORIGIN")
+t = test_nil(t, "referrer:false omits the header", hdr(rc, "Referrer-Policy"))
+t = test_eq(t, "Permissions-Policy set", hdr(rc, "Permissions-Policy"), "geolocation=()")
+t = test_nil(t, "HSTS not sent over plain HTTP", hdr(rc, "Strict-Transport-Security"))
+let rs = call(app_c, "GET", "/", "X-Forwarded-Proto: https")
+t = test_eq(t, "HSTS sent when a TLS proxy says https", hdr(rs, "Strict-Transport-Security"), "max-age=600; includeSubDomains")
+let rs2 = call(app_c, "GET", "/", "x-forwarded-proto: HTTPS")
+t = test_eq(t, "... header name and value matched case-insensitively", hdr(rs2, "Strict-Transport-Security"), "max-age=600; includeSubDomains")
+let ro2 = call(webi_security_headers(base_app(), {"csp": "default-src 'none'", "csp_report_only": true}), "GET", "/", "")
+t = test_eq(t, "csp_report_only uses the report-only header", hdr(ro2, "Content-Security-Policy-Report-Only"), "default-src 'none'")
+t = test_nil(t, "... and not the enforcing one", hdr(ro2, "Content-Security-Policy"))
+t = test_nil(t, "CRLF in csp is refused", hdr(call(webi_security_headers(base_app(), {"csp": "a\r\nSet-Cookie: x=1"}), "GET", "/", ""), "Content-Security-Policy"))
+t = test_eq(t, "unknown option is refused (typo protection): app unchanged", has(webi_security_headers(base_app(), {"cps": "x"}), "_sec_headers"), false)
+
+# ---------------------------------------------------------------- cookie policy
+let app_k = webi_cookie_policy(base_app(), {})
+let rk = call(app_k, "GET", "/cookie", "")
+t = test_eq(t, "plain cookie gets Secure, HttpOnly, SameSite=Lax", rk["cookies"][0], "theme=dark; Path=/; Secure; HttpOnly; SameSite=Lax")
+t = test_true(t, "secure cookie keeps its own SameSite=Strict (no duplicate)", has_cookie_with(rk, "sid=abc") and has_cookie_with(rk, "SameSite=Strict") and not has_cookie_with(rk, "SameSite=Lax; ") )
+let sid = rk["cookies"][1]
+t = test_eq(t, "no attribute is added twice", len(split(sid, "HttpOnly")), 2)
+t = test_eq(t, "SameSite=None without Secure gets Secure", call(app_k, "GET", "/none", "")["cookies"][0], "x=1; SameSite=None; Secure; HttpOnly")
+let app_kj = webi_cookie_policy(base_app(), {"js_readable": ["csrf_js"]})
+let rj = call(app_kj, "GET", "/jscookie", "")
+t = test_false(t, "a js_readable cookie does not get HttpOnly", has_cookie_with(rj, "HttpOnly"))
+t = test_true(t, "... but is still Secure", has_cookie_with(rj, "Secure"))
+let app_kd = webi_cookie_policy(base_app(), {"secure": false, "same_site": "Strict"})
+let rd = call(app_kd, "GET", "/cookie", "")
+t = test_eq(t, "secure:false and same_site:Strict honoured", rd["cookies"][0], "theme=dark; Path=/; HttpOnly; SameSite=Strict")
+t = test_false(t, "bad same_site falls back to Lax", has_cookie_with(call(webi_cookie_policy(base_app(), {"same_site": "bogus"}), "GET", "/cookie", ""), "bogus"))
+
+# ---------------------------------------------------------------- webi_production
+let app_p = webi_production(base_app(), {})
+t = test_true(t, "production flag set", app_p["production"])
+t = test_false(t, "debug is off", app_p["debug"])
+let rp = call(app_p, "GET", "/cookie", "")
+t = test_eq(t, "production: nosniff", hdr(rp, "X-Content-Type-Options"), "nosniff")
+t = test_true(t, "production: cookies get Secure and HttpOnly", has_cookie_with(rp, "theme=dark; Path=/; Secure; HttpOnly"))
+t = test_eq(t, "production: HSTS (180 days) behind a TLS proxy", hdr(call(app_p, "GET", "/", "X-Forwarded-Proto: https"), "Strict-Transport-Security"), "max-age=15552000")
+let app_pd = webi_debug(app_p, true)
+t = test_false(t, "webi_debug(app, true) is refused in production", app_pd["debug"])
+let app_po = webi_production(base_app(), {"cookies": false, "csp": "default-src 'self'"})
+t = test_true(t, "production option cookies:false leaves cookies alone", call(app_po, "GET", "/cookie", "")["cookies"][0] == "theme=dark; Path=/")
+t = test_eq(t, "production passes csp through", hdr(call(app_po, "GET", "/", ""), "Content-Security-Policy"), "default-src 'self'")
+t = test_false(t, "production with an unknown option does not enable production", has(webi_production(base_app(), {"bogus": 1}), "production"))
+
+# ---------------------------------------------------------------- CORS default in production
+let app_cors_dev = use(base_app(), mw_cors)
+t = test_eq(t, "dev default: any origin allowed", call(app_cors_dev, "GET", "/", "Origin: https://evil.example")["status"], 200)
+let rcd = call(app_cors_dev, "OPTIONS", "/", "Origin: https://evil.example")
+t = test_eq(t, "dev preflight gets Access-Control-Allow-Origin: *", hdr(rcd, "Access-Control-Allow-Origin"), "*")
+let app_cors_prod = use(webi_production(base_app(), {}), mw_cors)
+let rcp = call(app_cors_prod, "OPTIONS", "/", "Origin: https://evil.example")
+t = test_nil(t, "production preflight: no Access-Control-Allow-Origin by default", hdr(rcp, "Access-Control-Allow-Origin"))
+let app_cors_ok = use(webi_set_cors_origins(webi_production(base_app(), {}), ["https://app.example"]), mw_cors)
+t = test_eq(t, "production with an allow-list: listed origin allowed", hdr(call(app_cors_ok, "OPTIONS", "/", "Origin: https://app.example"), "Access-Control-Allow-Origin"), "https://app.example")
+t = test_nil(t, "... unlisted origin not", hdr(call(app_cors_ok, "OPTIONS", "/", "origin: https://evil.example"), "Access-Control-Allow-Origin"))
+t = test_eq(t, "lower-case 'origin' header matched against the allow-list", hdr(call(app_cors_ok, "OPTIONS", "/", "origin: https://app.example"), "Access-Control-Allow-Origin"), "https://app.example")
+
+# ---------------------------------------------------------------- limits (validation side; enforcement is in the socket tests)
+t = test_eq(t, "webi_limits stores valid options", webi_limits(webi_app(), {"max_body_bytes": 1000})["limits"]["max_body_bytes"], 1000)
+t = test_false(t, "webi_limits refuses an unknown option", has(webi_limits(webi_app(), {"max_body": 1000}), "limits"))
+
+# ---------------------------------------------------------------- API keys from the environment
+t = test_eq(t, "env_var returns a set variable", type(env_var("PATH", "")), "string")
+t = test_eq(t, "env_var returns the default for an unset variable", env_var("WEBI_SURELY_UNSET_VAR_12345", "dflt"), "dflt")
+t = test_nil(t, "env_var returns nil with no default", env_var("WEBI_SURELY_UNSET_VAR_12345"))
+let app_e = webi_api_keys_from_env(webi_app(), "WEBI_SURELY_UNSET_VAR_12345")
+t = test_len(t, "unset variable -> no keys (fails closed)", app_e["_api_keys"], 0)
+let app_e2 = use(app_e, mw_require_api_key)
+app_e2 = route(app_e2, "GET", "/", h_plain)
+t = test_eq(t, "... and every protected request is rejected", call(app_e2, "GET", "/", "X-API-Key: anything")["status"], 401)
+t = test_eq(t, "... even an empty key", call(app_e2, "GET", "/", "X-API-Key: ")["status"], 401)
+
+# ---------------------------------------------------------------- CSRF compare still works
+let tok = csrf_new_token()
+t = test_true(t, "csrf_verify accepts a matching token", csrf_verify({"headers": {"Cookie": "csrf_token=" + tok, "X-CSRF-Token": tok}, "body": "", "body_json": nil}))
+t = test_false(t, "csrf_verify rejects a different token", csrf_verify({"headers": {"Cookie": "csrf_token=" + tok, "X-CSRF-Token": tok + "x"}, "body": "", "body_json": nil}))
+t = test_true(t, "csrf_verify works with lower-case header names", csrf_verify({"headers": {"cookie": "csrf_token=" + tok, "x-csrf-token": tok}, "body": "", "body_json": nil}))
+t = test_false(t, "csrf_verify rejects a missing token", csrf_verify({"headers": {"Cookie": "csrf_token=" + tok}, "body": "", "body_json": nil}))
+
+test_run(t)

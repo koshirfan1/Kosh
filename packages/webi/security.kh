@@ -168,7 +168,7 @@ fn csrf_verify(req):
 
     if submitted == "":
         return false
-    return cookie_token == submitted
+    return constant_time_equals(cookie_token, submitted)
 
 # ---------------------------------------------------------------------------
 # mw_csrf(req) -> req
