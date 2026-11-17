@@ -1,7 +1,7 @@
 {
   "name": "webi_auth",
-  "version": "1.0.0",
-  "description": "Authentication middleware for the Webi framework.",
+  "version": "2.0.0",
+  "description": "Signed, expiring bearer tokens (HMAC-SHA256) and fail-closed auth middleware for the Webi framework",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "webi_auth.kh",

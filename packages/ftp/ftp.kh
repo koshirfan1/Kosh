@@ -1,17 +1,36 @@
 # Kosh FTP Package
-# Usage: import "mqtt"
+# Usage: import "ftp"
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  STATUS: EXPERIMENTAL — NOT IMPLEMENTED                                  │
+# │  No FTP protocol code exists yet.                                        │
+# │  Every function below reports failure instead of pretending to work.     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# (Before version 1.0.1 these functions printed a line and returned success, so
+# a program would believe a file had been transferred when nothing had happened.)
+#
 
+fn ftp_is_implemented():
+    return false
+
+fn _ftp_not_implemented(what):
+    print "[ftp] NOT IMPLEMENTED: " + what + " did nothing. This package is a placeholder; no FTP code exists yet, so no file was transferred."
+    return false
+
+# Creates the client description only; it never connects.
 fn ftp_client(host, user, pass):
     return {
         "host": host,
         "user": user,
-        "pass": pass
+        "pass": pass,
+        "implemented": false
     }
 
+# Always returns false: nothing is uploaded.
 fn ftp_upload(client, local_path, remote_path):
-    print "[FTP] Uploading " + local_path + " to " + client["host"] + ":" + remote_path
-    return true
+    return _ftp_not_implemented("ftp_upload()")
 
+# Always returns false: nothing is downloaded.
 fn ftp_download(client, remote_path, local_path):
-    print "[FTP] Downloading from " + client["host"] + ":" + remote_path + " to " + local_path
-    return true
+    return _ftp_not_implemented("ftp_download()")

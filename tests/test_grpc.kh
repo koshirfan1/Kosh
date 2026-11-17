@@ -1,13 +1,13 @@
-# Test for grpc package
+# grpc is an EXPERIMENTAL placeholder: no gRPC code exists.
 import "../packages/grpc/grpc.kh"
 import "../packages/test/test.kh"
 
-let t = test_suite("gRPC Suite")
-
+let t = test_suite("gRPC (experimental placeholder)")
 let client = grpc_client("localhost:50051")
+t = test_false(t, "grpc_is_implemented() is false", grpc_is_implemented())
 let res = grpc_call(client, "UserService", "GetProfile", {"id": 123})
-
-t = test_eq(t, "status check", res["status"], "OK")
-t = test_eq(t, "data ID check", res["data"]["id"], 123)
-
+t = test_eq(t, "status is UNIMPLEMENTED, not OK", res["status"], "UNIMPLEMENTED")
+t = test_false(t, "ok is false", res["ok"])
+t = test_nil(t, "the request is NOT echoed back as response data", res["data"])
+t = test_not_nil(t, "an error message is present", res["error"])
 test_run(t)

@@ -560,6 +560,23 @@ static int is_installed(const char *name) {
 // someone who can change both a package file and the registry that lists its
 // checksum - that needs a signed registry, which does not exist yet.
 // ---------------------------------------------------------------------------
+// A registry entry (or an installed package's package.json) with
+// "status": "experimental" is flagged to the user at every step. Anything else
+// (including no status at all) is a normal package.
+static int is_experimental(const char *json) {
+    char *st = json ? json_get_string(json, "status") : NULL;
+    int yes = st && strcmp(st, "experimental") == 0;
+    free(st);
+    return yes;
+}
+
+static void warn_experimental(const char *name, const char *json) {
+    char *note = json_get_string(json, "status_note");
+    printf("\033[1;33m!\033[0m \033[1m%s is EXPERIMENTAL\033[0m: %s\n", name, note && *note ? note : "not ready for production use");
+    printf("  Do not rely on it for anything that matters (see \033[1mkh info %s\033[0m).\n", name);
+    free(note);
+}
+
 static int cmd_install(const char *name, int verify) {
     if (g_depth >= KH_MAX_DEPTH) {
         print_err("Dependency chain is too deep — refusing.");
@@ -592,6 +609,8 @@ static int cmd_install(const char *name, int verify) {
     char *version = json_get_string(pkg, "version");
     char *url     = json_get_string(pkg, "url");
     char *desc    = json_get_string(pkg, "description");
+    int experimental = is_experimental(pkg);
+    if (experimental) warn_experimental(name, pkg);
     int extra_count = 0;
     char **extra_files = json_get_string_array(pkg, "files", &extra_count);
     int dep_count = 0;
@@ -738,7 +757,9 @@ static int cmd_install(const char *name, int verify) {
     snprintf(meta_path, sizeof(meta_path), "%s/package.json", pkg_dir);
     FILE *mf = fopen(meta_path, "w");
     if (mf) {
-        fprintf(mf, "{\n  \"name\": \"%s\",\n  \"version\": \"%s\",\n  \"files\": [", name, version ? version : "?");
+        fprintf(mf, "{\n  \"name\": \"%s\",\n  \"version\": \"%s\",\n", name, version ? version : "?");
+        if (experimental) fprintf(mf, "  \"status\": \"experimental\",\n");
+        fprintf(mf, "  \"files\": [");
         for (int i = 0; i < nfiles; i++) fprintf(mf, "%s\"%s\"", i ? ", " : "", files[i]);
         fprintf(mf, "],\n  \"dependencies\": [");
         for (int i = 0; i < dep_count; i++) fprintf(mf, "%s\"%s\"", i ? ", " : "", deps[i]);
@@ -1076,7 +1097,10 @@ static int cmd_list(int outdated_only) {
             }
             free(entry); free(latest);
         } else {
-            printf("\033[1;32m%-18s\033[0m %s\n", names[i], ver ? ver : "?");
+            char *lm = load_meta(names[i]);
+            printf("\033[1;32m%-18s\033[0m %s%s\n", names[i], ver ? ver : "?",
+                   is_experimental(lm) ? "  \033[1;33m[experimental]\033[0m" : "");
+            free(lm);
             shown++;
         }
         free(ver);
@@ -1134,7 +1158,11 @@ static int cmd_search(const char *term) {
                 desc[cut] = '\0';
             }
             int have = valid_pkg_name(name) && is_installed(name);
-            printf("\033[1;32m%-16s\033[0m %-8s  %s%s\n", name, version, desc, have ? "  \033[36m[installed]\033[0m" : "");
+            char *entry = find_package_in_registry(registry, name);
+            int exp = is_experimental(entry);
+            free(entry);
+            printf("\033[1;32m%-16s\033[0m %-8s  %s%s%s\n", name, version, desc,
+                   exp ? "  \033[1;33m[experimental]\033[0m" : "", have ? "  \033[36m[installed]\033[0m" : "");
             count++;
         }
         free(name); free(version); free(desc);
@@ -1175,6 +1203,7 @@ static int cmd_show(const char *name) {
     printf("  \033[1mName:\033[0m        %s\n", name);
     printf("  \033[1mVersion:\033[0m     %s\n", ver ? ver : "?");
     printf("  \033[1mSummary:\033[0m     %s\n", desc && *desc ? desc : "?");
+    if (is_experimental(meta)) printf("  \033[1mStatus:\033[0m      \033[1;33mEXPERIMENTAL\033[0m (not ready for production use)\n");
     printf("  \033[1mLocation:\033[0m    %s\n", dir);
     printf("  \033[1mChecksums:\033[0m   %s\n", has_sums ? "recorded at install (kh check re-verifies them)" : "not recorded (installed by an older kh, or with --no-verify)");
 
@@ -1372,6 +1401,8 @@ static int cmd_info(const char *name) {
     char *author    = json_get_string(pkg, "author");
     char *developer = json_get_string(pkg, "developer");
     char *url       = json_get_string(pkg, "url");
+    char *status_note = is_experimental(pkg) ? json_get_string(pkg, "status_note") : NULL;
+    int info_experimental = is_experimental(pkg);
     free(pkg);
 
     print_header("\nPackage Info");
@@ -1381,6 +1412,8 @@ static int cmd_info(const char *name) {
     printf("  \033[1mAuthor:\033[0m      %s\n", author    ? author    : "?");
     printf("  \033[1mDescription:\033[0m %s\n", desc      ? desc      : "?");
     printf("  \033[1mURL:\033[0m         %s\n", url       ? url       : "?");
+    if (info_experimental)
+        printf("  \033[1mStatus:\033[0m      \033[1;33mEXPERIMENTAL\033[0m: %s\n", status_note && *status_note ? status_note : "not ready for production use");
     if (is_installed(name)) {
         char *iv = installed_version(name);
         printf("  \033[1mInstalled:\033[0m   %s%s\n", iv ? iv : "?",
@@ -1392,7 +1425,7 @@ static int cmd_info(const char *name) {
     }
     printf("\n  Install with: \033[1mkh install %s\033[0m\n", name);
 
-    free(version); free(desc); free(author); free(developer); free(url);
+    free(version); free(desc); free(author); free(developer); free(url); free(status_note);
     return 0;
 }
 

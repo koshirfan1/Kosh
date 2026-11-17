@@ -1,23 +1,30 @@
 # Kosh SMTP (Email) Package
 # Usage: import "smtp"
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  STATUS: EXPERIMENTAL — NOT IMPLEMENTED                                  │
+# │  No SMTP / TLS code exists yet; it never sends email.                    │
+# │  Every function below reports failure instead of pretending to work.     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# (Before version 1.0.1 these functions printed a line and returned success, so
+# a program would believe an email had been sent when nothing had happened.)
+#
 
-import "requests"
+fn smtp_is_implemented():
+    return false
 
 fn smtp_config(host, port, user, pass):
     return {
         "host": host,
         "port": port,
         "user": user,
-        "pass": pass
+        "pass": pass,
+        "implemented": false
     }
 
+# Always returns false: no email is sent. It does not print the recipient,
+# subject or body (those used to end up in logs).
 fn send_email(cfg, to, subject, body):
-    # This currently simulates sending via a print since we
-    # don't have a native socket-based SMTP client yet.
-    # Future version will use a bridge to a C SMTP library.
-    print "[SMTP] Connecting to " + cfg["host"] + ":" + str(cfg["port"])
-    print "[SMTP] Authenticating as " + cfg["user"]
-    print "[SMTP] To: " + to
-    print "[SMTP] Subject: " + subject
-    print "[SMTP] Body: " + body
-    return true
+    print "[smtp] NOT IMPLEMENTED: send_email() did nothing. This package is a placeholder; no SMTP/TLS code exists yet, so NO EMAIL WAS SENT."
+    return false

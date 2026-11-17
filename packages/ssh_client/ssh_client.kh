@@ -1,14 +1,29 @@
 # Kosh SSH Client Package
 # Usage: import "ssh_client"
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  STATUS: EXPERIMENTAL — NOT IMPLEMENTED                                  │
+# │  No SSH protocol code exists yet.                                        │
+# │  Every function below reports failure instead of pretending to work.     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# (Before version 1.0.1 these functions printed a line and returned success, so
+# a program would believe a remote command had run when nothing had happened.)
+#
+
+fn ssh_is_implemented():
+    return false
 
 fn ssh_client(host, user, pass):
     return {
         "host": host,
         "user": user,
-        "pass": pass
+        "pass": pass,
+        "implemented": false
     }
 
+# Always returns nil (no output): no command is run anywhere. It does not
+# invent output, and it never prints the command or the credentials.
 fn ssh_exec(client, cmd):
-    print "[SSH] " + client["user"] + "@" + client["host"] + " $ " + cmd
-    # Placeholder for remote output
-    return "SSH Output Placeholder"
+    print "[ssh] NOT IMPLEMENTED: ssh_exec() did nothing. This package is a placeholder; no SSH code exists yet, so no remote command was run."
+    return nil

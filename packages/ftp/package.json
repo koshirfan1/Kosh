@@ -1,7 +1,9 @@
 {
   "name": "ftp",
-  "version": "1.0.0",
-  "description": "Simple FTP client for file transfers.",
+  "version": "1.0.1",
+  "description": "EXPERIMENTAL (not implemented): FTP client placeholder. Every call reports failure; no file is transferred.",
+  "status": "experimental",
+  "status_note": "No FTP protocol code exists yet; every function returns false.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "ftp.kh",

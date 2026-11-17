@@ -456,6 +456,49 @@ def test_installed_commands():
     e.cleanup()
 
 
+# --------------------------------------------------------------------------- experimental packages
+def test_experimental():
+    e = Env()
+    names = [p["name"] for p in e.reg["packages"]]
+    already = sum(1 for p in e.reg["packages"] if p.get("status") == "experimental")      # the real registry has some
+    exp, after = "math", names[names.index("math") + 1] if names.index("math") + 1 < len(names) else names[0]
+    e.entry(exp)["status"] = "experimental"
+    e.entry(exp)["status_note"] = "demo note: not ready"
+    e.entry(exp)["description"] = "EXPERIMENTAL (demo): something"
+    e.save()
+    rc, out = e.kh("install", exp)
+    check("installing an experimental package warns, with the package's own note", rc == 0 and "EXPERIMENTAL" in out and "demo note: not ready" in out, out)
+    check("... and still installs it", e.is_installed(exp))
+    rc, out = e.kh("list")
+    line = [l for l in out.splitlines() if exp in l]
+    check("list marks it [experimental]", rc == 0 and line and "[experimental]" in line[0], out)
+    rc, out = e.kh("show", exp)
+    check("show has a Status: EXPERIMENTAL line", rc == 0 and "Status:" in out and "EXPERIMENTAL" in out, out)
+    rc, out = e.kh("info", exp)
+    check("info shows the status and the note", rc == 0 and "EXPERIMENTAL" in out and "demo note: not ready" in out, out)
+    rc, out = e.kh("search", "")
+    marked = [l for l in out.splitlines() if "[experimental]" in l]
+    check("search marks exactly the experimental packages (the real ones plus this one)", rc == 0 and len(marked) == already + 1 and any(exp in l for l in marked), "%d marked, expected %d" % (len(marked), already + 1))
+    e.kh("install", after)
+    rc, out = e.kh("list")
+    other = [l for l in out.splitlines() if after in l and exp not in l]
+    check("a stable package next to an experimental one is not marked (no leakage between entries)", other and "[experimental]" not in other[0], out)
+    rc, out = e.kh("install", after)
+    check("installing a stable package prints no experimental warning", "EXPERIMENTAL" not in out, out)
+    check("kh check is happy with an experimental install", e.kh("check")[0] == 0)
+    # a reinstall/update keeps the marker
+    e.entry(exp)["version"] = "9.9.9"; e.save()
+    e.kh("update", exp)
+    check("the marker survives an update", "[experimental]" in [l for l in e.kh("list")[1].splitlines() if exp in l][0])
+    # dependency that is experimental warns too
+    e2 = Env()
+    e2.entry("requests")["status"] = "experimental"; e2.entry("requests")["status_note"] = "dep note"; e2.save()
+    rc, out = e2.kh("install", "openai")
+    check("an experimental DEPENDENCY warns as well", rc == 0 and "requests is EXPERIMENTAL" in out and "dep note" in out, out)
+    e2.cleanup()
+    e.cleanup()
+
+
 # --------------------------------------------------------------------------- the real registry
 def test_real_registry():
     reg = json.load(open(os.path.join(SRC_PACKAGES, "registry.json"), encoding="utf-8"))
@@ -476,13 +519,25 @@ def test_real_registry():
             if d not in names:
                 problems.append("%s: dependency %s is not in the registry" % (name, d))
     check("every package in the real registry ships all its files with a current checksum and valid dependencies", not problems, "\n       ".join(problems[:8]))
+    placeholders = ("ftp", "grpc", "mqtt", "smtp", "ssh_client", "webi_socket")
+    bad = []
+    for n in placeholders:
+        ent = [p for p in reg["packages"] if p["name"] == n][0]
+        pj = json.load(open(os.path.join(SRC_PACKAGES, n, "package.json"), encoding="utf-8"))
+        if ent.get("status") != "experimental" or not ent.get("status_note") or not ent["description"].startswith("EXPERIMENTAL"):
+            bad.append("%s: registry entry is not marked experimental" % n)
+        if pj.get("status") != "experimental":
+            bad.append("%s: package.json is not marked experimental" % n)
+    check("the six packages with no real implementation (ftp grpc mqtt smtp ssh_client webi_socket) are marked experimental", not bad, "\n       ".join(bad))
+    stable_with_note = [p["name"] for p in reg["packages"] if p.get("status") not in (None, "experimental")]
+    check("status is either absent or 'experimental'", not stable_with_note, stable_with_note)
 
 
 if __name__ == "__main__":
     for exe in (KH, KOSH):
         if not os.path.exists(exe):
             sys.exit("missing %s: run `make` first" % exe)
-    for t in (test_sha256_command, test_good_installs, test_dependencies, test_tampering, test_fail_closed, test_validation, test_installed_commands, test_real_registry):
+    for t in (test_sha256_command, test_good_installs, test_dependencies, test_tampering, test_fail_closed, test_validation, test_installed_commands, test_experimental, test_real_registry):
         t()
     print("  %d/%d passed   |   %d failed" % (passed, passed + failed, failed))
     sys.exit(1 if failed else 0)

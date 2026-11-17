@@ -1,13 +1,13 @@
-# Test for ftp package
+# ftp is an EXPERIMENTAL placeholder: no FTP code exists. These tests pin the
+# honest behaviour: every operation reports failure instead of pretending.
 import "../packages/ftp/ftp.kh"
 import "../packages/test/test.kh"
 
-let t = test_suite("FTP Suite")
-
+let t = test_suite("FTP (experimental placeholder)")
 let client = ftp_client("ftp.example.com", "user", "pass")
-t = test_eq(t, "host check", client["host"], "ftp.example.com")
-
-let up = ftp_upload(client, "test.txt", "/remote/test.txt")
-t = test_true(t, "upload check", up)
-
+t = test_eq(t, "host kept", client["host"], "ftp.example.com")
+t = test_false(t, "client says it is not implemented", client["implemented"])
+t = test_false(t, "ftp_is_implemented() is false", ftp_is_implemented())
+t = test_false(t, "ftp_upload reports FAILURE, not success", ftp_upload(client, "test.txt", "/remote/test.txt"))
+t = test_false(t, "ftp_download reports FAILURE, not success", ftp_download(client, "/remote/test.txt", "local.txt"))
 test_run(t)

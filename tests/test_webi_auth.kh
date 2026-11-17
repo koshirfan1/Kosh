@@ -1,42 +1,222 @@
-# Test for webi_auth package
+# Tests for webi_auth 2.0.0: signed, expiring bearer tokens.
+#   ./kosh tests/test_webi_auth.kh        (run from the project root)
 import "../packages/webi_auth/webi_auth.kh"
 import "../packages/test/test.kh"
 
-let t = test_suite("Webi Auth Suite")
+let t = test_suite("webi_auth: signed expiring tokens, fail-closed middleware")
 
-# Helper to safely get short circuit from req
-fn get_sc(req):
-    if has(req, "_webi_short_circuit"):
-        return req["_webi_short_circuit"]
-    return nil
+let SECRET  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+let SECRET2 = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+let NOW = 1700000000
 
-# Mock request without auth
-let req_no_auth = {
-    "headers": {}
-}
+fn hexs(n, ch):
+    let s = ch
+    while len(s) < n:
+        s = s + s
+    return substring(s, 0, n)
 
-let res1 = mw_auth(req_no_auth)
-let sc1 = get_sc(res1)
-t = test_not_nil(t, "should short circuit on no auth", sc1)
-if sc1 != nil:
-    t = test_eq(t, "status should be 401", sc1["status"], 401)
+fn flip(s, idx):
+    # change one character
+    let c = substring(s, idx, 1)
+    let r = "0"
+    if c == "0":
+        r = "1"
+    return substring(s, 0, idx) + r + substring(s, idx + 1, len(s) - idx - 1)
 
-# Mock request with auth
-let req_with_auth = {
-    "headers": {"Authorization": "Bearer 123"}
-}
+# ---------------------------------------------------------------- create + verify
+let tok = auth_create_token_at("alice@example.com", SECRET, 600, NOW)
+let parts = split(tok, "~")
+t = test_eq(t, "a token has five ~ separated parts", len(parts), 5)
+t = test_eq(t, "... starting with kt1", parts[0], "kt1")
+t = test_eq(t, "... the user", parts[1], "alice@example.com")
+t = test_eq(t, "... the expiry is now + ttl", parts[2], "1700000600")
+t = test_eq(t, "... a 16-hex-digit nonce", len(parts[3]), 16)
+t = test_eq(t, "... a 64-hex-digit HMAC", len(parts[4]), 64)
 
-let res2 = mw_auth(req_with_auth)
-t = test_nil(t, "should NOT short circuit on auth", get_sc(res2))
+let v = auth_verify_token_at(tok, [SECRET], NOW + 10)
+t = test_true(t, "a fresh token verifies", v["ok"])
+t = test_eq(t, "... and returns the user", v["user"], "alice@example.com")
+t = test_eq(t, "... the expiry", v["expires"], 1700000600)
+t = test_eq(t, "... and the token id (nonce)", v["id"], parts[3])
 
-# Test mw_require_key
-let res3 = mw_require_key(req_with_auth, "123")
-t = test_nil(t, "should accept valid key", get_sc(res3))
+let tok2 = auth_create_token_at("alice@example.com", SECRET, 600, NOW)
+t = test_neq(t, "two tokens for the same user are different (random nonce)", tok, tok2)
+t = test_eq(t, "a numeric user id is accepted", split(auth_create_token_at(7, SECRET, 60, NOW), "~")[1], "7")
+t = test_eq(t, "the public auth_create_token / auth_verify_token round trip uses the real clock",
+    auth_verify_token(auth_create_token("bob", SECRET, 60), SECRET)["user"], "bob")
+t = test_nil(t, "auth_token_id of a token that is not valid", auth_token_id("nope", SECRET))
+t = test_eq(t, "auth_token_id of a valid token is its nonce", auth_token_id(auth_create_token("bob", SECRET, 60), SECRET) != nil, true)
 
-let res4 = mw_require_key(req_with_auth, "wrong")
-let sc4 = get_sc(res4)
-t = test_not_nil(t, "should reject wrong key", sc4)
-if sc4 != nil:
-    t = test_eq(t, "status should be 403", sc4["status"], 403)
+# ---------------------------------------------------------------- expiry
+t = test_true(t, "valid one second before expiry", auth_verify_token_at(tok, [SECRET], NOW + 599)["ok"])
+let vexp = auth_verify_token_at(tok, [SECRET], NOW + 600)
+t = test_false(t, "expired exactly at the expiry time", vexp["ok"])
+t = test_eq(t, "... reason: expired", vexp["reason"], "expired")
+t = test_false(t, "expired long after", auth_verify_token_at(tok, [SECRET], NOW + 999999)["ok"])
+t = test_true(t, "a token is valid immediately", auth_verify_token_at(tok, [SECRET], NOW)["ok"])
+
+# ---------------------------------------------------------------- forgery and tampering
+let evil_user = "kt1~admin~" + parts[2] + "~" + parts[3] + "~" + parts[4]
+t = test_eq(t, "changing the user invalidates the signature", auth_verify_token_at(evil_user, [SECRET], NOW)["reason"], "bad_signature")
+let evil_exp = "kt1~alice@example.com~9999999999~" + parts[3] + "~" + parts[4]
+t = test_eq(t, "extending the expiry invalidates the signature", auth_verify_token_at(evil_exp, [SECRET], NOW)["reason"], "bad_signature")
+let evil_nonce = "kt1~alice@example.com~" + parts[2] + "~" + flip(parts[3], 0) + "~" + parts[4]
+t = test_eq(t, "changing the nonce invalidates the signature", auth_verify_token_at(evil_nonce, [SECRET], NOW)["reason"], "bad_signature")
+let evil_mac = "kt1~alice@example.com~" + parts[2] + "~" + parts[3] + "~" + flip(parts[4], 63)
+t = test_eq(t, "changing one character of the MAC", auth_verify_token_at(evil_mac, [SECRET], NOW)["reason"], "bad_signature")
+t = test_eq(t, "an all-zero MAC", auth_verify_token_at("kt1~alice@example.com~" + parts[2] + "~" + parts[3] + "~" + hexs(64, "0"), [SECRET], NOW)["reason"], "bad_signature")
+t = test_false(t, "a token made with another secret", auth_verify_token_at(auth_create_token_at("alice@example.com", SECRET2, 600, NOW), [SECRET], NOW)["ok"])
+t = test_eq(t, "forged AND expired reports bad_signature (does not reveal the expiry of forged tokens)", auth_verify_token_at(evil_user, [SECRET], NOW + 99999)["reason"], "bad_signature")
+t = test_false(t, "a forged user id with a separator can not smuggle a field", auth_verify_token_at("kt1~alice~1~9999999999~" + parts[3] + "~" + parts[4], [SECRET], NOW)["ok"])
+
+# ---------------------------------------------------------------- malformed input never verifies and never crashes
+let junk = ["", "x", "kt1", "kt1~", "kt1~~~~", "kt1~a~b~c~d", "kt2~alice~1700000600~" + parts[3] + "~" + parts[4],
+            tok + "~extra", "~" + tok, "kt1~alice~1700000600~" + parts[3], "kt1~ali ce~1700000600~" + parts[3] + "~" + parts[4],
+            "kt1~alice~17000006000000~" + parts[3] + "~" + parts[4], "kt1~alice~-5~" + parts[3] + "~" + parts[4],
+            "kt1~alice~1.5e9~" + parts[3] + "~" + parts[4], "kt1~alice~1700000600~zzzzzzzzzzzzzzzz~" + parts[4],
+            "kt1~alice~1700000600~" + parts[3] + "~" + hexs(63, "a"), "kt1~alice~1700000600~" + parts[3] + "~" + hexs(65, "a"),
+            hexs(600, "a"), "Bearer " + tok, "{\"alg\":\"none\"}", "kt1~alice\n~1700000600~" + parts[3] + "~" + parts[4]]
+let bad = 0
+let jn = 0
+while jn < len(junk):
+    if auth_verify_token_at(junk[jn], [SECRET], NOW)["ok"]:
+        bad = bad + 1
+    jn = jn + 1
+t = test_eq(t, "21 malformed / hostile tokens: none verifies", bad, 0)
+t = test_false(t, "nil is not a token", auth_verify_token_at(nil, [SECRET], NOW)["ok"])
+t = test_false(t, "a number is not a token", auth_verify_token_at(12345, [SECRET], NOW)["ok"])
+t = test_false(t, "a map is not a token", auth_verify_token_at({"user": "admin"}, [SECRET], NOW)["ok"])
+t = test_eq(t, "malformed reason", auth_verify_token_at("garbage", [SECRET], NOW)["reason"], "malformed")
+t = test_false(t, "no secrets at all: nothing verifies", auth_verify_token_at(tok, [], NOW)["ok"])
+t = test_false(t, "a too-short secret in the list is skipped, not trusted", auth_verify_token_at(auth_create_token_at("a", "short", 60, NOW), ["short"], NOW)["ok"])
+
+# ---------------------------------------------------------------- refusing to make weak tokens
+t = test_nil(t, "a secret shorter than 32 characters is refused", auth_create_token_at("alice", "tooshort", 600, NOW))
+t = test_nil(t, "a non-string secret is refused", auth_create_token_at("alice", 123456, 600, NOW))
+t = test_nil(t, "ttl 0 is refused", auth_create_token_at("alice", SECRET, 0, NOW))
+t = test_nil(t, "negative ttl is refused", auth_create_token_at("alice", SECRET, -5, NOW))
+t = test_nil(t, "ttl over 30 days is refused", auth_create_token_at("alice", SECRET, 2592001, NOW))
+t = test_nil(t, "non-numeric ttl is refused", auth_create_token_at("alice", SECRET, "600", NOW))
+t = test_nil(t, "an empty user id is refused", auth_create_token_at("", SECRET, 600, NOW))
+t = test_nil(t, "a user id with '~' is refused", auth_create_token_at("a~b", SECRET, 600, NOW))
+t = test_nil(t, "a user id with a space is refused", auth_create_token_at("a b", SECRET, 600, NOW))
+t = test_nil(t, "a user id with a newline is refused", auth_create_token_at("a\nb", SECRET, 600, NOW))
+t = test_nil(t, "a 129-character user id is refused", auth_create_token_at(hexs(129, "a"), SECRET, 600, NOW))
+t = test_not_nil(t, "a 128-character user id is fine", auth_create_token_at(hexs(128, "a"), SECRET, 600, NOW))
+t = test_eq(t, "auth_generate_secret is 64 hex chars", len(auth_generate_secret()), 64)
+t = test_neq(t, "... and differs every time", auth_generate_secret(), auth_generate_secret())
+
+# ---------------------------------------------------------------- secret rotation
+let old_tok = auth_create_token_at("carol", SECRET2, 600, NOW)
+t = test_true(t, "a token signed with the PREVIOUS secret verifies while it is listed", auth_verify_token_at(old_tok, [SECRET, SECRET2], NOW)["ok"])
+t = test_false(t, "... and stops verifying once it is dropped", auth_verify_token_at(old_tok, [SECRET], NOW)["ok"])
+
+# ---------------------------------------------------------------- configuration
+let app0 = webi_app()
+t = test_false(t, "a short secret is refused: the app stays unconfigured", has(webi_auth_configure(app0, "short", {}), "_auth_secret"))
+let appc = webi_auth_configure(webi_app(), SECRET, {"ttl_seconds": 900})
+t = test_eq(t, "configure stores the secret", appc["_auth_secret"], SECRET)
+t = test_eq(t, "... and the ttl", appc["_auth_ttl"], 900)
+t = test_eq(t, "default ttl is 3600", webi_auth_configure(webi_app(), SECRET, {})["_auth_ttl"], 3600)
+t = test_eq(t, "a bad ttl option falls back to the default", webi_auth_configure(webi_app(), SECRET, {"ttl_seconds": 0})["_auth_ttl"], 3600)
+t = test_eq(t, "previous secrets are kept (only valid ones)", len(webi_auth_configure(webi_app(), SECRET, {"previous_secrets": [SECRET2, "short"]})["_auth_previous"]), 1)
+t = test_false(t, "an env variable that is not set leaves auth unconfigured", has(webi_auth_secret_from_env(webi_app(), "WEBI_AUTH_SURELY_UNSET_VAR", {}), "_auth_secret"))
+t = test_nil(t, "auth_issue on an unconfigured app", auth_issue(webi_app(), "alice"))
+let issued = auth_issue(appc, "dave")
+t = test_true(t, "auth_issue makes a verifiable token with the app's secret", auth_verify_token(issued, SECRET)["ok"])
+t = test_eq(t, "... that lives for the configured ttl", auth_verify_token(issued, SECRET)["expires"] - timestamp() > 890, true)
+
+# ---------------------------------------------------------------- the middleware, through webi_handle (as the server calls it)
+fn h_me(req):
+    return res_json({"user": auth_user(req)})
+
+fn build(app):
+    app = use(app, mw_auth)
+    app = route(app, "GET", "/me", h_me)
+    return app
+
+fn get_as(app, auth_header):
+    let hs = ""
+    if auth_header != nil:
+        hs = "Authorization: " + auth_header
+    return webi_handle(app, "GET", "/me", "", hs, "", "127.0.0.1")
+
+let app = build(appc)
+let good = auth_create_token("erin", SECRET, 600)
+
+t = test_eq(t, "no Authorization header: 401", get_as(app, nil)["status"], 401)
+t = test_eq(t, "'Authorization: garbage' is NOT accepted (it used to be)", get_as(app, "garbage")["status"], 401)
+t = test_eq(t, "'Bearer garbage': 401", get_as(app, "Bearer garbage")["status"], 401)
+t = test_eq(t, "'Bearer 123' (the old test's token): 401", get_as(app, "Bearer 123")["status"], 401)
+t = test_eq(t, "a valid token: 200", get_as(app, "Bearer " + good)["status"], 200)
+t = test_true(t, "... and the handler sees the user", contains(get_as(app, "Bearer " + good)["body"], "erin"))
+t = test_eq(t, "the scheme name is case-insensitive", get_as(app, "bearer " + good)["status"], 200)
+t = test_eq(t, "BEARER too", get_as(app, "BEARER " + good)["status"], 200)
+t = test_eq(t, "trailing spaces are tolerated", get_as(app, "Bearer " + good + "   ")["status"], 200)
+t = test_eq(t, "the Basic scheme is not a bearer token", get_as(app, "Basic " + good)["status"], 401)
+t = test_eq(t, "the token without a scheme: 401", get_as(app, good)["status"], 401)
+t = test_eq(t, "'xBearer <token>' (Bearer not at the start): 401", get_as(app, "x" + "Bearer " + good)["status"], 401)
+let expired_tok = auth_create_token_at("erin", SECRET, 1, timestamp() - 100)
+t = test_eq(t, "an expired token: 401", get_as(app, "Bearer " + expired_tok)["status"], 401)
+t = test_eq(t, "a token signed with another secret: 401", get_as(app, "Bearer " + auth_create_token("erin", SECRET2, 600))["status"], 401)
+t = test_eq(t, "a tampered token: 401", get_as(app, "Bearer " + flip(good, len(good) - 1))["status"], 401)
+let r401 = get_as(app, "Bearer " + expired_tok)
+t = test_false(t, "the 401 does not say why (no 'expired' / 'signature' in the body)", contains(lower(r401["body"]), "expired") or contains(lower(r401["body"]), "signature"))
+t = test_eq(t, "a lower-case 'authorization' header name works (proxies / HTTP/2)", webi_handle(app, "GET", "/me", "", "authorization: Bearer " + good, "", "127.0.0.1")["status"], 200)
+
+let app_rot = build(webi_auth_configure(webi_app(), SECRET, {"previous_secrets": [SECRET2]}))
+t = test_eq(t, "rotation: a token from the previous secret is accepted", get_as(app_rot, "Bearer " + auth_create_token("old", SECRET2, 600))["status"], 200)
+t = test_eq(t, "... and a token from the current secret too", get_as(app_rot, "Bearer " + good)["status"], 200)
+
+let app_none = build(webi_app())
+t = test_eq(t, "NO secret configured: even a well-formed token is rejected (fails closed)", get_as(app_none, "Bearer " + good)["status"], 401)
+let app_short = build(webi_auth_configure(webi_app(), "short", {}))
+t = test_eq(t, "a refused (too short) secret leaves the app rejecting everything", get_as(app_short, "Bearer " + good)["status"], 401)
+
+# ---------------------------------------------------------------- header parsing helper (called directly: webi_handle already trims values)
+t = test_eq(t, "_auth_bearer trims spaces around the token", _auth_bearer({"headers": {"Authorization": "Bearer    abc   "}}), "abc")
+t = test_eq(t, "_auth_bearer: no header gives an empty string", _auth_bearer({"headers": {}}), "")
+t = test_eq(t, "_auth_bearer: a short header gives an empty string", _auth_bearer({"headers": {"Authorization": "Bearer"}}), "")
+t = test_eq(t, "_auth_bearer: another scheme gives an empty string", _auth_bearer({"headers": {"Authorization": "Digest abc"}}), "")
+
+# ---------------------------------------------------------------- public paths (so /login can be reached without a token)
+fn h_login(req):
+    return res_text("login page")
+
+fn get_path(app, path, auth_header):
+    let hs = ""
+    if auth_header != nil:
+        hs = "Authorization: " + auth_header
+    return webi_handle(app, "GET", path, "", hs, "", "127.0.0.1")
+
+let app_pub = webi_auth_public(appc, ["/login", "/health"])
+app_pub = use(app_pub, mw_auth)
+app_pub = route(app_pub, "GET", "/login", h_login)
+app_pub = route(app_pub, "GET", "/health", h_login)
+app_pub = route(app_pub, "GET", "/login/", h_login)
+app_pub = route(app_pub, "GET", "/loginx", h_login)
+app_pub = route(app_pub, "GET", "/me", h_me)
+t = test_eq(t, "a public path needs no token", get_path(app_pub, "/login", nil)["status"], 200)
+t = test_eq(t, "a second public path", get_path(app_pub, "/health", nil)["status"], 200)
+t = test_eq(t, "a public path ignores a garbage token", get_path(app_pub, "/login", "Bearer garbage")["status"], 200)
+t = test_eq(t, "a non-public path still needs a token", get_path(app_pub, "/me", nil)["status"], 401)
+t = test_eq(t, "'/login/' is not public (exact match only)", get_path(app_pub, "/login/", nil)["status"], 401)
+t = test_eq(t, "'/loginx' is not public (no prefix match)", get_path(app_pub, "/loginx", nil)["status"], 401)
+t = test_eq(t, "'/login' with a query string is still the public path", webi_handle(app_pub, "GET", "/login", "a=1", "", "", "127.0.0.1")["status"], 200)
+t = test_eq(t, "'/me' with a valid token still works next to public paths", get_path(app_pub, "/me", "Bearer " + good)["status"], 200)
+t = test_eq(t, "a path that only contains a public one is not public, and an unknown path without a token is 401, not 404 (does not reveal which routes exist)", get_path(app_pub, "/me/login", nil)["status"], 401)
+let app_pub_bad = webi_auth_public(appc, ["login", "", 5, "/ok"])
+t = test_eq(t, "only paths that start with / are accepted", len(app_pub_bad["_auth_public"]), 1)
+
+# ---------------------------------------------------------------- mw_require_key (single shared key, constant-time)
+let reqk = {"headers": {"Authorization": "Bearer s3cr3t-key"}}
+t = test_nil(t, "mw_require_key: right key passes", (mw_require_key(reqk, "s3cr3t-key"))["_webi_short_circuit"])
+let wrong = mw_require_key(reqk, "other")
+t = test_eq(t, "wrong key: 403", wrong["_webi_short_circuit"]["status"], 403)
+t = test_eq(t, "an empty configured key never matches", mw_require_key({"headers": {"Authorization": "Bearer "}}, "")["_webi_short_circuit"]["status"], 403)
+t = test_eq(t, "no header: 403", mw_require_key({"headers": {}}, "s3cr3t-key")["_webi_short_circuit"]["status"], 403)
+t = test_eq(t, "a prefix of the key does not match", mw_require_key({"headers": {"Authorization": "Bearer s3cr3t"}}, "s3cr3t-key")["_webi_short_circuit"]["status"], 403)
+t = test_eq(t, "'xBearer key' is not accepted", mw_require_key({"headers": {"Authorization": "xBearer s3cr3t-key"}}, "s3cr3t-key")["_webi_short_circuit"]["status"], 403)
+t = test_eq(t, "a non-string key never matches", mw_require_key(reqk, 12345)["_webi_short_circuit"]["status"], 403)
 
 test_run(t)

@@ -331,6 +331,12 @@ for anything security-sensitive.
 
 ---
 
+### Logins and tokens
+
+For user logins, the `webi_auth` package (2.0.0) issues signed, expiring bearer tokens and
+provides `mw_auth`; see [docs/webi-auth.md](webi-auth.md). For a shared secret between
+services use `mw_require_api_key` (above).
+
 ### Production mode (v1.3.0)
 
 ```kosh

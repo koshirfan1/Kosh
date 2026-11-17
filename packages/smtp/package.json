@@ -1,14 +1,13 @@
 {
   "name": "smtp",
-  "version": "1.0.0",
-  "description": "Lightweight SMTP email client.",
+  "version": "1.0.1",
+  "description": "EXPERIMENTAL (not implemented): SMTP placeholder. send_email() returns false; NO email is sent.",
+  "status": "experimental",
+  "status_note": "No SMTP/TLS code exists yet; send_email() returns false.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "smtp.kh",
   "files": [
     "smtp.kh"
-  ],
-  "dependencies": [
-    "requests"
   ]
 }

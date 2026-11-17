@@ -1,13 +1,27 @@
 # Kosh gRPC Package
-# High-speed remote procedure calls
 # Usage: import "grpc"
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  STATUS: EXPERIMENTAL — NOT IMPLEMENTED                                  │
+# │  No gRPC / HTTP/2 / protobuf code exists yet.                            │
+# │  Every function below reports failure instead of pretending to work.     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# (Before version 1.0.1 these functions printed a line and returned success, so
+# a program would believe a remote call had been made when nothing had happened.)
+#
+
+fn grpc_is_implemented():
+    return false
 
 fn grpc_client(address):
     return {
-        "address": address
+        "address": address,
+        "implemented": false
     }
 
+# Always fails. The result mimics gRPC's own UNIMPLEMENTED status and carries
+# no data: it never echoes the request back as if it were a response.
 fn grpc_call(client, service, method, data):
-    print "[gRPC] " + client["address"] + " -> CALL " + service + "/" + method
-    # Placeholder for response
-    return {"status": "OK", "data": data}
+    print "[grpc] NOT IMPLEMENTED: grpc_call() did nothing. This package is a placeholder; no gRPC code exists yet, so no call was made."
+    return {"status": "UNIMPLEMENTED", "ok": false, "data": nil, "error": "grpc package is not implemented"}

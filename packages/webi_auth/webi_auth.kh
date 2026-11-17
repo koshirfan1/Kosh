@@ -1,22 +1,297 @@
-# Kosh Webi Auth Package
+# Kosh Webi Auth Package v2.0.0
 # Usage: import "webi_auth"
+#
+# Signed, expiring bearer tokens for Webi apps.
+#
+#   import "webi_auth"
+#
+#   # once, at start-up: a secret of at least 32 characters, kept OUT of the source
+#   #   (generate one with:  print auth_generate_secret()   then   export MYAPP_AUTH_SECRET=...)
+#   app = webi_auth_secret_from_env(app, "MYAPP_AUTH_SECRET", {"ttl_seconds": 900})
+#
+#   # on login (after YOU checked the password, e.g. with password_verify):
+#   fn login(req):
+#       ...
+#       let token = auth_issue(req["_app"], user_id)         # default TTL
+#       return res_json({"token": token})
+#
+#   # protect routes:
+#   app = webi_auth_public(app, ["/login"])    # routes that need no token
+#   app = use(app, mw_auth)                    # everything else: 401 unless "Authorization: Bearer <valid token>"
+#   fn me(req):
+#       return res_json({"user": auth_user(req)})
+#
+# HOW A TOKEN WORKS
+#   kt1~<user>~<expires>~<nonce>~<mac>
+#   <mac> is HMAC-SHA256 over everything before it, keyed with your secret. A token
+#   can not be forged, edited (user or expiry) or extended without the secret, and
+#   it stops working at <expires> (Unix seconds). The nonce is 64 random bits from
+#   the system CSPRNG, so two tokens for the same user are never equal.
+#
+# WHAT IT DOES NOT DO (read this)
+#   * Tokens are STATELESS: there is no server-side session to delete. A stolen
+#     token works until it expires, so keep ttl_seconds short (minutes to an hour).
+#     To revoke one token keep your own deny-list keyed by auth_token_id(token);
+#     to revoke everything at once, change the secret.
+#   * Send tokens over HTTPS only (webi itself speaks plain HTTP: put a TLS proxy in front).
+#   * It authenticates; it does not store users or hash passwords. Use
+#     password_hash() / password_verify() for passwords.
+#
+# BEFORE 2.0.0 (insecure, removed)
+#   auth_create_token(user_id) returned "token_<id>_<cpu clock>", which anyone
+#   could guess, and mw_auth accepted ANY non-empty Authorization header
+#   ("Authorization: x" got you in). mw_auth now verifies a real token, and
+#   auth_create_token() now needs a secret and a lifetime. mw_auth with no secret
+#   configured rejects every request (it fails closed).
 
 import "webi"
 
-# Middleware to require Authorization header
+let _AUTH_ID_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.@:+-"
+let _AUTH_DIGITS = "0123456789"
+let _AUTH_HEX = "0123456789abcdef"
+let _AUTH_MIN_SECRET = 32
+let _AUTH_DEFAULT_TTL = 3600
+let _AUTH_MAX_TTL = 2592000
+let _AUTH_MAX_TOKEN_LEN = 512
+let _auth_warned_unconfigured = false
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+fn _auth_all_in(s, allowed):
+    if len(s) == 0:
+        return false
+    let i = 0
+    while i < len(s):
+        if not contains(allowed, substring(s, i, 1)):
+            return false
+        i = i + 1
+    return true
+
+fn _auth_secret_ok(secret):
+    return type(secret) == "string" and len(secret) >= _AUTH_MIN_SECRET
+
+fn _auth_fail(who, msg):
+    print "[webi_auth] " + who + ": " + msg
+    return nil
+
+# "Authorization: Bearer <token>" -> "<token>"  ("" if the header is anything else).
+# The scheme name is case-insensitive (RFC 7235).
+fn _auth_bearer(req):
+    let h = header_get(req, "Authorization", "")
+    if type(h) != "string" or len(h) < 8:
+        return ""
+    if lower(substring(h, 0, 7)) != "bearer ":
+        return ""
+    return trim(substring(h, 7, len(h) - 7))
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+
+# A fresh random secret (64 hex characters) from the system CSPRNG.
+fn auth_generate_secret():
+    return secure_token(32)
+
+# webi_auth_configure(app, secret, opts) -> app
+#   opts (all optional):
+#     ttl_seconds        default lifetime used by auth_issue()   (default 3600)
+#     previous_secrets   older secrets that still VERIFY (for rotating the secret
+#                        without logging everybody out); new tokens use `secret`
+# A secret shorter than 32 characters is refused (the app is returned unchanged,
+# so mw_auth rejects every request until you fix it).
+fn webi_auth_configure(app, secret, opts):
+    if not _auth_secret_ok(secret):
+        _auth_fail("webi_auth_configure", "the secret must be a string of at least 32 characters (try auth_generate_secret()); auth is NOT configured")
+        return app
+    let ttl = _AUTH_DEFAULT_TTL
+    let prev = []
+    let ks = keys(opts)
+    let i = 0
+    while i < len(ks):
+        let k = ks[i]
+        if k == "ttl_seconds":
+            if type(opts[k]) != "number" or opts[k] < 1 or opts[k] > _AUTH_MAX_TTL:
+                _auth_fail("webi_auth_configure", "ttl_seconds must be a number between 1 and " + str(_AUTH_MAX_TTL) + " - using " + str(_AUTH_DEFAULT_TTL))
+            else:
+                ttl = opts[k]
+        elif k == "previous_secrets":
+            let j = 0
+            while j < len(opts[k]):
+                if _auth_secret_ok(opts[k][j]):
+                    prev = push(prev, opts[k][j])
+                else:
+                    _auth_fail("webi_auth_configure", "a previous secret is shorter than 32 characters - ignored")
+                j = j + 1
+        else:
+            _auth_fail("webi_auth_configure", "unknown option '" + str(k) + "' (valid: ttl_seconds, previous_secrets)")
+        i = i + 1
+    app["_auth_secret"] = secret
+    app["_auth_ttl"] = ttl
+    app["_auth_previous"] = prev
+    return app
+
+# Same, reading the secret from an environment variable. An unset or short
+# variable leaves auth unconfigured (every protected request is rejected).
+fn webi_auth_secret_from_env(app, var_name, opts):
+    let secret = env_var(var_name, "")
+    if not _auth_secret_ok(secret):
+        _auth_fail("webi_auth_secret_from_env", "$" + var_name + " is unset or shorter than 32 characters; auth is NOT configured (every protected request will be rejected)")
+        return app
+    return webi_auth_configure(app, secret, opts)
+
+# ---------------------------------------------------------------------------
+# Tokens
+# ---------------------------------------------------------------------------
+
+# auth_create_token_at / auth_verify_token_at take the clock as a parameter
+# (Unix seconds) so tests can control time; use auth_create_token / auth_verify_token.
+fn auth_create_token_at(user_id, secret, ttl_seconds, now):
+    if not _auth_secret_ok(secret):
+        return _auth_fail("auth_create_token", "the secret must be a string of at least 32 characters")
+    let uid = str(user_id)
+    if len(uid) > 128 or not _auth_all_in(uid, _AUTH_ID_CHARS):
+        return _auth_fail("auth_create_token", "the user id must be 1-128 characters from A-Z a-z 0-9 _ . @ : + -")
+    if type(ttl_seconds) != "number" or ttl_seconds < 1 or ttl_seconds > _AUTH_MAX_TTL:
+        return _auth_fail("auth_create_token", "ttl_seconds must be a number between 1 and " + str(_AUTH_MAX_TTL))
+    let exp = floor(now + ttl_seconds)
+    let body = "kt1~" + uid + "~" + str(exp) + "~" + secure_token(8)
+    return body + "~" + hmac_sha256(secret, body)
+
+# auth_create_token(user_id, secret, ttl_seconds) -> token string, or nil (with a message)
+fn auth_create_token(user_id, secret, ttl_seconds):
+    return auth_create_token_at(user_id, secret, ttl_seconds, timestamp())
+
+# auth_issue(app, user_id) -> token, using the secret and default TTL configured on the app
+fn auth_issue(app, user_id):
+    if not has(app, "_auth_secret"):
+        return _auth_fail("auth_issue", "auth is not configured: call webi_auth_configure() or webi_auth_secret_from_env() first")
+    return auth_create_token(user_id, app["_auth_secret"], app["_auth_ttl"])
+
+# Result of a failed check. `reason` is for your logs; never send it to the client.
+fn _auth_bad(reason):
+    return {"ok": false, "reason": reason, "user": nil, "expires": 0, "id": ""}
+
+# auth_verify_token_at(token, secrets, now) -> {"ok", "reason", "user", "expires", "id"}
+# `secrets` is a list: the current secret first, then any previous ones.
+fn auth_verify_token_at(token, secrets, now):
+    if type(token) != "string" or len(token) == 0 or len(token) > _AUTH_MAX_TOKEN_LEN:
+        return _auth_bad("malformed")
+    let parts = split(token, "~")
+    if len(parts) != 5 or parts[0] != "kt1":
+        return _auth_bad("malformed")
+    let uid = parts[1]
+    let exp_s = parts[2]
+    let nonce = parts[3]
+    let mac = parts[4]
+    if len(uid) > 128 or not _auth_all_in(uid, _AUTH_ID_CHARS):
+        return _auth_bad("malformed")
+    if len(exp_s) > 12 or not _auth_all_in(exp_s, _AUTH_DIGITS):
+        return _auth_bad("malformed")
+    if len(nonce) != 16 or not _auth_all_in(nonce, _AUTH_HEX):
+        return _auth_bad("malformed")
+    if len(mac) != 64 or not _auth_all_in(mac, _AUTH_HEX):
+        return _auth_bad("malformed")
+
+    let body = "kt1~" + uid + "~" + exp_s + "~" + nonce
+    let good = false
+    let i = 0
+    while i < len(secrets):
+        # every secret is tried (no early exit) so timing does not reveal which one matched
+        if _auth_secret_ok(secrets[i]):
+            if constant_time_equals(mac, hmac_sha256(secrets[i], body)):
+                good = true
+        i = i + 1
+    if not good:
+        return _auth_bad("bad_signature")
+    let exp = num(exp_s)
+    if now >= exp:
+        return _auth_bad("expired")
+    return {"ok": true, "reason": "", "user": uid, "expires": exp, "id": nonce}
+
+# auth_verify_token(token, secret) -> result map (see above); `secret` may also be a list
+fn auth_verify_token(token, secret):
+    let secrets = secret
+    if type(secret) == "string":
+        secrets = [secret]
+    return auth_verify_token_at(token, secrets, timestamp())
+
+# The token's unique id (its nonce), for a deny-list. nil if the token is not valid.
+fn auth_token_id(token, secret):
+    let v = auth_verify_token(token, secret)
+    if v["ok"]:
+        return v["id"]
+    return nil
+
+# ---------------------------------------------------------------------------
+# Middleware
+# ---------------------------------------------------------------------------
+
+# webi_auth_public(app, paths) -> app
+# Exact paths that mw_auth lets through WITHOUT a token, such as the login route
+# itself: webi_auth_public(app, ["/login", "/health"]). Matching is exact on the
+# request path (no prefixes, no wildcards): "/login/" and "/loginx" are not "/login".
+fn webi_auth_public(app, paths):
+    let clean = []
+    let i = 0
+    while i < len(paths):
+        if type(paths[i]) == "string" and len(paths[i]) > 0 and substring(paths[i], 0, 1) == "/":
+            clean = push(clean, paths[i])
+        else:
+            _auth_fail("webi_auth_public", "ignored '" + str(paths[i]) + "': a public path must be a string starting with /")
+        i = i + 1
+    app["_auth_public"] = clean
+    return app
+
+fn _auth_is_public(app, path):
+    if not has(app, "_auth_public"):
+        return false
+    let i = 0
+    while i < len(app["_auth_public"]):
+        if app["_auth_public"][i] == path:
+            return true
+        i = i + 1
+    return false
+
+# Requires "Authorization: Bearer <token>" with a valid, unexpired token.
+# On success the request gets req["user"] (the user id) and req["auth"] (the
+# verification result). Otherwise the client gets a plain 401 (the reason is
+# not revealed). With no secret configured EVERY request is rejected.
+#   app = use(app, mw_auth)
 fn mw_auth(req):
-    let auth = header_get(req, "Authorization", "")
-    if len(auth) == 0:
+    let app = req["_app"]
+    if _auth_is_public(app, req["path"]):
+        return req
+    if not has(app, "_auth_secret"):
+        if not _auth_warned_unconfigured:
+            _auth_warned_unconfigured = true
+            print "[webi_auth] mw_auth is active but auth is not configured (webi_auth_configure / webi_auth_secret_from_env): rejecting every request"
         req["_webi_short_circuit"] = res_unauthorized("Authentication required")
+        return req
+    let secrets = [app["_auth_secret"]]
+    let i = 0
+    while i < len(app["_auth_previous"]):
+        secrets = push(secrets, app["_auth_previous"][i])
+        i = i + 1
+    let v = auth_verify_token_at(_auth_bearer(req), secrets, timestamp())
+    if not v["ok"]:
+        req["_webi_short_circuit"] = res_unauthorized("Authentication required")
+        return req
+    req["user"] = v["user"]
+    req["auth"] = v
     return req
 
-# Middleware to require a specific API key
+# The authenticated user id inside a handler (nil if mw_auth did not run / not logged in).
+fn auth_user(req):
+    if has(req, "user"):
+        return req["user"]
+    return nil
+
+# Compare "Authorization: Bearer <key>" with ONE shared key, in constant time.
+# (Not a webi middleware: it takes the key as a second argument. For a list of
+# API keys on the whole app use webi's mw_require_api_key.)
 fn mw_require_key(req, valid_key):
-    let auth = header_get(req, "Authorization", "")
-    if auth != "Bearer " + valid_key:
+    let given = _auth_bearer(req)
+    if type(valid_key) != "string" or len(valid_key) == 0 or not constant_time_equals(given, valid_key):
         req["_webi_short_circuit"] = res_forbidden("Invalid or missing API key")
     return req
-
-fn auth_create_token(user_id):
-    # Placeholder for a more secure token
-    return "token_" + str(user_id) + "_" + str(clock())

@@ -1,13 +1,10 @@
-# Test for smtp package
+# smtp is an EXPERIMENTAL placeholder: it can not send email.
 import "../packages/smtp/smtp.kh"
 import "../packages/test/test.kh"
 
-let t = test_suite("SMTP Suite")
-
+let t = test_suite("SMTP (experimental placeholder)")
 let cfg = smtp_config("smtp.gmail.com", 587, "user@gmail.com", "secret")
-t = test_eq(t, "host should be set", cfg["host"], "smtp.gmail.com")
-
-let sent = send_email(cfg, "target@example.com", "Test", "Hello World")
-t = test_true(t, "should return true on send", sent)
-
+t = test_eq(t, "host kept", cfg["host"], "smtp.gmail.com")
+t = test_false(t, "smtp_is_implemented() is false", smtp_is_implemented())
+t = test_false(t, "send_email returns FALSE: no email was sent", send_email(cfg, "target@example.com", "Test", "Hello World"))
 test_run(t)

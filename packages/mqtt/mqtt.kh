@@ -1,19 +1,36 @@
 # Kosh MQTT Client
-# Lightweight protocol for IoT
 # Usage: import "mqtt"
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  STATUS: EXPERIMENTAL — NOT IMPLEMENTED                                  │
+# │  No MQTT protocol code exists yet.                                       │
+# │  Every function below reports failure instead of pretending to work.     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# (Before version 1.0.1 these functions printed a line and returned success, so
+# a program would believe a message had been published or subscribed when nothing had happened.)
+#
+
+fn mqtt_is_implemented():
+    return false
+
+fn _mqtt_not_implemented(what):
+    print "[mqtt] NOT IMPLEMENTED: " + what + " did nothing. This package is a placeholder; no MQTT code exists yet, so nothing was sent."
+    return false
 
 fn mqtt_client(host, port):
     return {
         "host": host,
         "port": port,
-        "subs": []
+        "subs": [],
+        "implemented": false
     }
 
+# Always returns false: nothing is published.
 fn mqtt_publish(client, topic, message):
-    print "[MQTT] " + client["host"] + " -> PUBLISH '" + message + "' to " + topic
-    return true
+    return _mqtt_not_implemented("mqtt_publish()")
 
+# Always returns false (NOT the client): the subscription does not exist, and
+# "client = mqtt_subscribe(client, topic)" must not look like it succeeded.
 fn mqtt_subscribe(client, topic):
-    client["subs"] = push(client["subs"], topic)
-    print "[MQTT] Subscribed to " + topic
-    return client
+    return _mqtt_not_implemented("mqtt_subscribe()")

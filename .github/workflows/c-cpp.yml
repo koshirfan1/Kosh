@@ -183,11 +183,26 @@ jobs:
       shell: msys2 {0}
       run: ./kosh.exe tests/test_webi_secure_http.kh
 
+    - name: Run package tests (uuid, webi_auth, experimental placeholders)
+      run: |
+        ./kosh tests/test_uuid.kh
+        ./kosh tests/test_webi_auth.kh
+        ./kosh tests/test_ftp.kh
+        ./kosh tests/test_grpc.kh
+        ./kosh tests/test_mqtt.kh
+        ./kosh tests/test_smtp.kh
+        ./kosh tests/test_ssh.kh
+        ./kosh tests/test_webi_socket.kh
+
     - name: Run webi template tests
       run: ./kosh tests/test_webi_template.kh
 
     - name: Run webi production-hardening tests
       run: ./kosh tests/test_webi_production.kh
+
+    - name: Run package security tests (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: python3 tests/security/test_packages.py
 
     - name: Run webi HTTP-layer hardening tests (Linux/macOS)
       if: matrix.os != 'windows-latest'

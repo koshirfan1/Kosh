@@ -39,6 +39,12 @@ print math_sqrt(144)    # 12
 print PI                # 3.14159...
 ```
 
+### Package status: stable or experimental
+
+A package whose `package.json` says `"status": "experimental"` (with a `"status_note"`) is not ready for production use. Today that means the six placeholders that have **no real implementation**: `ftp`, `grpc`, `mqtt`, `smtp`, `ssh_client` and `webi_socket`. They used to print a line and return success, so a program could believe an email had been sent or a file uploaded when nothing had happened. Since 1.0.1 every call reports failure (`false`, `nil`, or gRPC status `UNIMPLEMENTED`) and prints a `NOT IMPLEMENTED` message, and each package has an `xxx_is_implemented()` function that returns `false`.
+
+`kh` makes the status hard to miss: `kh install` prints a warning (also when the package is only a dependency), and `kh search`, `kh list`, `kh show` and `kh info` mark it `[experimental]` / `EXPERIMENTAL`. It still installs, because the point is to tell you, not to block you. For authors: `tools/gen_registry.py` copies the status into the registry and refuses an experimental package without a note, or whose registry description does not start with `EXPERIMENTAL`.
+
 ### Integrity and dependencies
 
 `kh install` does not trust a download just because it arrived:
@@ -76,7 +82,7 @@ Every package installs the same way, regardless of category: `kh install <name>`
 | `argparse` | 1.0.0 | Command-line argument parser |
 | `validation` | 1.0.0 | Data validation utilities: emails, lengths, numeric checks |
 | `dotenv` | 1.0.0 | Load environment variables from .env files |
-| `uuid` | 1.0.1 | Unique ID generation: uuid_v4, short IDs, named entity IDs, sequential counters |
+| `uuid` | 1.1.0 | Unique ID generation: uuid_v4 (CSPRNG), short IDs, named entity IDs, sequential counters, strict validation |
 | `events` | 1.0.1 | Event emitter system: on, emit, once, off, history — built for Kosh Engine game events |
 | `logger` | 1.0.1 | Structured logger: debug/info/warn/error levels, file output, silent mode |
 | `test` | 1.0.0 | Unit testing framework: assertions, test suites, pass/fail reporting |
@@ -87,8 +93,8 @@ Every package installs the same way, regardless of category: `kh install <name>`
 | Package | Version | Description |
 |---|---|---|
 | [`webi`](webi.md) | 1.4.0 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
-| `webi_auth` | 1.0.0 | Authentication middleware for Webi |
-| `webi_socket` | 1.0.0 | WebSocket support for Webi framework |
+| `webi_auth` | 2.0.0 | Signed, expiring bearer tokens (HMAC-SHA256) and fail-closed auth middleware for the Webi framework |
+| `webi_socket` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): WebSocket placeholder for Webi. ws_route() is a plain GET route; ws_send/ws_broadcast return false. |
 | `morgos` | 1.0.0 | Morgan-style HTTP request logger for webi: colored status, elapsed time, response size — as a swappable after-hook |
 
 ### HTTP, APIs & testing
@@ -132,11 +138,11 @@ Every package installs the same way, regardless of category: `kh install <name>`
 | Package | Version | Description |
 |---|---|---|
 | `dns` | 1.0.0 | DNS lookup utilities using DNS-over-HTTPS |
-| `ftp` | 1.0.0 | FTP client for file transfers |
-| `grpc` | 1.0.0 | gRPC client for high-performance RPC |
-| `mqtt` | 1.0.0 | MQTT protocol for IoT messaging |
-| `smtp` | 1.0.0 | Email sending utilities |
-| `ssh_client` | 1.0.0 | SSH client for remote command execution |
+| `ftp` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): FTP client placeholder. Every call reports failure; no file is transferred. |
+| `grpc` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): gRPC client placeholder. Every call returns status UNIMPLEMENTED; no call is made. |
+| `mqtt` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): MQTT client placeholder. Publish/subscribe report failure; nothing is sent. |
+| `smtp` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): SMTP placeholder. send_email() returns false; NO email is sent. |
+| `ssh_client` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): SSH client placeholder. ssh_exec() returns nil; no remote command runs. |
 <!-- PACKAGES-TABLE:END -->
 
 Full detail on the packages below is in their own docs where noted; everything else is documented inline in its `.kh` source under `packages/<name>/`.

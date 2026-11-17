@@ -124,13 +124,13 @@
     },
     {
       "name": "uuid",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
-      "description": "Unique ID generation: uuid_v4, short IDs, named entity IDs, sequential counters",
+      "description": "Unique ID generation: uuid_v4 (CSPRNG), short IDs, named entity IDs, sequential counters, strict validation",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/uuid/uuid.kh",
       "sha256": {
-        "uuid.kh": "79a9dde0b7339a55b9e6aa0135e5e50767b7636bfed354ec9bad143393503d65"
+        "uuid.kh": "cf8b6708b5222053940a326afb8ac6256a60cd4523cf32e7a6ac84fa09d61b2d"
       }
     },
     {
@@ -293,16 +293,16 @@
     },
     {
       "name": "webi_auth",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "developer": "Irfan Khan",
-      "description": "Authentication middleware for Webi",
+      "description": "Signed, expiring bearer tokens (HMAC-SHA256) and fail-closed auth middleware for the Webi framework",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/webi_auth/webi_auth.kh",
       "dependencies": [
         "webi"
       ],
       "sha256": {
-        "webi_auth.kh": "9e4550e31f319a6211bf0d7f4e232c8bf6f23617fa5b46383382045eeb50db3d"
+        "webi_auth.kh": "c20136d2a06e12a094c6d4e79f10228550fc57af3528552b2f915ce34a3baa1e"
       }
     },
     {
@@ -321,17 +321,16 @@
     },
     {
       "name": "smtp",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "Email sending utilities",
+      "description": "EXPERIMENTAL (not implemented): SMTP placeholder. send_email() returns false; NO email is sent.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/smtp/smtp.kh",
-      "dependencies": [
-        "requests"
-      ],
       "sha256": {
-        "smtp.kh": "8d6e7009ce04b6a0392b7029ed5cca826470f73b73db05215a32354b2e3a1c9c"
-      }
+        "smtp.kh": "61d0d7a44a115803ccd1bd48a1eb136a91604f448349ac319304bff659c81b31"
+      },
+      "status": "experimental",
+      "status_note": "No SMTP/TLS code exists yet; send_email() returns false."
     },
     {
       "name": "orm",
@@ -420,61 +419,71 @@
     },
     {
       "name": "webi_socket",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "WebSocket support for Webi framework",
+      "description": "EXPERIMENTAL (not implemented): WebSocket placeholder for Webi. ws_route() is a plain GET route; ws_send/ws_broadcast return false.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/webi_socket/webi_socket.kh",
       "dependencies": [
         "webi"
       ],
       "sha256": {
-        "webi_socket.kh": "adb62c0c9ff7f97e6e911761792d36aa834f36be0c3ce59e8bf1a0eccd58872e"
-      }
+        "webi_socket.kh": "a8e4a90a0647923358b7ef835588107d76a11c3a87751ccda1f7982547f3d795"
+      },
+      "status": "experimental",
+      "status_note": "No WebSocket upgrade or framing code exists yet."
     },
     {
       "name": "mqtt",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "MQTT protocol for IoT messaging",
+      "description": "EXPERIMENTAL (not implemented): MQTT client placeholder. Publish/subscribe report failure; nothing is sent.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/mqtt/mqtt.kh",
       "sha256": {
-        "mqtt.kh": "f04dcd6530b65d6ee5cd894fd7c6d2d3935bebeb8ac19dd6fb5c22c6b44d807a"
-      }
+        "mqtt.kh": "6dfa0b1587301fe4b60dc3e1199d6051a9897704a03cd2d5411279e8f555c150"
+      },
+      "status": "experimental",
+      "status_note": "No MQTT code exists yet; publish and subscribe return false."
     },
     {
       "name": "ftp",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "FTP client for file transfers",
+      "description": "EXPERIMENTAL (not implemented): FTP client placeholder. Every call reports failure; no file is transferred.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ftp/ftp.kh",
       "sha256": {
-        "ftp.kh": "43ffb3d8cfd4996e17cc4146fb8d3c85e3933317fa661b402bad26b7bf01cbbe"
-      }
+        "ftp.kh": "e5404564c56201310044eaf3eddefb942b34fc53050fc8918626f6dd4232f659"
+      },
+      "status": "experimental",
+      "status_note": "No FTP protocol code exists yet; every function returns false."
     },
     {
       "name": "ssh_client",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "SSH client for remote command execution",
+      "description": "EXPERIMENTAL (not implemented): SSH client placeholder. ssh_exec() returns nil; no remote command runs.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/ssh_client/ssh_client.kh",
       "sha256": {
-        "ssh_client.kh": "622c623e4122b5492acd2c674b2cbda2e0dea1103f68878d188076957195a8a3"
-      }
+        "ssh_client.kh": "e19de439c62606309451acf5e12adab021f7d69583676746059b919d889e5248"
+      },
+      "status": "experimental",
+      "status_note": "No SSH code exists yet; ssh_exec() returns nil."
     },
     {
       "name": "grpc",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "developer": "Irfan Khan",
-      "description": "gRPC client for high-performance RPC",
+      "description": "EXPERIMENTAL (not implemented): gRPC client placeholder. Every call returns status UNIMPLEMENTED; no call is made.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/grpc/grpc.kh",
       "sha256": {
-        "grpc.kh": "cb9d7952cf31674bce2c96d967ce2ca62d0be268b6120e75fef90fdd6d2ba619"
-      }
+        "grpc.kh": "702febb0912d075c0e9d8dde18b553734d440d48562dad56a5097484a758e5f8"
+      },
+      "status": "experimental",
+      "status_note": "No gRPC code exists yet; grpc_call() returns status UNIMPLEMENTED."
     },
     {
       "name": "sqlite",

@@ -1,0 +1,132 @@
+# Tests for the uuid package (CSPRNG-backed since 1.1.0).
+#   ./kosh tests/test_uuid.kh        (run from the project root)
+# The cross-process check (two programs started in the same second must not get the
+# same IDs) is in tests/security/test_packages.py.
+import "../packages/uuid/uuid.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("uuid: CSPRNG ids and strict validation")
+
+let HEX = "0123456789abcdef"
+fn is_hex(c):
+    return contains(HEX, c) and len(c) == 1
+
+# ---------------------------------------------------------------- shape of uuid_v4()
+let N = 3000
+let ids = []
+let seen = {}
+let dups = 0
+let bad_shape = 0
+let bad_version = 0
+let bad_variant = 0
+let counts = {}
+let variants = {"8": 0, "9": 0, "a": 0, "b": 0}
+let i = 0
+while i < N:
+    let u = uuid_v4()
+    ids = push(ids, u)
+    if has(seen, u):
+        dups = dups + 1
+    seen[u] = true
+    if len(u) != 36:
+        bad_shape = bad_shape + 1
+    let k = 0
+    while k < 36:
+        let c = substring(u, k, 1)
+        if k == 8 or k == 13 or k == 18 or k == 23:
+            if c != "-":
+                bad_shape = bad_shape + 1
+        else:
+            if not is_hex(c):
+                bad_shape = bad_shape + 1
+            # count digits that are random (not the fixed version / variant digits)
+            if k != 14 and k != 19:
+                if has(counts, c):
+                    counts[c] = counts[c] + 1
+                else:
+                    counts[c] = 1
+        k = k + 1
+    if substring(u, 14, 1) != "4":
+        bad_version = bad_version + 1
+    let v = substring(u, 19, 1)
+    if has(variants, v):
+        variants[v] = variants[v] + 1
+    else:
+        bad_variant = bad_variant + 1
+    i = i + 1
+
+t = test_eq(t, "3000 ids: every one is 8-4-4-4-12 lowercase hex", bad_shape, 0)
+t = test_eq(t, "... the version digit is always 4", bad_version, 0)
+t = test_eq(t, "... the variant digit is always 8, 9, a or b", bad_variant, 0)
+t = test_eq(t, "... no duplicates", dups, 0)
+
+# every hex digit shows up about equally often among the 30 random positions of each id
+# (expected 5625 each; the +-10% band is ~7 standard deviations wide, so this cannot flake)
+let expected = N * 30 / 16
+let worst = 0
+let d = 0
+while d < 16:
+    let c = substring(HEX, d, 1)
+    let n = 0
+    if has(counts, c):
+        n = counts[c]
+    let off = abs(n - expected) / expected
+    if off > worst:
+        worst = off
+    d = d + 1
+t = test_lt(t, "random digits are evenly spread (worst digit within 10% of expected)", worst, 0.10)
+t = test_gt(t, "variant digit 8 occurs", variants["8"], 600)
+t = test_gt(t, "variant digit 9 occurs", variants["9"], 600)
+t = test_gt(t, "variant digit a occurs", variants["a"], 600)
+t = test_gt(t, "variant digit b occurs", variants["b"], 600)
+
+# ---------------------------------------------------------------- the other generators
+let s = uuid_short()
+t = test_eq(t, "uuid_short is 8 chars", len(s), 8)
+let short_ok = true
+let q = 0
+while q < 8:
+    if not is_hex(substring(s, q, 1)):
+        short_ok = false
+    q = q + 1
+t = test_true(t, "uuid_short is hex", short_ok)
+let nm = uuid_named("player")
+t = test_eq(t, "uuid_named has the prefix and 8 hex digits", len(nm), 15)
+t = test_eq(t, "uuid_named prefix kept", substring(nm, 0, 7), "player_")
+let shorts = {}
+let sd = 0
+let z = 0
+while z < 500:
+    let sv = uuid_short()
+    if has(shorts, sv):
+        sd = sd + 1
+    shorts[sv] = true
+    z = z + 1
+t = test_lt(t, "500 short ids: at most a couple of chance collisions (32 bits)", sd, 3)
+
+let c1 = uuid_counter()
+c1 = uuid_next(c1)
+c1 = uuid_next(c1)
+t = test_eq(t, "counter still counts", uuid_id(c1), 2)
+
+# ---------------------------------------------------------------- validation
+t = test_true(t, "a generated uuid_v4 is valid", uuid_is_valid(ids[0]))
+t = test_true(t, "... and is_v4", uuid_is_v4(ids[0]))
+t = test_true(t, "upper-case hex is accepted", uuid_is_valid(upper(ids[1])))
+t = test_true(t, "a version-1 style uuid is valid", uuid_is_valid("123e4567-e89b-12d3-a456-426614174000"))
+t = test_false(t, "... but is not v4", uuid_is_v4("123e4567-e89b-12d3-a456-426614174000"))
+t = test_false(t, "letters that are not hex (the old check accepted this)", uuid_is_valid("zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"))
+t = test_false(t, "right shape, one non-hex character", uuid_is_valid("123e4567-e89b-12d3-a456-42661417400g"))
+t = test_false(t, "wrong length (35)", uuid_is_valid("123e4567-e89b-12d3-a456-42661417400"))
+t = test_false(t, "wrong length (37)", uuid_is_valid("123e4567-e89b-12d3-a456-4266141740000"))
+t = test_false(t, "empty string", uuid_is_valid(""))
+t = test_false(t, "dashes in the wrong places", uuid_is_valid("123e4567e-89b-12d3-a456-426614174000"))
+t = test_false(t, "version digit 0", uuid_is_valid("123e4567-e89b-02d3-a456-426614174000"))
+t = test_false(t, "version digit 9", uuid_is_valid("123e4567-e89b-92d3-a456-426614174000"))
+t = test_false(t, "variant digit 0", uuid_is_valid("123e4567-e89b-12d3-0456-426614174000"))
+t = test_false(t, "variant digit c", uuid_is_valid("123e4567-e89b-12d3-c456-426614174000"))
+t = test_false(t, "a number is not a uuid", uuid_is_valid(12345))
+t = test_false(t, "nil is not a uuid", uuid_is_valid(nil))
+t = test_false(t, "an array is not a uuid", uuid_is_valid(["a"]))
+
+test_run(t)

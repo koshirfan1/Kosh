@@ -1,7 +1,9 @@
 {
   "name": "ssh_client",
-  "version": "1.0.0",
-  "description": "SSH client for remote command execution.",
+  "version": "1.0.1",
+  "description": "EXPERIMENTAL (not implemented): SSH client placeholder. ssh_exec() returns nil; no remote command runs.",
+  "status": "experimental",
+  "status_note": "No SSH code exists yet; ssh_exec() returns nil.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "ssh_client.kh",

@@ -73,6 +73,8 @@ def row(p, doc_prefix, brief=False):
     desc = short(p["description"]) if brief else cell(p["description"])
     if p["name"] in NOTES:
         desc += " *(%s)*" % NOTES[p["name"]]
+    if p.get("status") == "experimental":
+        name += " \u26a0\ufe0f"
     return "| %s | %s | %s |" % (name, p["version"], desc)
 
 
@@ -83,8 +85,13 @@ def readme_block(reg, by):
     lines = ["%d packages in %d categories, all installed the same way: `kh install <name>`, then `import \"<name>\"`." % (len(reg), len(CATEGORIES)), "", HEAD]
     for n in FEATURED:
         lines.append(row(by[n], "docs/", brief=True))
-    lines += ["", "Also: " + ", ".join("`%s`" % n for _, names in CATEGORIES for n in names if n not in FEATURED) + ".", "",
-              "Full list by category, with versions: [docs/packages.md](docs/packages.md)."]
+    rest = [n for _, names in CATEGORIES for n in names if n not in FEATURED]
+    exp = [n for n in rest if by[n].get("status") == "experimental"]
+    lines += ["", "Also: " + ", ".join("`%s`" % n for n in rest if n not in exp) + "."]
+    if exp:
+        lines += ["", "**Experimental, not implemented** (placeholders: every call reports failure instead of pretending to work, "
+                  "and `kh` warns before installing them): " + ", ".join("`%s`" % n for n in exp) + "."]
+    lines += ["", "Full list by category, with versions: [docs/packages.md](docs/packages.md)."]
     return "\n".join(lines)
 
 

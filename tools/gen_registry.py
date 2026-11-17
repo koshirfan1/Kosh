@@ -10,6 +10,10 @@ source of truth for:
     version       copied to the registry entry
     dependencies  other registry packages this one imports; `kh install` installs
                   them first. Checked against the package's real `import "..."` lines.
+    status        "stable" (default) or "experimental". An experimental package also
+                  needs a "status_note", and its registry description must begin with
+                  "EXPERIMENTAL"; `kh` warns before installing one and marks it in
+                  `kh search` / `kh list` / `kh show` / `kh info`.
     files         the extra files to ship next to <name>.kh (top-level files only; a
                   path with a "/" is a source file, e.g. webi's client/webi.js, and
                   is not shipped separately)
@@ -111,6 +115,23 @@ def build():
             p["files"] = extra
         else:
             p.pop("files", None)
+        # status: "stable" (the default, written as nothing) or "experimental".
+        # An experimental package must explain itself, and its registry
+        # description must say so, because that is what `kh search` shows.
+        status = pj.get("status", "stable")
+        if status not in ("stable", "experimental"):
+            problems.append("%s: status must be 'stable' or 'experimental', got %r" % (name, status))
+        elif status == "experimental":
+            note = pj.get("status_note", "")
+            if not note.strip():
+                problems.append("%s: an experimental package needs a non-empty 'status_note' in package.json" % name)
+            if not p.get("description", "").startswith("EXPERIMENTAL"):
+                problems.append("%s: experimental, so its registry description must start with 'EXPERIMENTAL'" % name)
+            p["status"] = "experimental"
+            p["status_note"] = note
+        else:
+            p.pop("status", None)
+            p.pop("status_note", None)
         declared = pj.get("dependencies", [])
         for d in declared:
             if d not in names:

@@ -1,4 +1,4 @@
-# Kosh uuid package v1.0.0
+# Kosh uuid package v1.1.0
 # Author: Irfan Khan
 # Unique ID generation — used by engine for entity IDs, asset IDs, event IDs
 #
@@ -7,17 +7,39 @@
 #   let id = uuid_v4()
 #   let short = uuid_short()
 #   let named = uuid_named("player")
+#
+# RANDOMNESS (changed in 1.1.0): every random digit now comes from the
+# operating system's cryptographic generator (the secure_token() native:
+# /dev/urandom, BCryptGenRandom on Windows). Before 1.1.0 the digits came from
+# random(), a small non-cryptographic generator seeded with the clock in whole
+# seconds: two programs started within the same second produced the SAME
+# "random" UUIDs, and later values could be predicted from earlier ones. If the
+# system generator is unavailable, secure_token() stops the program with an
+# error; there is deliberately no fallback to the weak generator.
+#
+# uuid_v4() has 122 random bits and is suitable as an unguessable identifier.
+# uuid_short() has only 32 random bits (collisions are likely after ~65,000
+# IDs, and it is guessable by brute force): use it for readable labels, never
+# for secrets. For session tokens or API keys use secure_token(24) directly.
 
-let _UUID_CHARS = "0123456789abcdef"
+let _UUID_HEX = "0123456789abcdef"
 
-fn _uuid_hex(n):
-    let result = ""
+fn _uuid_hexval(c):
     let i = 0
-    while i < n:
-        let idx = floor(random() * 16)
-        result = result + substring(_UUID_CHARS, idx, 1)
+    while i < 16:
+        if substring(_UUID_HEX, i, 1) == c:
+            return i
         i = i + 1
-    return result
+    return -1
+
+fn _uuid_is_hex_char(c):
+    return _uuid_hexval(c) >= 0
+
+# n random lowercase hex digits from the system CSPRNG
+fn _uuid_hex(n):
+    let nbytes = floor((n + 1) / 2)
+    let s = secure_token(nbytes)
+    return substring(s, 0, n)
 
 # ─────────────────────────────────────────────────────────────
 # UUID v4  (random)  format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
@@ -27,14 +49,14 @@ fn uuid_v4():
     let p1 = _uuid_hex(8)
     let p2 = _uuid_hex(4)
     let p3 = "4" + _uuid_hex(3)
-    let yc = floor(random() * 4)
     let y_chars = ["8", "9", "a", "b"]
+    let yc = _uuid_hexval(_uuid_hex(1)) % 4          # 16 digits / 4 = no modulo bias
     let p4 = y_chars[yc] + _uuid_hex(3)
     let p5 = _uuid_hex(12)
     return p1 + "-" + p2 + "-" + p3 + "-" + p4 + "-" + p5
 
 # ─────────────────────────────────────────────────────────────
-# SHORT ID  (8 hex chars — good for entity IDs in the engine)
+# SHORT ID  (8 hex chars; 32 bits: NOT a secret, NOT collision-proof)
 # ─────────────────────────────────────────────────────────────
 
 fn uuid_short():
@@ -64,17 +86,38 @@ fn uuid_id(counter):
 
 # ─────────────────────────────────────────────────────────────
 # VALIDATE
+#
+# uuid_is_valid(s): s is a string in the standard 8-4-4-4-12 form made only of
+# hex digits (either case), with a version digit 1-8 and an RFC 4122 variant
+# digit (8, 9, a or b). Before 1.1.0 this only checked the length and the dash
+# positions, so "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz" was "valid".
+# uuid_is_v4(s): the same, and the version digit is 4.
 # ─────────────────────────────────────────────────────────────
 
 fn uuid_is_valid(s):
+    if type(s) != "string":
+        return false
     if len(s) != 36:
         return false
-    if substring(s, 8, 1)  != "-":
+    let t = lower(s)
+    let i = 0
+    while i < 36:
+        let c = substring(t, i, 1)
+        if i == 8 or i == 13 or i == 18 or i == 23:
+            if c != "-":
+                return false
+        elif not _uuid_is_hex_char(c):
+            return false
+        i = i + 1
+    let ver = substring(t, 14, 1)
+    if ver == "0" or ver == "9" or not _uuid_is_hex_char(ver) or _uuid_hexval(ver) > 8:
         return false
-    if substring(s, 13, 1) != "-":
-        return false
-    if substring(s, 18, 1) != "-":
-        return false
-    if substring(s, 23, 1) != "-":
+    let variant = substring(t, 19, 1)
+    if variant != "8" and variant != "9" and variant != "a" and variant != "b":
         return false
     return true
+
+fn uuid_is_v4(s):
+    if not uuid_is_valid(s):
+        return false
+    return substring(s, 14, 1) == "4"

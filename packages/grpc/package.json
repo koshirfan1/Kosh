@@ -1,7 +1,9 @@
 {
   "name": "grpc",
-  "version": "1.0.0",
-  "description": "gRPC client for Kosh.",
+  "version": "1.0.1",
+  "description": "EXPERIMENTAL (not implemented): gRPC client placeholder. Every call returns status UNIMPLEMENTED; no call is made.",
+  "status": "experimental",
+  "status_note": "No gRPC code exists yet; grpc_call() returns status UNIMPLEMENTED.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "grpc.kh",

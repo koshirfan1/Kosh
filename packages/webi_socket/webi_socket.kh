@@ -1,21 +1,33 @@
 # Kosh Webi Socket
-# Real-time communication support for Webi
 # Usage: import "webi_socket"
 
 import "webi"
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  STATUS: EXPERIMENTAL — NOT IMPLEMENTED                                  │
+# │  No WebSocket upgrade, framing or connection code exists yet.            │
+# │  Every function below reports failure instead of pretending to work.     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# (Before version 1.0.1 these functions printed a line and returned success, so
+# a program would believe a message had reached a client when nothing had happened.)
+#
 
-# Helper to register a WebSocket route
+fn ws_is_implemented():
+    return false
+
+# Registers an ordinary HTTP GET route. It does NOT perform a WebSocket
+# upgrade: a browser's `new WebSocket(...)` to this path will not work.
 fn ws_route(app, path, handler):
-    # handler(req, ws)
-    # Internally WebSockets start as a GET request with Upgrade header
+    print "[ws] WARNING: ws_route('" + path + "') registered a plain HTTP GET route only; WebSocket upgrades are not implemented."
     return route(app, "GET", path, handler)
 
-# Send a message to a client (Placeholder for native bridge)
+# Always returns false: nothing is sent.
 fn ws_send(ws_id, message):
-    print "[WS] Sending to " + str(ws_id) + ": " + message
-    return true
+    print "[ws] NOT IMPLEMENTED: ws_send() did nothing. This package is a placeholder; WebSockets are not implemented, so nothing was sent."
+    return false
 
-# Broadcast to all (Placeholder)
+# Always returns false: nothing is broadcast.
 fn ws_broadcast(message):
-    print "[WS] Broadcasting: " + message
-    return true
+    print "[ws] NOT IMPLEMENTED: ws_broadcast() did nothing. This package is a placeholder; WebSockets are not implemented, so nothing was sent."
+    return false

@@ -1,7 +1,9 @@
 {
   "name": "mqtt",
-  "version": "1.0.0",
-  "description": "MQTT protocol client for IoT.",
+  "version": "1.0.1",
+  "description": "EXPERIMENTAL (not implemented): MQTT client placeholder. Publish/subscribe report failure; nothing is sent.",
+  "status": "experimental",
+  "status_note": "No MQTT code exists yet; publish and subscribe return false.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "mqtt.kh",

@@ -1,14 +1,16 @@
 {
   "name": "webi_socket",
-  "version": "1.0.0",
-  "description": "WebSocket support for the Webi framework.",
+  "version": "1.0.1",
+  "description": "EXPERIMENTAL (not implemented): WebSocket placeholder for Webi. ws_route() is a plain GET route; ws_send/ws_broadcast return false.",
+  "status": "experimental",
+  "status_note": "No WebSocket upgrade or framing code exists yet.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "webi_socket.kh",
-  "files": [
-    "webi_socket.kh"
-  ],
   "dependencies": [
     "webi"
+  ],
+  "files": [
+    "webi_socket.kh"
   ]
 }
