@@ -108,7 +108,9 @@ There is no published pre-built binary release yet. Details, the Inno Setup inst
 | `openai` | 2.0.0 | Production-grade OpenAI API client |
 | `test` | 1.0.0 | Unit testing framework: assertions, test suites, pass/fail reporting |
 
-Also: `math`, `strings`, `collections`, `colors`, `argparse`, `validation`, `dotenv`, `uuid`, `events`, `logger`, `datetime`, `webi_auth`, `webi_socket`, `morgos`, `postman`, `swagger`, `fs`, `csv_io`, `json_db`, `orm`, `kbrain`, `nlp`, `quant`, `dns`, `ftp`, `grpc`, `mqtt`, `smtp`, `ssh_client`.
+Also: `math`, `strings`, `collections`, `colors`, `argparse`, `validation`, `dotenv`, `uuid`, `events`, `logger`, `datetime`, `webi_auth`, `morgos`, `postman`, `swagger`, `fs`, `csv_io`, `json_db`, `orm`, `kbrain`, `nlp`, `quant`, `dns`.
+
+**Experimental, not implemented** (placeholders: every call reports failure instead of pretending to work, and `kh` warns before installing them): `webi_socket`, `ftp`, `grpc`, `mqtt`, `smtp`, `ssh_client`.
 
 Full list by category, with versions: [docs/packages.md](docs/packages.md).
 <!-- PACKAGES:END -->

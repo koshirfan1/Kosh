@@ -3,6 +3,65 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.018.0 - 2026-11-18
+
+Package security, phase A1 (from the community review of the non-webi packages). Each problem
+below was reproduced first (many on a live process), then fixed, then covered by a test that fails
+on the old code. **Several of these change behaviour on purpose**; see *Breaking*.
+
+### Security
+- **Six packages never did anything, and said they had.** `ftp`, `ssh_client`, `smtp`, `grpc`,
+  `mqtt` and `webi_socket` printed a line and returned success (`ftp_upload()` returned `true`
+  without uploading, `send_email()` returned `true` without sending, `ssh_exec()` returned
+  `"SSH Output Placeholder"`), so a program could believe an email had gone out or a file had been
+  uploaded. They are now marked **experimental** and every call reports failure (`false`, `nil`,
+  or gRPC status `UNIMPLEMENTED`) with a `NOT IMPLEMENTED` message; each has `xxx_is_implemented()`.
+  `send_email()` also no longer prints the recipient, subject and body. Their tests used to assert
+  that the fake success was correct; they now assert the opposite.
+- **`uuid` used a predictable generator.** IDs came from `random()`, seeded with the clock in whole
+  seconds: 40 programs started in the same second produced the *same* "random" UUID (1 distinct
+  id out of 40, measured). Every digit now comes from the system CSPRNG (`secure_token`), with no
+  fallback to the weak generator. `uuid_is_valid()` accepted `"zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"`;
+  it now checks hex digits, the version and the variant, and `uuid_is_v4()` is new.
+- **`webi_auth` rewritten (2.0.0).** Tokens were `token_<id>_<cpu clock>` (guessable) and `mw_auth`
+  accepted *any* non-empty `Authorization` header. Tokens are now `kt1~user~expires~nonce~mac`,
+  HMAC-SHA256 signed with your secret (32+ characters, from the environment), expire, carry a
+  CSPRNG nonce, and are compared in constant time. `mw_auth` verifies them, rejects with a plain 401
+  that does not say why, and with no secret configured rejects **everything** (fails closed).
+  Also: secret rotation (`previous_secrets`), `webi_auth_public()` for the login route, case-insensitive
+  `Bearer`, `auth_user(req)`. See `docs/webi-auth.md` for what it deliberately does not do
+  (stateless tokens cannot be revoked; use short lifetimes and HTTPS).
+
+### Added
+- **Package status in `kh`.** `package.json` may say `"status": "experimental"` plus a
+  `"status_note"`. `kh install` warns (also for a dependency); `kh search`, `kh list`, `kh show` and
+  `kh info` mark it. `tools/gen_registry.py` copies the status into the registry and refuses an
+  experimental package without a note or whose registry description does not start with
+  `EXPERIMENTAL`. The README and `docs/packages.md` list experimental packages separately.
+- `tests/security/test_packages.py`: process-level checks (simultaneous uuids; `webi_auth` on a real
+  server: login, expiry, tampering, forged admin token, env secret, fails closed). The package tests
+  for uuid, webi_auth and the six placeholders now run in CI (webi_auth's and the placeholders'
+  tests were not run by CI before).
+
+### Breaking
+- `auth_create_token(user_id)` is gone: it needs `(user_id, secret, ttl_seconds)`. Tokens issued by 1.x
+  are not valid. `mw_auth` needs `webi_auth_configure` / `webi_auth_secret_from_env`.
+- `ftp_upload`, `ftp_download`, `mqtt_publish`, `mqtt_subscribe`, `send_email`, `ws_send`, `ws_broadcast`
+  now return `false`; `ssh_exec` returns `nil`; `grpc_call` returns status `UNIMPLEMENTED`.
+  Code that "worked" against the placeholders was not doing anything.
+- `uuid_is_valid()` is stricter. `smtp` no longer depends on `requests`.
+
+### Versions
+`webi_auth` 2.0.0, `uuid` 1.1.0, `ftp` `grpc` `mqtt` `smtp` `ssh_client` `webi_socket` 1.0.1.
+
+### Not yet done (phase A2 and later)
+`requests`/`openai` hardening (found while reviewing, not fixed here): `file://` and other schemes
+are accepted, a URL starting with `-` is parsed as a curl option, a malicious server can forge the
+reported status, API keys are visible in `ps`, there is no request timeout (the `openai` timeout
+setting is stored but never used), `build_query` does not URL-encode, and header values containing
+CR/LF can inject headers. Then `fs`, `csv_io`, `dotenv`, `json_db`, `orm`, `logger`, `sqlite`,
+`swagger`, `dns` (see the review notes in the project discussion).
+
 ## v0.017.0 - 2026-11-15
 
 **Breaking change in webi 1.4.0: `render()` now HTML-escapes `{{key}}`.** This closes the
