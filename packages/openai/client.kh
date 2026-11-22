@@ -2,30 +2,55 @@
 #
 # A "client" is just a map. Every openai_* call takes one as its first
 # argument, the same convention `webi` uses for `app`.
+#
+# SAFETY (0.018.1)
+#   * The API key is not kept in the map (see util.kh): printing or logging a client shows
+#     only a masked key. The key, the organization and the base URL are checked when they
+#     are set; a bad one makes the client refuse to send anything (it never "falls back"
+#     to something else), and openai_last_error / the returned error map say why.
+#   * base_url must be https:// (plain http is accepted only for localhost / 127.0.0.1 / [::1],
+#     for a local Ollama / vLLM server). The key is sent to that address.
+#   * The timeout is enforced (it was stored but ignored before), retries are capped and
+#     back off, and the whole call has a total time budget.
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # openai_client(api_key) -> client
 # Create a client pointed at the real OpenAI API with sane defaults:
-#   model:       "gpt-4o-mini"
-#   base_url:    "https://api.openai.com/v1"
-#   max_retries: 3   (only for 429 / 5xx responses)
-#   organization: "" (unset)
+#   model:           "gpt-4o-mini"
+#   base_url:        "https://api.openai.com/v1"
+#   timeout:         60000   (ms, per request; enforced)
+#   max_retries:     3       (TOTAL attempts, 1..10; only for 429 / 5xx responses)
+#   retry_base_ms:   300     (first wait; doubles each time)
+#   retry_max_ms:    30000   (longest single wait)
+#   max_total_seconds: 180   (no retry is started after this much time in total)
+#   organization:    "" (unset)
 #
-# Note: `timeout` is stored on the client for API forward-compatibility,
-# but Kosh's native HTTP layer (requests_lib.c) doesn't currently expose a
-# per-request timeout knob, so it isn't enforced yet — a slow request will
-# block for as long as the underlying WinHTTP/curl call takes.
+# Read the key from the environment, not from source code:
+#   let client = openai_client(env_var("OPENAI_API_KEY", ""))
 # ---------------------------------------------------------------------------
 fn openai_client(api_key):
-    return {
-        "api_key":      api_key,
-        "base_url":     "https://api.openai.com/v1",
-        "model":        "gpt-4o-mini",
-        "organization": "",
-        "timeout":      30000,
-        "max_retries":  3,
-        "last_error":   nil
+    let c = {
+        "api_key":           "****",
+        "key_id":            secure_token(8),
+        "base_url":          "https://api.openai.com/v1",
+        "model":             "gpt-4o-mini",
+        "organization":      "",
+        "timeout":           60000,
+        "max_retries":       3,
+        "retry_base_ms":     300,
+        "retry_max_ms":      30000,
+        "max_total_seconds": 180,
+        "config_error":      "",
+        "last_error":        nil
     }
+    if _openai_valid_token(api_key, 8, 512):
+        _openai_keys[c["key_id"]] = api_key
+        c["api_key"] = _openai_mask(api_key)
+    else:
+        c["config_error"] = "the API key is missing or invalid (it must be 8-512 characters from A-Z a-z 0-9 - _ . : ~ + / =, with no spaces or line breaks)"
+        print "[openai] " + c["config_error"]
+    return c
 
 # ---------------------------------------------------------------------------
 # openai_client_ex(api_key, base_url) -> client
@@ -33,9 +58,7 @@ fn openai_client(api_key):
 # (Azure OpenAI, OpenRouter, a local vLLM/Ollama server, etc).
 # ---------------------------------------------------------------------------
 fn openai_client_ex(api_key, base_url):
-    let c = openai_client(api_key)
-    c["base_url"] = base_url
-    return c
+    return openai_set_base_url(openai_client(api_key), base_url)
 
 # ---------------------------------------------------------------------------
 # Setters — all return the client so calls can be chained:
@@ -46,17 +69,57 @@ fn openai_set_model(client, model):
     return client
 
 fn openai_set_organization(client, org):
+    if org == "" or org == nil:
+        client["organization"] = ""
+        return client
+    if not _openai_valid_token(org, 1, 128):
+        client["config_error"] = "the organization id is invalid (letters, digits, - _ . : only)"
+        print "[openai] " + client["config_error"]
+        return client
     client["organization"] = org
     return client
 
+# openai_set_timeout(client, timeout_ms): 1000 .. 3600000. Applies to every request of this
+# client, connect included. A slower server gives you a "timed out" error instead of a hang.
 fn openai_set_timeout(client, timeout_ms):
+    if type(timeout_ms) != "number" or timeout_ms < 1000 or timeout_ms > 3600000:
+        print "[openai] openai_set_timeout: timeout_ms must be a number between 1000 and 3600000 - unchanged"
+        return client
     client["timeout"] = timeout_ms
     return client
 
+# openai_set_max_retries(client, n): TOTAL attempts, limited to 1..10.
 fn openai_set_max_retries(client, n):
-    client["max_retries"] = n
+    client["max_retries"] = _openai_clamp_attempts(n)
     return client
 
+# openai_set_retry_backoff(client, base_ms, max_ms): wait base_ms, 2*base_ms, 4*base_ms ... (at most max_ms)
+fn openai_set_retry_backoff(client, base_ms, max_ms):
+    if type(base_ms) != "number" or type(max_ms) != "number" or base_ms < 1 or max_ms < base_ms or max_ms > 300000:
+        print "[openai] openai_set_retry_backoff: need 1 <= base_ms <= max_ms <= 300000 - unchanged"
+        return client
+    client["retry_base_ms"] = base_ms
+    client["retry_max_ms"] = max_ms
+    return client
+
+# openai_set_max_total_seconds(client, s): no retry is started once this much time has passed.
+fn openai_set_max_total_seconds(client, seconds):
+    if type(seconds) != "number" or seconds < 1 or seconds > 3600:
+        print "[openai] openai_set_max_total_seconds: must be a number between 1 and 3600 - unchanged"
+        return client
+    client["max_total_seconds"] = seconds
+    return client
+
+# openai_set_base_url(client, base_url): https:// (or http:// for this machine only).
+# Anything else leaves the client unable to send requests (config_error).
 fn openai_set_base_url(client, base_url):
-    client["base_url"] = base_url
+    if not is_https_or_local(base_url):
+        client["base_url"] = ""
+        client["config_error"] = "base_url must be an https:// URL (http:// is allowed only for localhost), with no user@ part: refusing to send the API key anywhere else"
+        print "[openai] " + client["config_error"]
+        return client
+    let b = base_url
+    while len(b) > 8 and substring(b, len(b) - 1, 1) == "/":
+        b = substring(b, 0, len(b) - 1)
+    client["base_url"] = b
     return client

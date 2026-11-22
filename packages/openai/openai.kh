@@ -1,4 +1,4 @@
-# Kosh openai package v2.0.0
+# Kosh openai package v2.1.0
 # Usage: import "openai"
 #
 # A client wrapper for the OpenAI API — chat, embeddings, moderation, and
@@ -9,7 +9,7 @@
 #
 #   import "openai"
 #
-#   let client = openai_client(env_get("OPENAI_API_KEY", ""))
+#   let client = openai_client(env_var("OPENAI_API_KEY", ""))
 #   let reply  = openai_ask(client, "Say hello in one sentence.")
 #   print reply
 #

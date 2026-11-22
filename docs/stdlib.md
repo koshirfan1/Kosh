@@ -34,11 +34,46 @@ These are native C libraries included in `kosh.exe` — no installation needed.
 | `http_post_json(url, map)` | POST with auto-encoded JSON body |
 | `http_put(url, body)` | PUT request |
 | `http_delete(url)` | DELETE request |
+| `http_request(method, url, body, headers_map)` | Any upper-case method, with your own headers |
+| `http_get_h(url, headers)`, `http_post_h`, `http_put_h`, `http_put_json` | The same, with a header block: `"A: 1\r\nB: 2"` |
+| `http_configure(options)` | Timeouts and size limits (below); returns the settings in force |
+| `url_encode(text)` / `url_decode(text, plus_is_space)` | Percent-encoding (RFC 3986) |
 
-All HTTP functions return `{"status": 200, "body": "...", "success": true}`.
+All HTTP functions return `{"status": 200, "body": "...", "success": true}`. When a request fails
+or is refused (bad URL, timeout, unknown host, response too large ...) `status` is `0`,
+`success` is `false` and an extra `"error"` key says why.
 
-> **Windows**: Uses WinHTTP (built-in, no extra install).
-> **Linux/macOS**: Uses `curl` (must be installed).
+**What the client refuses or guarantees** (since 0.018.1; each point was a real bug):
+
+- **Only `http://` and `https://` URLs.** `file://`, `ftp://`, `gopher://`, `dict://` and the like
+  are refused (they used to be passed to curl, so a URL taken from user input could read a local
+  file). A URL may not contain spaces, control characters or backslashes; percent-encode with
+  `url_encode`. URL globbing (`[1-3]`, `{a,b}`) is off.
+- **A body that starts with `@` is just text.** (curl's `-d` used to upload the named local file.)
+- **Nothing sensitive on a command line.** On Linux/macOS `curl` is started directly (no shell)
+  with the URL, headers and body supplied on its standard input, so API keys and tokens no longer
+  show up in `ps`, and a URL starting with `-` is a URL, not an option. `~/.curlrc` is ignored.
+- **Timeouts and size limits.** Defaults: 60 s for the whole request (10 s to connect), responses up
+  to 32 MB, request bodies up to 32 MB. Change them with
+  `http_configure({"timeout_seconds": 20, "connect_timeout_seconds": 5, "max_response_bytes": 1048576, "max_request_bytes": 1048576})`;
+  an unknown option or an out-of-range value is an error and changes nothing.
+- **The status is read from curl, not from the response.** A server cannot make a 500 look like a
+  200, and a response that was cut short (curl reports a failure) is `status` 0 with an error, not
+  a silently truncated "200".
+- **Header lines and the method are validated**: names are tokens, values contain no CR/LF/control
+  characters, `Content-Length` / `Transfer-Encoding` / `Connection` cannot be set, the method is
+  upper-case letters. A refused request sends nothing.
+- Redirects are **not** followed (a `3xx` is returned as it is).
+
+> **Windows**: uses WinHTTP (built in, no extra install), with the same URL/header/method checks,
+> timeouts and size limit; it never follows redirects and verifies certificates. The Windows code
+> path is compile-checked but not exercised by the Linux test-suite.
+> **Linux/macOS**: uses `curl` (must be installed; if it is missing the result's `error` says so).
+>
+> Kosh strings cannot contain a NUL byte, so a binary response body is cut at its first NUL
+> (static files served by webi are not affected, see `docs/webi.md`).
+
+The `requests` package (sessions, retries, helpers) builds on these: see `packages/requests/requests.kh`.
 
 ---
 

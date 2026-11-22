@@ -66,6 +66,9 @@ void requests_register_all_vm(VM *vm) {
     vm_global_set_native(vm, "http_put",       fn_http_put);
     vm_global_set_native(vm, "http_delete",    fn_http_delete);
     vm_global_set_native(vm, "http_request",   fn_http_request);
+    vm_global_set_native(vm, "http_configure", fn_http_configure);
+    vm_global_set_native(vm, "url_encode",     fn_url_encode);
+    vm_global_set_native(vm, "url_decode",     fn_url_decode);
 }
 
 void webi_register_all_vm(VM *vm) {

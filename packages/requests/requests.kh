@@ -1,4 +1,4 @@
-# Kosh requests package v1.1.0
+# Kosh requests package v1.2.0
 # Usage: import "requests"
 #
 # Built on top of Kosh's native http_get / http_post / http_post_json /
@@ -20,11 +20,23 @@
 #   - is_json(res) — check if response is JSON
 #   - safe_json(res, fallback) — decode JSON or return fallback
 #
+# v1.2 (security hardening, 0.018.1):
+#   - only http:// and https:// URLs are accepted (file://, ftp://, gopher://... are refused)
+#   - real timeouts and a response size cap: requests_configure({"timeout_seconds": 20, ...})
+#   - build_query / encode_form now URL-encode keys and values
+#   - a header that contains CR/LF is refused; session paths must start with "/" (so a path can
+#     no longer change the host and send your session headers to it)
+#   - failures carry res["error"]; retries are capped and back off, and only retry what can succeed
+#   - a request body that starts with "@" is sent as text (it used to upload a local file)
+#   - the status can no longer be forged by the server
+#
 # Every function returns a response map:
-#   res["status"]  -> number   HTTP status code (e.g. 200)
+#   res["status"]  -> number   HTTP status code (e.g. 200); 0 if no response was received
 #   res["body"]    -> string   Raw response body
 #   res["success"] -> bool     true if status 200–299
 #   res["json"]    -> map/array/nil  decoded JSON body (nil if not JSON)
+#   res["error"]   -> string   only present when the request failed or was refused
+#                              ("timed out", "only http:// and https:// URLs are allowed", ...)
 
 # ---------------------------------------------------------------------------
 # Internal: try to decode body as JSON, attach as res["json"]
@@ -58,7 +70,8 @@ fn _req_merge_headers(base_headers, extra_headers):
 # build_query(params_map) -> string
 # Builds a URL query string from a map.
 # Example: build_query({"page": "1", "limit": "10"}) -> "page=1&limit=10"
-# Note: no URL-encoding yet — keep values alphanumeric for now
+# Keys and values are percent-encoded (url_encode), so a value like "a b&admin=true" can not
+# add a parameter of its own: {"q": "a b&admin=true"} -> "q=a%20b%26admin%3Dtrue".
 # ---------------------------------------------------------------------------
 fn build_query(params):
     let result = ""
@@ -69,7 +82,7 @@ fn build_query(params):
         let v = str(params[k])
         if len(result) > 0:
             result = result + "&"
-        result = result + k + "=" + v
+        result = result + url_encode(str(k)) + "=" + url_encode(v)
         i = i + 1
     return result
 
@@ -157,7 +170,10 @@ fn json(res):
 # ---------------------------------------------------------------------------
 fn raise_for_status(res):
     if not res["success"]:
-        print "HTTP Error " + str(res["status"]) + ": " + res["body"]
+        if res["status"] == 0 and has(res, "error"):
+            print "Request failed: " + res["error"]
+        else:
+            print "HTTP Error " + str(res["status"]) + ": " + res["body"]
     return res
 
 # ---------------------------------------------------------------------------
@@ -271,32 +287,128 @@ fn head(url):
     return _req_attach_json(res)
 
 # ---------------------------------------------------------------------------
-# get_retry(url, attempts) -> response map
-# Retries a GET up to `attempts` times on failure
+# Retries (get_retry / post_retry)
+#
+# `attempts` is the TOTAL number of tries, limited to 1..10. A retry happens only when
+# trying again can help: no response at all (status 0: timeout, connection refused), 408,
+# 429 or a 5xx. A 404 or a 401 is returned at once. Between tries the helper waits
+# 200 ms, 400 ms, 800 ms ... (at most 5 s).
 # ---------------------------------------------------------------------------
+fn _req_clamp_attempts(n):
+    if type(n) != "number" or n < 1:
+        return 1
+    if n > 10:
+        return 10
+    return floor(n)
+
+fn _req_retryable(res):
+    let st = res["status"]
+    return st == 0 or st == 408 or st == 429 or st >= 500
+
+fn _req_backoff_ms(i):
+    let ms = 200
+    let k = 0
+    while k < i:
+        ms = ms * 2
+        k = k + 1
+    if ms > 5000:
+        return 5000
+    return ms
+
+# get_retry(url, attempts) -> response map
 fn get_retry(url, attempts):
+    let n = _req_clamp_attempts(attempts)
     let i = 0
     let res = nil
-    while i < attempts:
+    while i < n:
         res = http_get(url)
-        if res["success"]:
+        if res["success"] or not _req_retryable(res):
             return _req_attach_json(res)
         i = i + 1
+        if i < n:
+            sleep(_req_backoff_ms(i - 1))
+    return _req_attach_json(res)
+
+# post_retry(url, body, attempts) -> response map
+fn post_retry(url, body, attempts):
+    let n = _req_clamp_attempts(attempts)
+    let i = 0
+    let res = nil
+    while i < n:
+        res = http_post(url, body)
+        if res["success"] or not _req_retryable(res):
+            return _req_attach_json(res)
+        i = i + 1
+        if i < n:
+            sleep(_req_backoff_ms(i - 1))
     return _req_attach_json(res)
 
 # ---------------------------------------------------------------------------
-# post_retry(url, body, attempts) -> response map
-# Retries a POST up to `attempts` times on failure
+# is_https_or_local(url) -> bool
+# True for an https:// URL, or an http:// URL whose host is this machine (localhost,
+# 127.0.0.1, [::1]): the only places where plain http is acceptable for something secret.
+# The URL must have a host, no spaces/control characters/backslashes, and no "user@"
+# part in front of the host (that is how "https://api.example.com@evil.example" fools
+# a reader). Used by openai and dns for the endpoints they send keys / queries to.
 # ---------------------------------------------------------------------------
-fn post_retry(url, body, attempts):
+fn is_https_or_local(url):
+    if type(url) != "string" or len(url) < 9 or len(url) > 2048:
+        return false
     let i = 0
-    let res = nil
-    while i < attempts:
-        res = http_post(url, body)
-        if res["success"]:
-            return _req_attach_json(res)
+    while i < len(url):
+        let c = substring(url, i, 1)
+        if c == " " or c == "\\" or c == "\r" or c == "\n" or c == "\t":
+            return false
         i = i + 1
-    return _req_attach_json(res)
+    let low = lower(url)
+    let rest = ""
+    let secure = false
+    if substring(low, 0, 8) == "https://":
+        rest = substring(url, 8, len(url) - 8)
+        secure = true
+    elif substring(low, 0, 7) == "http://":
+        rest = substring(url, 7, len(url) - 7)
+    else:
+        return false
+    # authority = everything up to the first / ? or #
+    let end = len(rest)
+    let k = 0
+    while k < len(rest):
+        let ch = substring(rest, k, 1)
+        if ch == "/" or ch == "?" or ch == "#":
+            end = k
+            k = len(rest)
+        else:
+            k = k + 1
+    let authority = substring(rest, 0, end)
+    if len(authority) == 0 or contains(authority, "@"):
+        return false
+    if secure:
+        return true
+    # http: only for this machine. Split off an optional :port
+    let host = lower(authority)
+    if substring(host, 0, 1) == "[":
+        let close = 0
+        let m = 0
+        while m < len(host):
+            if substring(host, m, 1) == "]":
+                close = m
+                m = len(host)
+            else:
+                m = m + 1
+        host = substring(host, 0, close + 1)
+    else:
+        let parts = split(host, ":")
+        host = parts[0]
+    return host == "localhost" or host == "127.0.0.1" or host == "[::1]"
+
+# ---------------------------------------------------------------------------
+# requests_configure(options) -> map of the settings in force
+#   timeout_seconds (60), connect_timeout_seconds (10), max_response_bytes (32 MB),
+#   max_request_bytes (32 MB). Applies to every request made after the call.
+# ---------------------------------------------------------------------------
+fn requests_configure(options):
+    return http_configure(options)
 
 # ---------------------------------------------------------------------------
 # session(base_url) -> session map
@@ -309,40 +421,77 @@ fn session(base_url):
         "headers":  ""
     }
 
+# session_set_header(s, key, value) -> session
+# A header name or value containing CR or LF would let the value add headers of its own, so
+# it is refused (a message is printed and the session is returned unchanged).
 fn session_set_header(s, key, value):
-    let h = key + ": " + value
+    let k = str(key)
+    let v = str(value)
+    if len(k) == 0 or contains(k, "\r") or contains(k, "\n") or contains(k, ":") or contains(v, "\r") or contains(v, "\n"):
+        print "[requests] session_set_header: refused (a name can not be empty or contain ':', CR or LF; a value can not contain CR or LF)"
+        return s
+    let h = k + ": " + v
     if len(s["headers"]) == 0:
         s["headers"] = h
     else:
         s["headers"] = s["headers"] + "\r\n" + h
     return s
 
+# The URL for a session request: base_url + path. The path must start with "/" (or be a
+# bare "?query"), contain no backslash and not start with "//". Without this check a path
+# like "@evil.example/x" turns "http://api.example.com" + path into a URL whose host is
+# evil.example, and the session's headers (Authorization!) go there. Returns nil if refused.
+fn _req_session_url(s, path):
+    let p = str(path)
+    let ok = len(p) > 0 and (substring(p, 0, 1) == "/" or substring(p, 0, 1) == "?")
+    if ok and len(p) > 1 and substring(p, 0, 2) == "//":
+        ok = false
+    if ok and (contains(p, "\\") or contains(p, "\r") or contains(p, "\n")):
+        ok = false
+    if not ok:
+        print "[requests] session: refused path '" + p + "' (a path must start with / and may not start with //)"
+        return nil
+    return s["base_url"] + p
+
+fn _req_refused():
+    return {"status": 0, "body": "", "success": false, "error": "refused: the session path is not allowed (it must start with /)", "json": nil}
+
 fn session_get(s, path):
-    let url = s["base_url"] + path
+    let url = _req_session_url(s, path)
+    if url == nil:
+        return _req_refused()
     if len(s["headers"]) > 0:
         return get_h(url, s["headers"])
     return get(url)
 
 fn session_post(s, path, body):
-    let url = s["base_url"] + path
+    let url = _req_session_url(s, path)
+    if url == nil:
+        return _req_refused()
     if len(s["headers"]) > 0:
         return post_h(url, body, s["headers"])
     return post(url, body)
 
 fn session_post_json(s, path, data):
-    let url = s["base_url"] + path
+    let url = _req_session_url(s, path)
+    if url == nil:
+        return _req_refused()
     if len(s["headers"]) > 0:
         return post_json_h(url, data, s["headers"])
     return post_json(url, data)
 
 fn session_put(s, path, body):
-    let url = s["base_url"] + path
+    let url = _req_session_url(s, path)
+    if url == nil:
+        return _req_refused()
     if len(s["headers"]) > 0:
         return put_h(url, body, s["headers"])
     return put(url, body)
 
 fn session_delete(s, path):
-    let url = s["base_url"] + path
+    let url = _req_session_url(s, path)
+    if url == nil:
+        return _req_refused()
     if len(s["headers"]) > 0:
         return delete_h(url, s["headers"])
     return delete(url)

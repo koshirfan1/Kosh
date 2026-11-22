@@ -1,9 +1,11 @@
 {
   "name": "requests",
-  "version": "1.1.0",
-  "description": "HTTP client v1.1: get/post/put/patch/delete/head, headers, sessions, query builder, retry",
+  "version": "1.2.0",
+  "description": "HTTP client v1.2: http/https only, timeouts, size caps, URL-encoded queries, sessions, capped retries",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "requests.kh",
-  "files": ["requests.kh"]
+  "files": [
+    "requests.kh"
+  ]
 }

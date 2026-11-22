@@ -23,6 +23,9 @@ fn _openai_parse_error(res):
 
     if res["status"] == 0:
         err["message"] = "Network error — could not reach the API"
+        if has(res, "error") and res["error"] != nil and len(res["error"]) > 0:
+            err["message"] = "Network error — could not reach the API: " + res["error"]
+            err["detail"] = res["error"]
         return err
 
     let parsed = safe_json(res, nil)

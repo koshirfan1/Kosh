@@ -1,17 +1,128 @@
-# Kosh DNS Package (DNS-over-HTTPS)
+# Kosh DNS Package (DNS-over-HTTPS)  v1.1.0
 # Usage: import "dns"
+#
+#   dns_lookup("example.com")            -> "93.184.216.34"      first A record, or nil
+#   dns_query("example.com", "MX")       -> ["10 mail.example.com.", ...]   (an array, maybe empty), or nil
+#   dns_set_resolver("https://cloudflare-dns.com/dns-query")      (default: https://dns.google/resolve)
+#
+# Since 1.1.0 (security): the domain name is validated before anything is sent (letters, digits,
+# hyphens, 1-63 characters per label, 253 in all) and URL-encoded, so a "domain" such as
+# "example.com&type=TXT" can no longer add parameters to the query; the record type must be one of
+# the known names; the resolver must be https:// (http:// only for localhost); a failed lookup
+# (NXDOMAIN, bad answer) is nil rather than whatever the first answer happened to be.
+# Before 1.1.0 dns_lookup returned the first answer of ANY type, so a CNAME target came back as
+# if it were an IP address.
+#
+# DNS-over-HTTPS protects the lookup from your local network, not from the resolver: Google (or
+# whichever resolver you choose) sees every name you ask for.
 
 import "requests"
 
+let _dns_resolver = "https://dns.google/resolve"
+
+# dns_set_resolver(url) -> bool   (a DoH JSON endpoint; https:// or http://localhost)
+fn dns_set_resolver(url):
+    if not is_https_or_local(url) or contains(url, "?") or contains(url, "#"):
+        print "[dns] dns_set_resolver: refused (it must be an https:// URL, or http:// for localhost, without ? or #)"
+        return false
+    _dns_resolver = url
+    return true
+
+fn dns_resolver():
+    return _dns_resolver
+
+# A valid host name: 1-253 characters, dot separated labels of 1-63 characters made of letters,
+# digits and hyphens (not starting or ending with a hyphen); a label may start with "_"
+# (_dmarc, _sip). One trailing dot is allowed.
+fn _dns_valid_domain(d):
+    if type(d) != "string":
+        return false
+    let name = d
+    if len(name) > 1 and substring(name, len(name) - 1, 1) == ".":
+        name = substring(name, 0, len(name) - 1)
+    if len(name) == 0 or len(name) > 253:
+        return false
+    let labels = split(name, ".")
+    let allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    let i = 0
+    while i < len(labels):
+        let l = labels[i]
+        if len(l) == 0 or len(l) > 63:
+            return false
+        if substring(l, 0, 1) == "-" or substring(l, len(l) - 1, 1) == "-":
+            return false
+        let k = 0
+        while k < len(l):
+            let c = substring(l, k, 1)
+            if not contains(allowed, c):
+                return false
+            if c == "_" and k > 0:
+                return false
+            k = k + 1
+        i = i + 1
+    return true
+
+# record type name -> number, or 0 if not supported
+fn _dns_type_number(t):
+    if type(t) != "string":
+        return 0
+    let u = upper(t)
+    if u == "A":
+        return 1
+    if u == "NS":
+        return 2
+    if u == "CNAME":
+        return 5
+    if u == "SOA":
+        return 6
+    if u == "PTR":
+        return 12
+    if u == "MX":
+        return 15
+    if u == "TXT":
+        return 16
+    if u == "AAAA":
+        return 28
+    if u == "SRV":
+        return 33
+    if u == "CAA":
+        return 257
+    return 0
+
+fn _dns_url(domain, rtype):
+    return _dns_resolver + "?name=" + url_encode(domain) + "&type=" + upper(rtype)
+
+# dns_query(domain, record_type) -> array of answer strings (only answers of that type), or nil
+# if the name/type is invalid, the lookup failed, or the resolver's answer is not usable.
+fn dns_query(domain, rtype):
+    if not _dns_valid_domain(domain):
+        print "[dns] refused: '" + str(domain) + "' is not a valid domain name"
+        return nil
+    let want = _dns_type_number(rtype)
+    if want == 0:
+        print "[dns] refused: unsupported record type '" + str(rtype) + "' (A, AAAA, MX, TXT, CNAME, NS, SOA, PTR, SRV, CAA)"
+        return nil
+    let res = get_h(_dns_url(domain, rtype), "Accept: application/dns-json")
+    if not res["success"]:
+        return nil
+    let data = safe_json(res, nil)
+    if data == nil or type(data) != "map" or not has(data, "Status") or data["Status"] != 0:
+        return nil
+    let out = []
+    if not has(data, "Answer") or type(data["Answer"]) != "array":
+        return out
+    let ans = data["Answer"]
+    let i = 0
+    while i < len(ans) and len(out) < 50:
+        let a = ans[i]
+        if type(a) == "map" and has(a, "type") and has(a, "data") and a["type"] == want and type(a["data"]) == "string":
+            out = push(out, a["data"])
+        i = i + 1
+    return out
+
+# dns_lookup(domain) -> the first A record (an IPv4 address string), or nil
 fn dns_lookup(domain):
-    let url = "https://dns.google/resolve?name=" + domain
-    # Use requests.get for auto-attach json
-    let res = get(url)
-    if res["success"]:
-        let data = json_decode(res["body"])
-        if data != nil:
-            if has(data, "Answer"):
-                let ans = data["Answer"]
-                if len(ans) > 0:
-                    return ans[0]["data"]
-    return nil
+    let all = dns_query(domain, "A")
+    if all == nil or len(all) == 0:
+        return nil
+    return all[0]

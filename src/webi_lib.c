@@ -50,6 +50,7 @@ typedef int wb_sock_t;
 #endif
 
 #include "webi_lib.h"
+#include "requests_lib.h"
 #include "kosh_stdlib.h"
 #include "vm.h"
 #include "json_lib.h"
@@ -785,84 +786,12 @@ static char *wb_build_http_response(Value *res_map, size_t *out_len) {
 // ===========================================================================
 #ifndef _WIN32
 
-static char *wb_run_curl(const char **args, int nargs) {
-    size_t cmd_len = 16;
-    for (int i = 0; i < nargs; i++)
-        cmd_len += strlen(args[i]) * 4 + 4;   /* worst case: every char is a quote -> 4 bytes ('\'') */
-    char *cmd = malloc(cmd_len);
-    strcpy(cmd, "curl -s");
-    for (int i = 0; i < nargs; i++) {
-        strcat(cmd, " '");
-        char *p = cmd + strlen(cmd);
-        for (const char *q = args[i]; *q; q++) {
-            if (*q == '\'') { *p++ = '\''; *p++ = '\\'; *p++ = '\''; *p++ = '\''; }
-            else { *p++ = *q; }
-        }
-        *p++ = '\''; *p = '\0';
-    }
-    FILE *fp = popen(cmd, "r");
-    free(cmd);
-    if (!fp) return strdup("");
-    char *out = NULL; size_t out_len = 0, cap = 0;
-    char buf[4096]; size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
-        if (out_len + n + 1 > cap) { cap = cap ? (cap + n) * 2 : 4096; out = realloc(out, cap); }
-        memcpy(out + out_len, buf, n); out_len += n;
-    }
-    pclose(fp);
-    if (!out) return strdup("");
-    out[out_len] = '\0';
-    return out;
-}
-
+// All outbound HTTP goes through the hardened core in requests_lib.c (http/https only,
+// nothing on curl's command line, real timeouts, unforgeable status): see the notes there.
 static Value wb_curl_request(const char *method, const char *url,
                                const char *body, const char *ctype,
                                const char *extra_headers) {
-#define WB_MAX_ARGS 32
-    const char *args[WB_MAX_ARGS];
-    int n = 0;
-    args[n++] = "-w"; args[n++] = "\n__WB_STATUS__%{http_code}";
-    if (method && strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0) {
-        args[n++] = "-X"; args[n++] = method;
-    }
-    if (strcmp(method, "HEAD") == 0) {
-        args[n++] = "-I";
-    }
-    if (body) { args[n++] = "-d"; args[n++] = body; }
-    if (ctype) { args[n++] = "-H"; args[n++] = ctype; }
-    // Extra headers: split on \r\n and add each as -H
-    if (extra_headers && strlen(extra_headers) > 0) {
-        // We pass a single combined header string; curl handles multiple -H flags
-        // Make a mutable copy and split on \r\n
-        char *hcopy = strdup(extra_headers);
-        char *line = strtok(hcopy, "\r\n");
-        while (line && n < WB_MAX_ARGS - 2) {
-            if (strlen(line) > 3) { args[n++] = "-H"; args[n++] = line; }
-            line = strtok(NULL, "\r\n");
-        }
-        // Note: hcopy leaks here for simplicity; fix with arena allocator later
-    }
-    args[n++] = url;
-
-    char *raw = wb_run_curl(args, n);
-    const char *marker = strstr(raw, "\n__WB_STATUS__");
-    long status = 0; char *body_str;
-    if (marker) {
-        int blen = (int)(marker - raw);
-        body_str = malloc(blen + 1);
-        memcpy(body_str, raw, blen); body_str[blen] = '\0';
-        status = atol(marker + (int)strlen("\n__WB_STATUS__"));
-    } else {
-        body_str = strdup(raw);
-    }
-    free(raw);
-
-    Value m = value_map_empty();
-    map_set(&m, "status",  value_number((double)status));
-    map_set(&m, "body",    value_string(body_str));
-    map_set(&m, "success", value_bool(status >= 200 && status < 300));
-    free(body_str);
-    return m;
+    return kh_http_call_strings(method, url, body, ctype, extra_headers);
 }
 
 // ---------------------------------------------------------------------------
@@ -1091,88 +1020,11 @@ void fn_http_serve(Value *result, Interpreter *interp, int argc, Value *args) {
 // ===========================================================================
 #ifdef _WIN32
 
+// Windows: the same shared core (WinHTTP implementation in requests_lib.c).
 static Value wh_request(const char *method, const char *url,
                           const char *body, const char *ctype,
                           const char *extra_headers) {
-    const char *hs = url;
-    if      (strncmp(url, "https://", 8) == 0) hs = url + 8;
-    else if (strncmp(url, "http://",  7) == 0) hs = url + 7;
-    const char *slash = strchr(hs, '/');
-    char *host; const char *path;
-    if (slash) {
-        int hl = (int)(slash - hs);
-        host = malloc(hl + 1); strncpy(host, hs, hl); host[hl] = '\0';
-        path = slash;
-    } else { host = strdup(hs); path = "/"; }
-
-    BOOL use_https = (strncmp(url, "https", 5) == 0);
-    INTERNET_PORT port = use_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
-
-    HINTERNET hSess = WinHttpOpen(L"Kosh-webi/1.1",
-                                   WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
-    Value result = value_map_empty();
-    map_set(&result, "status",  value_number(0));
-    map_set(&result, "body",    value_string(""));
-    map_set(&result, "success", value_bool(0));
-    if (!hSess) { free(host); return result; }
-
-    int wl = MultiByteToWideChar(CP_UTF8, 0, host, -1, NULL, 0);
-    wchar_t *whost = malloc(wl * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, host, -1, whost, wl);
-
-    int pl = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
-    wchar_t *wpath = malloc(pl * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, pl);
-
-    int ml = MultiByteToWideChar(CP_UTF8, 0, method, -1, NULL, 0);
-    wchar_t *wmethod = malloc(ml * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, method, -1, wmethod, ml);
-
-    HINTERNET hConn = WinHttpConnect(hSess, whost, port, 0);
-    if (hConn) {
-        HINTERNET hReq = WinHttpOpenRequest(hConn, wmethod, wpath, NULL, NULL, NULL,
-                                             use_https ? WINHTTP_FLAG_SECURE : 0);
-        if (hReq) {
-            if (ctype) {
-                int cl = MultiByteToWideChar(CP_UTF8, 0, ctype, -1, NULL, 0);
-                wchar_t *wct = malloc(cl * sizeof(wchar_t));
-                MultiByteToWideChar(CP_UTF8, 0, ctype, -1, wct, cl);
-                WinHttpAddRequestHeaders(hReq, wct, (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
-                free(wct);
-            }
-            if (extra_headers) {
-                int el = MultiByteToWideChar(CP_UTF8, 0, extra_headers, -1, NULL, 0);
-                wchar_t *weh = malloc(el * sizeof(wchar_t));
-                MultiByteToWideChar(CP_UTF8, 0, extra_headers, -1, weh, el);
-                WinHttpAddRequestHeaders(hReq, weh, (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
-                free(weh);
-            }
-            DWORD blen = body ? (DWORD)strlen(body) : 0;
-            if (WinHttpSendRequest(hReq, NULL, 0, (LPVOID)body, blen, blen, 0) &&
-                WinHttpReceiveResponse(hReq, NULL)) {
-                DWORD sc = 0, ssz = sizeof(sc);
-                WinHttpQueryHeaders(hReq,
-                    WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                    NULL, &sc, &ssz, NULL);
-                char *rbuf = NULL; DWORD tot = 0, br = 0, av = 0;
-                while (WinHttpQueryDataAvailable(hReq, &av) && av > 0) {
-                    rbuf = realloc(rbuf, tot + av + 1);
-                    WinHttpReadData(hReq, rbuf + tot, av, &br);
-                    tot += br; rbuf[tot] = '\0';
-                }
-                if (!rbuf) rbuf = strdup("");
-                map_set(&result, "status",  value_number((double)sc));
-                map_set(&result, "body",    value_string(rbuf));
-                map_set(&result, "success", value_bool(sc >= 200 && sc < 300));
-                free(rbuf);
-            }
-            WinHttpCloseHandle(hReq);
-        }
-        WinHttpCloseHandle(hConn);
-    }
-    free(whost); free(wpath); free(wmethod);
-    WinHttpCloseHandle(hSess); free(host);
-    return result;
+    return kh_http_call_strings(method, url, body, ctype, extra_headers);
 }
 
 void fn_http_get_h(Value *r, Interpreter *i, int argc, Value *args) {

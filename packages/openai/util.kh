@@ -2,10 +2,51 @@
 # Needs no other openai/*.kh file — everything else depends on this one.
 
 # ---------------------------------------------------------------------------
-# Internal: build the request headers string for a client.
+# API keys are NOT stored in the client map.
+#
+# A client is an ordinary map, and `print client` (or json_encode(client), or a log line
+# that includes it) would print every field, the key included. So the real key lives in
+# this private table, keyed by a random id kept in client["key_id"], and
+# client["api_key"] holds only a masked copy ("sk-****wxyz") that is safe to print.
+# A client that is saved and loaded elsewhere therefore comes back WITHOUT its key and
+# must be rebuilt with openai_client(key).
 # ---------------------------------------------------------------------------
+let _openai_keys = {}
+
+fn _openai_valid_token(s, min_len, max_len):
+    if type(s) != "string" or len(s) < min_len or len(s) > max_len:
+        return false
+    let allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.:~+/="
+    let i = 0
+    while i < len(s):
+        if not contains(allowed, substring(s, i, 1)):
+            return false
+        i = i + 1
+    return true
+
+fn _openai_mask(key):
+    if type(key) != "string" or len(key) < 12:
+        return "****"
+    return substring(key, 0, 3) + "****" + substring(key, len(key) - 4, 4)
+
+# "" if the client is usable, otherwise why not (the key, organization and base URL are
+# checked when they are set, because they end up in the headers / in the URL).
+fn _openai_config_problem(client):
+    if type(client) != "map":
+        return "the client is not a client map (use openai_client(api_key))"
+    if has(client, "config_error") and client["config_error"] != nil and len(client["config_error"]) > 0:
+        return client["config_error"]
+    if not has(client, "key_id") or not has(_openai_keys, client["key_id"]):
+        return "this client has no API key (it was not created in this program with openai_client(api_key))"
+    if len(client["base_url"]) == 0:
+        return "no valid base_url"
+    return ""
+
+# Internal: build the request headers string for a client (nil if it has no key).
 fn _openai_headers(client):
-    let h = "Authorization: Bearer " + client["api_key"]
+    if not has(client, "key_id") or not has(_openai_keys, client["key_id"]):
+        return nil
+    let h = "Authorization: Bearer " + _openai_keys[client["key_id"]]
     if len(client["organization"]) > 0:
         h = h + "\r\nOpenAI-Organization: " + client["organization"]
     return h

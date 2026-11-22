@@ -1,26 +1,124 @@
-# Test for openai package
+# Tests for the openai package (v2.1): the parts that need no network.
+# (Timeouts, retries and what is really sent on the wire are tested against a local fake
+#  server in tests/security/test_packages.py.)
+#   ./kosh tests/test_openai.kh        (run from the project root)
 import "../packages/openai/openai.kh"
 import "../packages/test/test.kh"
 
-let t = test_suite("OpenAI Suite")
+let t = test_suite("openai: key protection, validation, limits")
 
-let client = openai_client("sk-fake-key")
-t = test_eq(t, "base url check", client["base_url"], "https://api.openai.com/v1")
+let KEY = "sk-abcdefghijklmnopqrstuvwx1234"
 
-# Simulation of chat (since we can't call real API in a unit test easily)
-fn mock_openai_chat(client, role, content):
-    return {
-        "choices": [
-            {
-                "message": {
-                    "role": "assistant",
-                    "content": "I am a helpful assistant."
-                }
-            }
-        ]
-    }
+# ---------------------------------------------------------------- the key is not in the client
+let c = openai_client(KEY)
+t = test_eq(t, "base url", c["base_url"], "https://api.openai.com/v1")
+t = test_eq(t, "the map shows only a masked key", c["api_key"], "sk-****1234")
+t = test_false(t, "the real key is not in any field of the map", contains(str(c), "abcdefghijkl"))
+t = test_false(t, "... nor in json_encode(client)", contains(json_encode(c), "abcdefghijkl"))
+t = test_eq(t, "the client has a random key id", len(c["key_id"]), 16)
+t = test_neq(t, "two clients get different key ids", openai_client(KEY)["key_id"], openai_client(KEY)["key_id"])
+t = test_eq(t, "a usable client has no config error", _openai_config_problem(c), "")
+t = test_eq(t, "the Authorization header is built from the private table", _openai_headers(c), "Authorization: Bearer " + KEY)
+let c_org = openai_set_organization(openai_client(KEY), "org-ABC_1")
+t = test_eq(t, "an organization adds one header", _openai_headers(c_org), "Authorization: Bearer " + KEY + "\r\nOpenAI-Organization: org-ABC_1")
+t = test_eq(t, "a copy of the client (same key id) still works", _openai_headers(c), _openai_headers(c))
 
-let res = mock_openai_chat(client, "user", "Who are you?")
-t = test_eq(t, "role check", res["choices"][0]["message"]["role"], "assistant")
+# a client rebuilt from saved data has no key: it must refuse, not send an empty Bearer
+let revived = json_decode(json_encode(c))
+revived["key_id"] = "0000000000000000"
+t = test_true(t, "a client whose key is unknown refuses to send", len(_openai_config_problem(revived)) > 0)
+t = test_nil(t, "... and builds no headers", _openai_headers(revived))
+
+# ---------------------------------------------------------------- key / organization validation
+let bad_keys = ["", "short", "sk-has space-in-it-0123456789", "sk-line\r\nX-Evil: 1-0123456789", "sk-tab\there-0123456789", "sk-quote\"-0123456789", 12345, nil]
+let bk = 0
+let bad_ok = 0
+while bk < len(bad_keys):
+    if len(_openai_config_problem(openai_client(bad_keys[bk]))) > 0:
+        bad_ok = bad_ok + 1
+    bk = bk + 1
+t = test_eq(t, "8 bad keys (empty, short, space, CRLF, tab, quote, number, nil) all make the client refuse", bad_ok, 8)
+t = test_eq(t, "a bad key is never masked into something that looks real", openai_client("short")["api_key"], "****")
+let c_badorg = openai_set_organization(openai_client(KEY), "org\r\nX-Evil: 1")
+t = test_true(t, "a CRLF organization makes the client refuse", len(_openai_config_problem(c_badorg)) > 0)
+t = test_eq(t, "... and is not stored", c_badorg["organization"], "")
+t = test_eq(t, "an empty organization clears it", openai_set_organization(c_org, "")["organization"], "")
+
+# ---------------------------------------------------------------- base_url
+t = test_eq(t, "a custom https endpoint", openai_client_ex(KEY, "https://openrouter.ai/api/v1")["base_url"], "https://openrouter.ai/api/v1")
+t = test_eq(t, "a trailing slash is dropped", openai_client_ex(KEY, "https://api.example.com/v1/")["base_url"], "https://api.example.com/v1")
+t = test_eq(t, "http://localhost is allowed (Ollama, vLLM)", openai_client_ex(KEY, "http://localhost:11434/v1")["base_url"], "http://localhost:11434/v1")
+t = test_eq(t, "http://127.0.0.1 is allowed", openai_client_ex(KEY, "http://127.0.0.1:8000/v1")["base_url"], "http://127.0.0.1:8000/v1")
+t = test_eq(t, "http://[::1] is allowed", openai_client_ex(KEY, "http://[::1]:8000/v1")["base_url"], "http://[::1]:8000/v1")
+let refused_urls = ["http://api.example.com/v1", "ftp://api.example.com", "file:///etc/hostname", "api.example.com/v1", "https://", "https://api.openai.com@evil.example/v1",
+                    "https://api.example.com/v1 x", "http://localhost.evil.example/v1", "http://127.0.0.1.evil.example/v1", "https://api.example.com\\@evil.example", "", nil, 5]
+let ru = 0
+let refused_ok = 0
+while ru < len(refused_urls):
+    let cx = openai_client_ex(KEY, refused_urls[ru])
+    if cx["base_url"] == "" and len(_openai_config_problem(cx)) > 0:
+        refused_ok = refused_ok + 1
+    ru = ru + 1
+t = test_eq(t, "13 unsafe base URLs (plain http to a remote host, other schemes, user@host, lookalike hosts, junk) all leave the client unable to send", refused_ok, 13)
+t = test_eq(t, "a refused URL does NOT fall back to api.openai.com", openai_client_ex(KEY, "http://evil.example/v1")["base_url"], "")
+
+# is_https_or_local on its own
+t = test_true(t, "https://x.example", is_https_or_local("https://x.example"))
+t = test_true(t, "HTTPS in capitals", is_https_or_local("HTTPS://X.EXAMPLE/v1"))
+t = test_true(t, "https with a port and query", is_https_or_local("https://x.example:8443/a?b=1"))
+t = test_false(t, "http://x.example", is_https_or_local("http://x.example"))
+t = test_true(t, "http://LOCALHOST", is_https_or_local("http://LOCALHOST:80/x"))
+t = test_false(t, "http://localhostevil.example", is_https_or_local("http://localhostevil.example"))
+t = test_false(t, "a '@' after the path is fine, but before the host is not", is_https_or_local("https://a@b.example"))
+t = test_false(t, "a backslash", is_https_or_local("https://b.example\\x"))
+t = test_false(t, "a tab", is_https_or_local("https://b.example\t/x"))
+
+# ---------------------------------------------------------------- limits
+t = test_eq(t, "default timeout is 60 s", c["timeout"], 60000)
+t = test_eq(t, "timeout can be set", openai_set_timeout(openai_client(KEY), 5000)["timeout"], 5000)
+t = test_eq(t, "a timeout under 1 s is refused (unchanged)", openai_set_timeout(openai_client(KEY), 10)["timeout"], 60000)
+t = test_eq(t, "a timeout over an hour is refused", openai_set_timeout(openai_client(KEY), 99999999)["timeout"], 60000)
+t = test_eq(t, "a non-numeric timeout is refused", openai_set_timeout(openai_client(KEY), "fast")["timeout"], 60000)
+t = test_eq(t, "default max_retries is 3", c["max_retries"], 3)
+t = test_eq(t, "max_retries 5", openai_set_max_retries(openai_client(KEY), 5)["max_retries"], 5)
+t = test_eq(t, "max_retries 1000 is capped at 10", openai_set_max_retries(openai_client(KEY), 1000)["max_retries"], 10)
+t = test_eq(t, "max_retries 0 becomes 1", openai_set_max_retries(openai_client(KEY), 0)["max_retries"], 1)
+t = test_eq(t, "max_retries -5 becomes 1", openai_set_max_retries(openai_client(KEY), -5)["max_retries"], 1)
+t = test_eq(t, "max_retries 'many' becomes 1", openai_set_max_retries(openai_client(KEY), "many")["max_retries"], 1)
+let cb = openai_set_retry_backoff(openai_client(KEY), 100, 1000)
+t = test_eq(t, "retry backoff is configurable", cb["retry_base_ms"], 100)
+t = test_eq(t, "backoff: first wait is the base", _openai_backoff_ms(cb, 1), 100)
+t = test_eq(t, "backoff doubles", _openai_backoff_ms(cb, 2), 200)
+t = test_eq(t, "backoff doubles again", _openai_backoff_ms(cb, 3), 400)
+t = test_eq(t, "backoff is capped at retry_max_ms", _openai_backoff_ms(cb, 6), 1000)
+t = test_eq(t, "... even for an absurd attempt number", _openai_backoff_ms(cb, 100000), 1000)
+t = test_eq(t, "default backoff is capped at 30 s", _openai_backoff_ms(openai_client(KEY), 30), 30000)
+t = test_eq(t, "an inverted backoff is refused", openai_set_retry_backoff(openai_client(KEY), 5000, 100)["retry_base_ms"], 300)
+t = test_eq(t, "a huge max backoff is refused", openai_set_retry_backoff(openai_client(KEY), 100, 99999999)["retry_max_ms"], 30000)
+t = test_eq(t, "max_total_seconds default", c["max_total_seconds"], 180)
+t = test_eq(t, "max_total_seconds can be set", openai_set_max_total_seconds(openai_client(KEY), 20)["max_total_seconds"], 20)
+t = test_eq(t, "max_total_seconds 0 is refused", openai_set_max_total_seconds(openai_client(KEY), 0)["max_total_seconds"], 180)
+
+# ---------------------------------------------------------------- a client that cannot send returns an error map (and sends nothing)
+let e1 = openai_chat(openai_client("short"), [msg_user("hi")])
+t = test_true(t, "a bad key: chat returns an error map", openai_is_error(e1))
+t = test_eq(t, "... with status 0", e1["status"], 0)
+t = test_true(t, "... that says why", contains(e1["message"], "API key"))
+let e2 = openai_ask(openai_client_ex(KEY, "http://evil.example/v1"), "hi")
+t = test_eq(t, "a refused base_url: openai_ask returns an empty reply, not text", e2, "")
+let cx3 = openai_client_ex(KEY, "http://evil.example/v1")
+let l3 = openai_list_models(cx3)
+t = test_len(t, "a refused base_url: list_models returns an empty list", l3, 0)
+t = test_true(t, "... and records why in last_error", openai_is_error(openai_last_error(cx3)))
+t = test_true(t, "embeddings with a bad client return an error map", openai_is_error(openai_embeddings(openai_client("x"), "hello")))
+t = test_true(t, "moderation with a bad client returns an error map", openai_is_error(openai_moderate(openai_client("x"), "hello")))
+
+# ---------------------------------------------------------------- response helpers still work
+let resp = {"choices": [{"message": {"role": "assistant", "content": "Hello!"}, "finish_reason": "stop"}], "usage": {"total_tokens": 5}}
+t = test_eq(t, "extract_text", openai_extract_text(resp), "Hello!")
+t = test_eq(t, "finish_reason", openai_finish_reason(resp), "stop")
+t = test_eq(t, "usage", openai_usage(resp)["total_tokens"], 5)
+t = test_eq(t, "extract_text of junk is an empty string", openai_extract_text(nil), "")
+t = test_true(t, "retryable statuses: 429 and 5xx only", _openai_is_retryable_status(429) and _openai_is_retryable_status(503) and not _openai_is_retryable_status(400) and not _openai_is_retryable_status(401) and not _openai_is_retryable_status(0))
 
 test_run(t)

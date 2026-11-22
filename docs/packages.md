@@ -101,10 +101,10 @@ Every package installs the same way, regardless of category: `kh install <name>`
 
 | Package | Version | Description |
 |---|---|---|
-| `requests` | 1.1.0 | HTTP client: get, post, post_json, put, delete with auto JSON decode |
+| `requests` | 1.2.0 | HTTP client v1.2: http/https only, timeouts, size caps, URL-encoded queries, sessions, capped retries |
 | `postman` | 1.0.0 | API testing toolkit: send requests, assert responses, run test suites |
 | `swagger` | 1.0.0 | Swagger UI and API documentation generator |
-| `openai` | 2.0.0 | Production-grade OpenAI API client: chat completions, multi-turn conversations, embeddings, moderation, and model listing, with structured error handling and automatic retry/backoff. |
+| `openai` | 2.1.0 | OpenAI API client: chat completions, conversations, embeddings, moderation, model listing. Enforced timeouts, capped retries, API key kept out of the client map, https-only base URL. |
 
 ### Data & storage
 
@@ -137,7 +137,7 @@ Every package installs the same way, regardless of category: `kh install <name>`
 
 | Package | Version | Description |
 |---|---|---|
-| `dns` | 1.0.0 | DNS lookup utilities using DNS-over-HTTPS |
+| `dns` | 1.1.0 | DNS lookups over DNS-over-HTTPS: validated names, URL-encoded queries, typed answers, https-only resolver |
 | `ftp` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): FTP client placeholder. Every call reports failure; no file is transferred. |
 | `grpc` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): gRPC client placeholder. Every call returns status UNIMPLEMENTED; no call is made. |
 | `mqtt` ⚠️ | 1.0.1 | EXPERIMENTAL (not implemented): MQTT client placeholder. Publish/subscribe report failure; nothing is sent. |

@@ -99,13 +99,13 @@ There is no published pre-built binary release yet. Details, the Inno Setup inst
 | Package | Version | Description |
 |---|---|---|
 | [`webi`](docs/webi.md) | 1.4.0 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
-| `requests` | 1.1.0 | HTTP client: get, post, post_json, put, delete with auto JSON decode |
+| `requests` | 1.2.0 | HTTP client v1.2 |
 | `sqlite` | 1.0.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
 | `vision` | 3.0.0 | Full classical computer-vision toolkit |
 | [`ocr`](docs/ocr.md) | 1.1.0 | Real OCR via Tesseract *(opt-in: build with `make OCR=1` (needs libtesseract))* |
 | [`tensor`](docs/tensor.md) | 2.0.0 | Native n-dimensional tensors with automatic differentiation |
 | [`nn`](docs/nn.md) | 1.0.0 | Minimal neural-network module on top of tensor |
-| `openai` | 2.0.0 | Production-grade OpenAI API client |
+| `openai` | 2.1.0 | OpenAI API client |
 | `test` | 1.0.0 | Unit testing framework: assertions, test suites, pass/fail reporting |
 
 Also: `math`, `strings`, `collections`, `colors`, `argparse`, `validation`, `dotenv`, `uuid`, `events`, `logger`, `datetime`, `webi_auth`, `morgos`, `postman`, `swagger`, `fs`, `csv_io`, `json_db`, `orm`, `kbrain`, `nlp`, `quant`, `dns`.

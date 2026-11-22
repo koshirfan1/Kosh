@@ -1,60 +1,99 @@
 # openai/transport.kh — shared request/retry logic for every endpoint.
-# Needs util.kh (_openai_headers) and errors.kh (_openai_parse_error,
-# _openai_is_retryable_status) loaded first.
-
-# ---------------------------------------------------------------------------
-# Internal: POST a JSON body to `path`, with retry + exponential backoff
-# on 429/5xx. client["max_retries"] is treated as the *total* number of
-# attempts (matching the `get_retry`/`post_retry` convention in the
-# `requests` package), minimum 1.
+# Needs util.kh (_openai_headers, _openai_config_problem) and errors.kh
+# (_openai_parse_error, _openai_is_retryable_status) loaded first.
 #
-# Returns the decoded JSON body on success, or an error map (see
-# errors.kh) on failure — check with openai_is_error().
+# What it guarantees (0.018.1):
+#   * the client's timeout is really applied to the HTTP call (and put back afterwards)
+#   * client["max_retries"] is the TOTAL number of attempts, limited to 1..10
+#   * waits between attempts are retry_base_ms, 2x, 4x ... capped at retry_max_ms
+#   * no new attempt starts once max_total_seconds have passed
+#   * only 429 and 5xx are retried. Network failures and timeouts are NOT: a POST that timed
+#     out may already have been processed (and billed), so repeating it silently would be wrong
+#   * a client with a bad/missing key or base_url sends nothing and returns an error map
 # ---------------------------------------------------------------------------
-fn _openai_post(client, path, body):
-    let url = client["base_url"] + path
-    let headers = _openai_headers(client)
 
-    let attempts = client["max_retries"]
-    if attempts < 1:
-        attempts = 1
+fn _openai_clamp_attempts(n):
+    if type(n) != "number" or n < 1:
+        return 1
+    if n > 10:
+        return 10
+    return floor(n)
 
+fn _openai_backoff_ms(client, attempt):
+    # attempt = 1 for the wait after the first failure
+    let ms = client["retry_base_ms"]
+    let k = 1
+    while k < attempt:
+        ms = ms * 2
+        if ms >= client["retry_max_ms"]:
+            return client["retry_max_ms"]
+        k = k + 1
+    if ms > client["retry_max_ms"]:
+        return client["retry_max_ms"]
+    return ms
+
+# An error map for a problem found before anything was sent.
+fn _openai_local_error(message):
+    return {"status": 0, "message": message, "type": "config_error", "code": nil, "raw": "", "detail": message}
+
+# Internal: send one request with the client's timeout applied; returns the final
+# `requests` response map after retries. kind is "POST" (body is the JSON data) or "GET".
+fn _openai_send(client, kind, url, body, headers):
+    let saved = http_configure({})
+    let secs = ceil(client["timeout"] / 1000)
+    if secs < 1:
+        secs = 1
+    if secs > 3600:
+        secs = 3600
+    let conn = 10
+    if secs < conn:
+        conn = secs
+    http_configure({"timeout_seconds": secs, "connect_timeout_seconds": conn})
+
+    let attempts = _openai_clamp_attempts(client["max_retries"])
+    let started = timestamp()
     let attempt = 0
     let res = nil
-    while attempt < attempts:
-        res = post_json_h(url, body, headers)
-        if res["success"]:
-            return res["json"]
-        if not _openai_is_retryable_status(res["status"]):
-            return _openai_parse_error(res)
-        attempt = attempt + 1
-        if attempt < attempts:
-            sleep(300 * pow(2, attempt))
+    let done = false
+    while attempt < attempts and not done:
+        if kind == "POST":
+            res = post_json_h(url, body, headers)
+        else:
+            res = get_h(url, headers)
+        if res["success"] or not _openai_is_retryable_status(res["status"]):
+            done = true
+        else:
+            attempt = attempt + 1
+            if attempt < attempts:
+                let wait_ms = _openai_backoff_ms(client, attempt)
+                if (timestamp() - started) + (wait_ms / 1000) > client["max_total_seconds"]:
+                    done = true
+                else:
+                    sleep(wait_ms)
+    http_configure({"timeout_seconds": saved["timeout_seconds"], "connect_timeout_seconds": saved["connect_timeout_seconds"]})
+    return res
 
+# ---------------------------------------------------------------------------
+# Internal: POST a JSON body to `path`. Returns the decoded JSON body on
+# success, or an error map (see errors.kh) on failure: check with openai_is_error().
+# ---------------------------------------------------------------------------
+fn _openai_post(client, path, body):
+    let problem = _openai_config_problem(client)
+    if len(problem) > 0:
+        return _openai_local_error(problem)
+    let res = _openai_send(client, "POST", client["base_url"] + path, body, _openai_headers(client))
+    if res["success"]:
+        return res["json"]
     return _openai_parse_error(res)
 
 # ---------------------------------------------------------------------------
-# Internal: GET from `path` (used by openai_list_models). Same retry
-# behavior as _openai_post.
+# Internal: GET from `path` (used by openai_list_models). Same behaviour.
 # ---------------------------------------------------------------------------
 fn _openai_get(client, path):
-    let url = client["base_url"] + path
-    let headers = _openai_headers(client)
-
-    let attempts = client["max_retries"]
-    if attempts < 1:
-        attempts = 1
-
-    let attempt = 0
-    let res = nil
-    while attempt < attempts:
-        res = get_h(url, headers)
-        if res["success"]:
-            return res["json"]
-        if not _openai_is_retryable_status(res["status"]):
-            return _openai_parse_error(res)
-        attempt = attempt + 1
-        if attempt < attempts:
-            sleep(300 * pow(2, attempt))
-
+    let problem = _openai_config_problem(client)
+    if len(problem) > 0:
+        return _openai_local_error(problem)
+    let res = _openai_send(client, "GET", client["base_url"] + path, nil, _openai_headers(client))
+    if res["success"]:
+        return res["json"]
     return _openai_parse_error(res)

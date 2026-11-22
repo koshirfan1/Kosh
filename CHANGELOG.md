@@ -3,6 +3,81 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.018.1 - 2026-11-18
+
+Package security, phase A2: the HTTP client (`requests`, the `http_*` natives, `openai`, `dns`).
+As before, each problem was reproduced first (most of them on a live process against a local
+server), then fixed, then covered by a test that fails on the old code.
+
+### Security
+- **A request body starting with `@` uploaded a local file.** Both curl wrappers sent bodies with
+  `-d`, and curl reads `-d @path` from disk: `post(url, "@/etc/passwd")` sent the file to the
+  remote server (a leak whenever a body comes from user input). Bodies are now sent as text.
+- **`file://`, `gopher://`, `dict://`, `ftp://` ... were accepted.** `get("file:///etc/passwd")`
+  returned the file. Only `http://` and `https://` are allowed now (checked twice: in Kosh's
+  validator and by curl's `--proto`).
+- **A URL starting with `-` was parsed as a curl option** (`-o/tmp/x ...`), and URL globbing
+  (`[1-100]`, `{a,b}`) could turn one call into many. Nothing is on curl's command line any more
+  (the URL, headers and body go in over its stdin as a config file), and globbing is off.
+- **API keys were visible in `ps`.** `curl ... -H 'Authorization: Bearer sk-...'` was on the command
+  line of a `sh -c` for the whole duration of the request. curl is now started directly (no shell,
+  `~/.curlrc` ignored) with only `-q --config -` on its command line.
+- **A server could forge the status.** The status was read from a fixed marker (`__WB_STATUS__`) with
+  `strstr`, so a response body containing it turned a 500 into a 200 and truncated the body. The status
+  now comes from the LAST marker of a per-request random value, and a curl failure is a failure: with
+  `--max-filesize` or a dropped connection curl still prints "200", which used to come back as a
+  successful, silently truncated response.
+- **No timeouts.** A server that never answered hung the program for ever (`openai_set_timeout` stored a
+  number that nothing read). Defaults are now 60 s per request (10 s to connect) and 32 MB per response,
+  configurable with `http_configure()`; the response cap is enforced even for chunked streams.
+- **Header injection.** CR/LF in a header (`session_set_header`, header maps, header blocks) added headers
+  of the caller's choosing; a method string could smuggle a request line. Headers and methods are validated
+  and a refused request sends nothing. Long header values (JWTs) were silently cut at 1024 bytes in one
+  wrapper and at 64 headers in another; both limits are gone.
+- **`session_get(s, "@evil.example/x")` changed the host** (`http://api.example.com` + path) and sent the
+  session's `Authorization` header there. A session path must start with `/` and not `//`.
+- `build_query` / `encode_form` did not URL-encode (`{"q": "a&admin=true"}` added a parameter). They do now.
+
+### openai 2.1.0
+- The timeout is enforced; retries are capped at 10 attempts with a backoff cap (it was `sleep(300 * 2^n)`
+  with no upper bound) and a total time budget; only 429 / 5xx are retried (a timed-out POST may already
+  have been billed, so it is not repeated).
+- **The API key is no longer in the client map**: `print client`, `json_encode(client)` and log lines show
+  only `sk-****1234`. The key, organization and `base_url` are validated when set (CR/LF would inject
+  headers); `base_url` must be https (http only for localhost); a bad one makes the client send nothing.
+
+### dns 1.1.0
+- Domain names are validated and URL-encoded (`"example.com&type=TXT"` added a parameter), record types
+  are whitelisted, the resolver must be https, and `dns_lookup` returns the first **A** record (it used to
+  return the first answer of any type, so a CNAME came back as if it were an IP address).
+
+### Added
+- `http_configure(options)`, `url_encode(text)`, `url_decode(text, plus_is_space)`; `requests_configure`,
+  `is_https_or_local(url)`; `res["error"]` on every failed request; `dns_query(domain, type)`,
+  `dns_set_resolver(url)`. Windows: the WinHTTP path now parses the URL properly (it ignored the port),
+  has timeouts and the size cap, and never follows redirects (compile-checked only).
+
+### Breaking
+- Anything that relied on `file://`, other schemes, `-d @file` bodies, shell-style URLs, unlimited waits,
+  or reading the API key back from `client["api_key"]`. Requests longer than 60 s need
+  `http_configure({"timeout_seconds": ...})` (or `openai_set_timeout`).
+- `get_retry` / `post_retry` retry only no-response / 408 / 429 / 5xx (not 4xx), at most 10 attempts, with backoff.
+- The webi `http_get_h` family shares the new core: a header block with an invalid line is refused.
+
+### Tests
+- `tests/security/test_packages.py` grew to 115 HTTP checks against local servers, plus
+  `tests/test_requests.kh` (98), `tests/test_openai.kh` (69) and `tests/test_dns_doh.kh` (56); all run in CI.
+  The suite was also run under ASan/UBSan and against 12 deliberately broken builds of the C core.
+  Against the old code the new tests fail at `file://`, `gopher://`, `-o`, all five `@file` paths, the
+  forged status, CR/LF headers and request-line smuggling (and then hang, since the old client has no timeout).
+
+### Versions
+`requests` 1.2.0, `openai` 2.1.0, `dns` 1.1.0.
+
+### Still open
+`fs` (sandbox), `csv_io`, `dotenv`, `json_db`, `orm`, `logger`, `sqlite`, `swagger`, `tensor` reshape overflow,
+`quant` parameter checks (phases B/C), and the Windows WinHTTP path needs a real test run.
+
 ## v0.018.0 - 2026-11-18
 
 Package security, phase A1 (from the community review of the non-webi packages). Each problem

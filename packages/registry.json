@@ -36,13 +36,13 @@
     },
     {
       "name": "requests",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "developer": "Irfan Khan",
-      "description": "HTTP client: get, post, post_json, put, delete with auto JSON decode",
+      "description": "HTTP client v1.2: http/https only, timeouts, size caps, URL-encoded queries, sessions, capped retries",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/requests/requests.kh",
       "sha256": {
-        "requests.kh": "d3dd83121b0c01ecab9ba1e096cc18505fb110eed9c3d6c0c99b297b31fa06cc"
+        "requests.kh": "6ffef9b93c338ec64af5c876b17e43c82409798cbffc5ceaea4e0175008905ed"
       }
     },
     {
@@ -193,9 +193,9 @@
     },
     {
       "name": "openai",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "developer": "Irfan Khan",
-      "description": "Production-grade OpenAI API client: chat completions, multi-turn conversations, embeddings, moderation, and model listing, with structured error handling and automatic retry/backoff.",
+      "description": "OpenAI API client: chat completions, conversations, embeddings, moderation, model listing. Enforced timeouts, capped retries, API key kept out of the client map, https-only base URL.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/openai/openai.kh",
       "files": [
@@ -213,11 +213,11 @@
         "requests"
       ],
       "sha256": {
-        "openai.kh": "280485a9a49d9bc0dbf6cb8027332a3d286e22689562d40b6476f4fb8486c037",
-        "util.kh": "f7df3536b715ac64e9b12eec82cc1283e9f5f0166190e77bf82431ba55b638bb",
-        "errors.kh": "0307f3367871525c866dc140b87cc4604cedd9a63362c1e796a70ef62f49eba5",
-        "transport.kh": "94cd90ecdac4e5de438c4c7a2631f77df30576acf3ee07c725321f627313b467",
-        "client.kh": "2631c45334ca98a20ef272bbb3ba3a0f3b5f53ecb45ad15121ffec55a9345123",
+        "openai.kh": "14ac4a8208189ddecd0c711b1c179fac4f5cd782a1872fe8ac196428cb33343a",
+        "util.kh": "b874bb05709141b78ba08c0a75f5c21d6ce567abd033517ec871559bce6e2c49",
+        "errors.kh": "7dddf39b2b8ef2587bef7e154d3729d20bcb0ddd7654147f4af78eb5c9bb57f2",
+        "transport.kh": "d371eb842e9e9bbc289a45b05c39612dac617a099813f979a427a912eb99620d",
+        "client.kh": "8e2d04cb2848fe65f87e17267d3597856a72e8caffeef836c396d81e602af5c9",
         "messages.kh": "583ccb4c86cdd47cd283a4084e29facedb85e0af4e514bc89b6520df5d5309cd",
         "chat.kh": "1f70766a8df6aea9ce98d9c7fc3e7c669bde740f727143e0f56b0dc02ef4f79a",
         "embeddings.kh": "258026f50376cb82dee90a1b099bee294db99520af1b01ce7b453af79d59366b",
@@ -307,16 +307,16 @@
     },
     {
       "name": "dns",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
-      "description": "DNS lookup utilities using DNS-over-HTTPS",
+      "description": "DNS lookups over DNS-over-HTTPS: validated names, URL-encoded queries, typed answers, https-only resolver",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/dns/dns.kh",
       "dependencies": [
         "requests"
       ],
       "sha256": {
-        "dns.kh": "0d2f81441820f2141286fdf610d029be636ee5e824d30a521db3b8db202a92dc"
+        "dns.kh": "a1cf512187f11c8f3b7ea4bed5bf7ad99b5964383040965519db08fe2f27fbf3"
       }
     },
     {

@@ -1,0 +1,83 @@
+# Tests for the dns package (DNS-over-HTTPS, v1.1): the parts that need no network.
+# (The wire behaviour, against a local fake resolver, is in tests/security/test_packages.py;
+#  the native dns_resolves_to / dns_reverse helpers are covered by tests/test_dns.kh.)
+#   ./kosh tests/test_dns_doh.kh        (run from the project root)
+import "../packages/dns/dns.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("dns package: validation and URL building")
+
+fn rep(ch, n):
+    let s = ch
+    while len(s) < n:
+        s = s + s
+    return substring(s, 0, n)
+
+# ---------------------------------------------------------------- _dns_valid_domain
+t = test_true(t, "example.com", _dns_valid_domain("example.com"))
+t = test_true(t, "a subdomain with hyphens and digits", _dns_valid_domain("a-b.c1.example.co.uk"))
+t = test_true(t, "a trailing dot is allowed", _dns_valid_domain("example.com."))
+t = test_true(t, "a single label", _dns_valid_domain("localhost"))
+t = test_true(t, "upper case", _dns_valid_domain("EXAMPLE.COM"))
+t = test_true(t, "an underscore label start (_dmarc)", _dns_valid_domain("_dmarc.example.com"))
+t = test_true(t, "punycode", _dns_valid_domain("xn--mnchen-3ya.de"))
+t = test_true(t, "a 63-character label", _dns_valid_domain(rep("a", 63) + ".com"))
+t = test_false(t, "a 64-character label", _dns_valid_domain(rep("a", 64) + ".com"))
+t = test_true(t, "a 200-character name made of short labels is fine", _dns_valid_domain(rep("a.", 200)))
+t = test_false(t, "a name over 253 characters", _dns_valid_domain(rep("a.", 300)))
+t = test_false(t, "empty", _dns_valid_domain(""))
+t = test_false(t, "only a dot", _dns_valid_domain("."))
+t = test_false(t, "two dots in a row", _dns_valid_domain("a..com"))
+t = test_false(t, "a leading dot", _dns_valid_domain(".example.com"))
+t = test_false(t, "a label starting with a hyphen", _dns_valid_domain("-a.example.com"))
+t = test_false(t, "a label ending with a hyphen", _dns_valid_domain("a-.example.com"))
+t = test_false(t, "an underscore inside a label", _dns_valid_domain("a_b.example.com"))
+t = test_false(t, "'&' (adds a query parameter)", _dns_valid_domain("example.com&type=TXT"))
+t = test_false(t, "'?'", _dns_valid_domain("example.com?x=1"))
+t = test_false(t, "'#'", _dns_valid_domain("example.com#x"))
+t = test_false(t, "'/'", _dns_valid_domain("example.com/x"))
+t = test_false(t, "'@'", _dns_valid_domain("a@example.com"))
+t = test_false(t, "a space", _dns_valid_domain("exa mple.com"))
+t = test_false(t, "a newline", _dns_valid_domain("example.com\nX: 1"))
+t = test_false(t, "'%'", _dns_valid_domain("example%2ecom"))
+t = test_false(t, "non-ASCII (use punycode)", _dns_valid_domain("münchen.de"))
+t = test_false(t, "a semicolon / shell character", _dns_valid_domain("a;b.com"))
+t = test_false(t, "a number is not a name", _dns_valid_domain(5))
+t = test_false(t, "nil is not a name", _dns_valid_domain(nil))
+
+# ---------------------------------------------------------------- record types
+t = test_eq(t, "A", _dns_type_number("A"), 1)
+t = test_eq(t, "lower-case a", _dns_type_number("a"), 1)
+t = test_eq(t, "AAAA", _dns_type_number("AAAA"), 28)
+t = test_eq(t, "MX", _dns_type_number("MX"), 15)
+t = test_eq(t, "TXT", _dns_type_number("txt"), 16)
+t = test_eq(t, "CNAME", _dns_type_number("CNAME"), 5)
+t = test_eq(t, "CAA", _dns_type_number("CAA"), 257)
+t = test_eq(t, "an unknown type", _dns_type_number("ANY"), 0)
+t = test_eq(t, "a type that tries to add parameters", _dns_type_number("A&do=1"), 0)
+t = test_eq(t, "a number is not a type", _dns_type_number(1), 0)
+
+# ---------------------------------------------------------------- the URL
+t = test_eq(t, "a normal query", _dns_url("example.com", "a"), "https://dns.google/resolve?name=example.com&type=A")
+t = test_eq(t, "the name is encoded (defence in depth)", _dns_url("a b&c", "TXT"), "https://dns.google/resolve?name=a%20b%26c&type=TXT")
+
+# ---------------------------------------------------------------- refusals return nil and send nothing
+t = test_nil(t, "dns_lookup of an invalid name", dns_lookup("example.com&type=TXT"))
+t = test_nil(t, "dns_query with an unknown type", dns_query("example.com", "ANY"))
+t = test_nil(t, "dns_query of an invalid name", dns_query("a b", "A"))
+t = test_nil(t, "dns_lookup(nil)", dns_lookup(nil))
+
+# ---------------------------------------------------------------- the resolver URL
+t = test_eq(t, "the default resolver", dns_resolver(), "https://dns.google/resolve")
+t = test_false(t, "plain http to a remote resolver is refused", dns_set_resolver("http://dns.example.com/resolve"))
+t = test_false(t, "a resolver with a query string is refused", dns_set_resolver("https://dns.example.com/resolve?x=1"))
+t = test_false(t, "a non-URL is refused", dns_set_resolver("dns.example.com"))
+t = test_false(t, "a file:// resolver is refused", dns_set_resolver("file:///etc/hostname"))
+t = test_false(t, "a user@host trick is refused", dns_set_resolver("https://dns.google@evil.example/resolve"))
+t = test_eq(t, "... and none of them changed it", dns_resolver(), "https://dns.google/resolve")
+t = test_true(t, "another https resolver is accepted", dns_set_resolver("https://cloudflare-dns.com/dns-query"))
+t = test_eq(t, "... and used", _dns_url("example.com", "A"), "https://cloudflare-dns.com/dns-query?name=example.com&type=A")
+t = test_true(t, "http://localhost is accepted (a local resolver)", dns_set_resolver("http://127.0.0.1:8053/resolve"))
+dns_set_resolver("https://dns.google/resolve")
+
+test_run(t)

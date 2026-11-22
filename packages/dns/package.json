@@ -1,7 +1,7 @@
 {
   "name": "dns",
-  "version": "1.0.0",
-  "description": "DNS lookup utilities via DNS-over-HTTPS.",
+  "version": "1.1.0",
+  "description": "DNS lookups over DNS-over-HTTPS: validated names, URL-encoded queries, typed answers, https-only resolver",
   "author": "koshirfan1",
   "developer": "Irfan Khan",
   "main": "dns.kh",

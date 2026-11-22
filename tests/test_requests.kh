@@ -1,0 +1,140 @@
+# Tests for the requests package (v1.2) and the url_encode / url_decode natives.
+# No network here (the socket-level behaviour is in tests/security/test_packages.py).
+#   ./kosh tests/test_requests.kh        (run from the project root)
+import "../packages/requests/requests.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("requests: URL encoding, sessions, retries")
+
+# ---------------------------------------------------------------- url_encode
+t = test_eq(t, "empty string", url_encode(""), "")
+t = test_eq(t, "unreserved characters are kept", url_encode("AZaz09-._~"), "AZaz09-._~")
+t = test_eq(t, "space", url_encode("a b"), "a%20b")
+t = test_eq(t, "& and = (the characters that add query parameters)", url_encode("a&b=c"), "a%26b%3Dc")
+t = test_eq(t, "# ? / : @", url_encode("#?/:@"), "%23%3F%2F%3A%40")
+t = test_eq(t, "% itself", url_encode("100%"), "100%25")
+t = test_eq(t, "+ (not a space)", url_encode("1+1"), "1%2B1")
+t = test_eq(t, "newline and CR", url_encode("a\r\nb"), "a%0D%0Ab")
+t = test_eq(t, "quotes and angle brackets", url_encode("\"'<>"), "%22%27%3C%3E")
+t = test_eq(t, "non-ASCII is percent-encoded as UTF-8 bytes", url_encode("é"), "%C3%A9")
+t = test_eq(t, "hex digits are upper-case", url_encode("\x7f"), "%7F")
+t = test_nil(t, "a number is not a string", url_encode(5))
+t = test_nil(t, "nil is not a string", url_encode(nil))
+
+# ---------------------------------------------------------------- url_decode
+t = test_eq(t, "%41", url_decode("%41"), "A")
+t = test_eq(t, "lower-case hex", url_decode("%c3%a9"), "é")
+t = test_eq(t, "a%20b", url_decode("a%20b"), "a b")
+t = test_eq(t, "'+' stays a plus by default", url_decode("a+b"), "a+b")
+t = test_eq(t, "'+' becomes a space when asked (query strings, forms)", url_decode("a+b", true), "a b")
+t = test_eq(t, "%2B is a plus even with plus_is_space", url_decode("1%2B1+2", true), "1+1 2")
+t = test_eq(t, "a lone % is kept", url_decode("100%"), "100%")
+t = test_eq(t, "% with one hex digit is kept", url_decode("a%4"), "a%4")
+t = test_eq(t, "% with non-hex digits is kept", url_decode("%zz"), "%zz")
+t = test_eq(t, "%00 is kept as written (a NUL can not live in a string)", url_decode("a%00b"), "a%00b")
+t = test_eq(t, "decoding is one pass: %2541 is %41, not A", url_decode("%2541"), "%41")
+t = test_eq(t, "empty", url_decode(""), "")
+t = test_nil(t, "a number is not a string", url_decode(5))
+let samples = ["", "abc", "a b&c=d", "é–کراچی", "100% + 1 = 101?", "line1\nline2", "../../etc/passwd", "'\"<script>"]
+let round_ok = true
+let si = 0
+while si < len(samples):
+    if url_decode(url_encode(samples[si])) != samples[si]:
+        round_ok = false
+    si = si + 1
+t = test_true(t, "url_decode(url_encode(x)) == x for 8 awkward strings", round_ok)
+
+# ---------------------------------------------------------------- build_query / build_url / encode_form
+t = test_eq(t, "one parameter", build_query({"page": "1"}), "page=1")
+t = test_eq(t, "empty map", build_query({}), "")
+t = test_eq(t, "a value that tries to add a parameter is encoded", build_query({"q": "a b&admin=true"}), "q=a%20b%26admin%3Dtrue")
+t = test_eq(t, "keys are encoded too", build_query({"a b": "1"}), "a%20b=1")
+t = test_eq(t, "non-ASCII values", build_query({"city": "کراچی"}), "city=%DA%A9%D8%B1%D8%A7%DA%86%DB%8C")
+t = test_eq(t, "numbers", build_query({"n": 1.5}), "n=1.5")
+t = test_eq(t, "booleans", build_query({"on": true}), "on=true")
+let q2 = build_query({"a": "1", "b": "2"})
+t = test_true(t, "two parameters are joined with &", q2 == "a=1&b=2" or q2 == "b=2&a=1")
+t = test_eq(t, "encode_form is the same encoding", encode_form({"user": "irfan", "note": "a&b"}) == "user=irfan&note=a%26b" or encode_form({"user": "irfan", "note": "a&b"}) == "note=a%26b&user=irfan", true)
+t = test_eq(t, "build_url appends ?", build_url("https://api.example.com/u", {"p": "2"}), "https://api.example.com/u?p=2")
+t = test_eq(t, "build_url appends & when there is already a query", build_url("https://api.example.com/u?x=1", {"p": "2"}), "https://api.example.com/u?x=1&p=2")
+t = test_eq(t, "build_url with no params returns the base", build_url("https://api.example.com/u", {}), "https://api.example.com/u")
+
+# ---------------------------------------------------------------- session headers
+# (maps are shared, not copied: session_set_header changes the session it is given,
+#  so each case below builds its own)
+fn fresh():
+    return session("http://127.0.0.1:9")
+fn with_auth():
+    return session_set_header(fresh(), "Authorization", "Bearer abc")
+
+let s0 = fresh()
+t = test_eq(t, "a header is stored", with_auth()["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "a second header is joined with CRLF", session_set_header(with_auth(), "Accept", "application/json")["headers"], "Authorization: Bearer abc\r\nAccept: application/json")
+t = test_eq(t, "CR in a value is refused (session unchanged)", session_set_header(with_auth(), "X-A", "ok\rX-Evil: 1")["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "LF in a value is refused", session_set_header(with_auth(), "X-A", "ok\nX-Evil: 1")["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "CRLF in a value is refused", session_set_header(with_auth(), "X-A", "ok\r\nX-Evil: 1")["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "CRLF in a name is refused", session_set_header(with_auth(), "X-A\r\nX-Evil", "1")["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "a name with ':' is refused", session_set_header(with_auth(), "X-A: x", "1")["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "an empty name is refused", session_set_header(with_auth(), "", "1")["headers"], "Authorization: Bearer abc")
+t = test_eq(t, "a value with a colon and spaces is fine", session_set_header(fresh(), "Referer", "http://a/b c")["headers"], "Referer: http://a/b c")
+t = test_eq(t, "a refused header on a fresh session leaves it empty", session_set_header(fresh(), "X", "a\r\nb")["headers"], "")
+
+# ---------------------------------------------------------------- session paths cannot change the host
+t = test_eq(t, "'/x'", _req_session_url(s0, "/x"), "http://127.0.0.1:9/x")
+t = test_eq(t, "'/x?y=1'", _req_session_url(s0, "/x?y=1"), "http://127.0.0.1:9/x?y=1")
+t = test_eq(t, "'/' alone", _req_session_url(s0, "/"), "http://127.0.0.1:9/")
+t = test_eq(t, "'?q=1' (a bare query)", _req_session_url(s0, "?q=1"), "http://127.0.0.1:9?q=1")
+t = test_nil(t, "'@evil.example/x' (turns the host into evil.example) is refused", _req_session_url(s0, "@evil.example/x"))
+t = test_nil(t, "'//evil.example/x' is refused", _req_session_url(s0, "//evil.example/x"))
+t = test_nil(t, "'.evil.example' is refused", _req_session_url(s0, ".evil.example"))
+t = test_nil(t, "':80/x' is refused", _req_session_url(s0, ":80/x"))
+t = test_nil(t, "'x' (no leading slash) is refused", _req_session_url(s0, "x"))
+t = test_nil(t, "an empty path is refused", _req_session_url(s0, ""))
+t = test_nil(t, "a backslash is refused", _req_session_url(s0, "/a\\b"))
+t = test_nil(t, "CR/LF in a path is refused", _req_session_url(s0, "/a\r\nX: 1"))
+t = test_nil(t, "a number is not a path", _req_session_url(s0, 5))
+let refused = session_get(s0, "@evil.example/x")
+t = test_eq(t, "session_get with a bad path makes no request: status 0", refused["status"], 0)
+t = test_false(t, "... success is false", refused["success"])
+t = test_not_nil(t, "... and there is an error message", refused["error"])
+t = test_eq(t, "session_post refused too", session_post(s0, "//evil/x", "a=1")["status"], 0)
+t = test_eq(t, "session_put refused too", session_put(s0, "@evil/x", "a=1")["status"], 0)
+t = test_eq(t, "session_delete refused too", session_delete(s0, "@evil/x")["status"], 0)
+t = test_eq(t, "session_post_json refused too", session_post_json(s0, "@evil/x", {"a": 1})["status"], 0)
+
+# ---------------------------------------------------------------- retry helpers
+t = test_eq(t, "attempts 3", _req_clamp_attempts(3), 3)
+t = test_eq(t, "attempts 3.9 -> 3", _req_clamp_attempts(3.9), 3)
+t = test_eq(t, "attempts 0 -> 1", _req_clamp_attempts(0), 1)
+t = test_eq(t, "attempts -3 -> 1", _req_clamp_attempts(-3), 1)
+t = test_eq(t, "attempts 'x' -> 1", _req_clamp_attempts("x"), 1)
+t = test_eq(t, "attempts nil -> 1", _req_clamp_attempts(nil), 1)
+t = test_eq(t, "attempts 10 -> 10", _req_clamp_attempts(10), 10)
+t = test_eq(t, "attempts 11 -> 10", _req_clamp_attempts(11), 10)
+t = test_eq(t, "attempts 1000000 -> 10", _req_clamp_attempts(1000000), 10)
+t = test_true(t, "no response (status 0) is retryable", _req_retryable({"status": 0}))
+t = test_true(t, "408 is retryable", _req_retryable({"status": 408}))
+t = test_true(t, "429 is retryable", _req_retryable({"status": 429}))
+t = test_true(t, "500 is retryable", _req_retryable({"status": 500}))
+t = test_true(t, "503 is retryable", _req_retryable({"status": 503}))
+t = test_false(t, "200 is not", _req_retryable({"status": 200}))
+t = test_false(t, "301 is not", _req_retryable({"status": 301}))
+t = test_false(t, "400 is not", _req_retryable({"status": 400}))
+t = test_false(t, "401 is not", _req_retryable({"status": 401}))
+t = test_false(t, "404 is not", _req_retryable({"status": 404}))
+t = test_eq(t, "backoff 0 -> 200 ms", _req_backoff_ms(0), 200)
+t = test_eq(t, "backoff 1 -> 400 ms", _req_backoff_ms(1), 400)
+t = test_eq(t, "backoff 3 -> 1600 ms", _req_backoff_ms(3), 1600)
+t = test_eq(t, "backoff 5 is capped at 5000 ms", _req_backoff_ms(5), 5000)
+t = test_eq(t, "backoff 50 is capped too", _req_backoff_ms(50), 5000)
+
+# ---------------------------------------------------------------- refusals reach the caller as data, not as crashes
+let r1 = get("file:///etc/hostname")
+t = test_eq(t, "get(file://...) : status 0", r1["status"], 0)
+t = test_not_nil(t, "... with an error", r1["error"])
+t = test_nil(t, "... and no json", r1["json"])
+t = test_eq(t, "post() to a non-http URL: status 0", post("ftp://127.0.0.1/x", "a=1")["status"], 0)
+let c = requests_configure({"timeout_seconds": 7})
+t = test_eq(t, "requests_configure returns the settings in force", c["timeout_seconds"], 7)
+
+test_run(t)
