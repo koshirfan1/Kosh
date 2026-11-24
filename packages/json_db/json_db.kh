@@ -1,18 +1,30 @@
-# Kosh JSON Database
+# Kosh JSON Database v1.1.0
 # Usage: import "json_db"
+#
+# A tiny whole-file JSON store: db_open loads it, db_set/db_delete change
+# the in-memory copy, db_save writes it back atomically (temp file +
+# rename), so a crash mid-save cannot corrupt or truncate the file.
+#
+# NOT safe for several processes writing the same file at once (there is
+# no locking): the last db_save wins. Use one writer, or sqlite.
 
 fn db_open(path):
     let content = read_file(path)
     let data = {}
+    let load_error = nil
     if content != nil:
         if len(content) > 0:
             data = json_decode(content)
-            if data == nil:
+            if data == nil or type(data) != "map":
+                # The file exists but is not a JSON object. Do NOT pretend
+                # it is empty: db_save would then overwrite the user's data.
                 data = {}
+                load_error = "file exists but is not valid JSON object data"
 
     return {
         "path": path,
-        "data": data
+        "data": data,
+        "load_error": load_error
     }
 
 fn db_get(db, key, default_val):
@@ -27,10 +39,22 @@ fn db_set(db, key, val):
 fn db_has(db, key):
     return has(db["data"], key)
 
+# Really removes the key (db_has is false afterwards, keys() omits it).
 fn db_delete(db, key):
-    db["data"][key] = nil
+    let fresh = {}
+    for k in keys(db["data"]):
+        if k != key:
+            fresh[k] = db["data"][k]
+    db["data"] = fresh
     return db
 
+fn db_keys(db):
+    return keys(db["data"])
+
+# Returns bytes written, or nil if the save was refused or failed.
 fn db_save(db):
+    if db["load_error"] != nil:
+        print "db_save refused: " + db["path"] + " " + db["load_error"] + " (fix or remove it first)"
+        return nil
     let content = json_encode(db["data"])
-    return write_file(db["path"], content)
+    return write_file_atomic(db["path"], content)

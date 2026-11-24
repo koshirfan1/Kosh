@@ -1,5 +1,20 @@
-# Kosh Dotenv Package
+# Kosh Dotenv Package v1.1.0
 # Usage: import "dotenv"
+#
+#   let env = load_env(".env")
+#   let key = env_get(env, "API_KEY")
+#   let env = load_env_strict(".env")   # nil if the file is readable by others
+#
+# Parsing rules (the usual dotenv ones):
+#   - split at the FIRST "=" only, so API_KEY=abc123== keeps its "=="
+#   - an optional leading "export " is ignored
+#   - "double quoted" values support \n \t \r \" \\ escapes
+#   - 'single quoted' values are literal
+#   - an unquoted value ends at " #" (inline comment) and is trimmed
+#   - lines starting with # and blank lines are skipped
+#   - a line with no "=" or an empty key is skipped
+#   - later duplicates override earlier ones
+# The file is read as plain text; it is never executed.
 
 # Internal helper: trim whitespace
 fn _trim(s):
@@ -23,7 +38,49 @@ fn _trim(s):
 
     return substring(s, start, end - start)
 
-# Internal helper: strip quotes
+# Internal helper: parse the value part of a line.
+fn _parse_value(raw):
+    let s = _trim(raw)
+    if len(s) == 0:
+        return ""
+    let q = substring(s, 0, 1)
+    if q == "\"" or q == "'":
+        # find the matching closing quote
+        let out = ""
+        let i = 1
+        while i < len(s):
+            let c = substring(s, i, 1)
+            if q == "\"" and c == "\\" and i + 1 < len(s):
+                let nx = substring(s, i + 1, 1)
+                if nx == "n":
+                    out = out + "\n"
+                else:
+                    if nx == "t":
+                        out = out + "\t"
+                    else:
+                        if nx == "r":
+                            out = out + "\r"
+                        else:
+                            out = out + nx
+                i = i + 2
+            else:
+                if c == q:
+                    return out
+                out = out + c
+                i = i + 1
+        # no closing quote: treat the rest literally, quote included
+        return s
+    # unquoted: cut at an inline comment (whitespace then #)
+    let i = 1
+    while i < len(s):
+        if substring(s, i, 1) == "#":
+            let prev = substring(s, i - 1, 1)
+            if prev == " " or prev == "\t":
+                return _trim(substring(s, 0, i))
+        i = i + 1
+    return s
+
+# kept for backward compatibility
 fn _strip_quotes(s):
     if len(s) < 2:
         return s
@@ -45,13 +102,41 @@ fn load_env(path):
         let l = _trim(line)
         if len(l) > 0:
             if substring(l, 0, 1) != "#":
-                let parts = split(l, "=")
-                if len(parts) >= 2:
-                    let key = _trim(parts[0])
-                    let val = _trim(parts[1])
-                    val = _strip_quotes(val)
-                    result[key] = val
+                if len(l) > 7 and substring(l, 0, 7) == "export ":
+                    l = _trim(substring(l, 7, len(l) - 7))
+                # split at the FIRST "="
+                let eq = -1
+                let i = 0
+                while i < len(l):
+                    if substring(l, i, 1) == "=":
+                        eq = i
+                        break
+                    i = i + 1
+                if eq > 0:
+                    let key = _trim(substring(l, 0, eq))
+                    if len(key) > 0:
+                        result[key] = _parse_value(substring(l, eq + 1, len(l) - eq - 1))
     return result
+
+# true if the file is NOT accessible by group/other (mode 0600/0400 style),
+# false if it is, nil if it cannot be checked (missing file, or Windows).
+fn env_file_is_private(path):
+    let m = file_mode(path)
+    if m == nil:
+        return nil
+    # group/other bits are the low 6 bits (octal 077 = 63)
+    return (m % 64) == 0
+
+# Like load_env, but returns nil (and prints why) if the file is readable
+# by other users. Where permissions cannot be checked (Windows) it loads.
+fn load_env_strict(path):
+    if not file_exists(path):
+        return {}
+    let priv = env_file_is_private(path)
+    if priv == false:
+        print "load_env_strict: " + path + " is readable by other users; run: chmod 600 " + path
+        return nil
+    return load_env(path)
 
 fn env_get(env_map, key):
     if has(env_map, key):

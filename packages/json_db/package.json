@@ -1,6 +1,6 @@
 {
   "name": "json_db",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A schema-less NoSQL database engine that persists Kosh Maps to local JSON files with automatic serialization.",
   "author": "koshirfan1",
   "developer": "Irfan Khan",

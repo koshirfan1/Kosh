@@ -1,4 +1,4 @@
-# Kosh fs package v1.0.0
+# Kosh fs package v1.1.0
 # Author: Irfan Khan
 # File system utilities — read, write, append, copy, walk paths
 #
@@ -32,16 +32,18 @@ fn fs_read_json(path):
 # ─────────────────────────────────────────────────────────────
 
 fn fs_write(path, content):
-    return write_file(path, content)
+    # Atomic: temp file + rename, so a crash never leaves a truncated file.
+    # Returns bytes written, or nil on failure.
+    return write_file_atomic(path, content)
 
 fn fs_write_json(path, data):
-    return write_file(path, json_encode(data))
+    return write_file_atomic(path, json_encode(data))
 
 fn fs_append(path, content):
     let existing = read_file(path)
     if existing == nil:
         existing = ""
-    return write_file(path, existing + content)
+    return write_file_atomic(path, existing + content)
 
 fn fs_append_line(path, line):
     return fs_append(path, line + "\n")
@@ -118,7 +120,7 @@ fn fs_copy(src, dst):
     let content = read_file(src)
     if content == nil:
         return false
-    return write_file(dst, content)
+    return write_file_atomic(dst, content)
 
 # ─────────────────────────────────────────────────────────────
 # CONFIG HELPERS  (read/write key-value JSON config)
@@ -137,6 +139,94 @@ fn fs_config_get(path, key, default_val):
     return default_val
 
 fn fs_config_set(path, key, value):
+    # Refuse to overwrite a config that exists but cannot be parsed:
+    # silently replacing it with {} would destroy the user's data.
+    let raw = read_file(path)
+    if raw != nil and len(raw) > 0:
+        if json_decode(raw) == nil:
+            return nil
     let cfg = fs_config_read(path)
     cfg[key] = value
     return fs_write_json(path, cfg)
+
+# ─────────────────────────────────────────────────────────────
+# SANDBOX  (opt-in: confine all access to one directory)
+# ─────────────────────────────────────────────────────────────
+# The plain fs_* functions above accept ANY path, including "../x" and
+# absolute paths. If a path can come from a user or another program,
+# use the sandbox functions instead:
+#
+#   let sb = fs_sandbox("/srv/uploads")
+#   fs_sandbox_write(sb, "a.txt", "hi")       # ok
+#   fs_sandbox_write(sb, "../evil.txt", "x")  # nil: escapes the root
+#   fs_sandbox_read(sb, "/etc/passwd")        # nil: absolute path
+#
+# Symlinks are resolved before the check, so a link inside the root that
+# points outside it is refused too. On Windows symlinks are not resolved
+# (only "..", drive letters and absolute paths are checked).
+#
+# Residual risk: the check and the file operation are two steps, so an
+# attacker who can create symlinks inside the root concurrently could
+# race them (TOCTOU). Do not put attacker-writable directories in a sandbox.
+
+fn fs_sandbox(root):
+    if type(root) != "string" or len(root) == 0:
+        return nil
+    let real = path_real(root, true)
+    if real == nil:
+        return nil
+    return {"root": real}
+
+# Returns the resolved absolute path inside the sandbox, or nil.
+fn fs_sandbox_path(sb, rel):
+    if sb == nil or type(rel) != "string" or len(rel) == 0:
+        return nil
+    let first = substring(rel, 0, 1)
+    if first == "/" or first == "\\":
+        return nil
+    if len(rel) >= 2 and substring(rel, 1, 1) == ":":
+        return nil
+    if contains(rel, "\\"):
+        return nil
+    let full = path_real(sb["root"] + "/" + rel)
+    if full == nil:
+        return nil
+    let root = sb["root"]
+    if full == root:
+        return full
+    let prefix = root
+    if substring(root, len(root) - 1, 1) != "/":
+        prefix = root + "/"
+    if len(full) > len(prefix) and substring(full, 0, len(prefix)) == prefix:
+        return full
+    return nil
+
+fn fs_sandbox_read(sb, rel):
+    let p = fs_sandbox_path(sb, rel)
+    if p == nil:
+        return nil
+    return read_file(p)
+
+fn fs_sandbox_write(sb, rel, content):
+    let p = fs_sandbox_path(sb, rel)
+    if p == nil:
+        return nil
+    return write_file_atomic(p, content)
+
+fn fs_sandbox_append(sb, rel, content):
+    let p = fs_sandbox_path(sb, rel)
+    if p == nil:
+        return nil
+    return fs_append(p, content)
+
+fn fs_sandbox_exists(sb, rel):
+    let p = fs_sandbox_path(sb, rel)
+    if p == nil:
+        return false
+    return file_exists(p)
+
+fn fs_sandbox_remove(sb, rel):
+    let p = fs_sandbox_path(sb, rel)
+    if p == nil:
+        return false
+    return remove_file(p)

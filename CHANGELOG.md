@@ -3,6 +3,57 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.019.0 - 2026-11-22
+
+Package security and data integrity, phase B: the file and data packages (`fs`, `json_db`, `orm`,
+`csv_io`, `dotenv`, `logger`). Every problem was reproduced on a live process first, fixed, and
+covered by a test; the new Kosh tests were also run against the old packages and fail there.
+ASan/UBSan clean. The Windows build of the new natives was only compile-checked (mingw), not run.
+
+### New builtins
+- `write_file_atomic(path, content)`: writes a temp file in the same directory, flushes it to disk,
+  then renames it over `path`. Returns bytes written, or `nil` on failure (never truncates `path`).
+- `path_real(path [, must_exist])`: absolute path with symlinks and `..` resolved, even if the last
+  component does not exist yet. `nil` if the parent is missing.
+- `file_mode(path)`: permission bits (e.g. `384` = 0600), `nil` on Windows or if missing.
+
+### Fixed
+- **`dotenv` corrupted values.** It split on every `=`, so `API_KEY=abc123==` became `abc123` and a
+  URL's `?sslmode=require` was cut. Now splits at the first `=`; `export KEY=...` works; double-quoted
+  values support `\n \t \" \\`; single-quoted are literal; ` # comment` ends an unquoted value.
+  New `load_env_strict()` refuses a `.env` readable by group/other (POSIX only).
+- **`json_db`**: `db_delete` now removes the key (it used to store `nil`, so `db_has` stayed true);
+  `db_save` is atomic; a corrupt file is no longer treated as empty and overwritten (`load_error`,
+  `db_save` refuses). New `db_keys`.
+- **`orm`**: the table name was a file path (`../x`, `/tmp/x` wrote anywhere). Names are now letters,
+  digits and `_` only. New optional schema (`orm_define`) rejects missing, unknown or wrongly typed
+  fields. `orm_create` reloads before saving so rows from other callers are not lost.
+- **`csv_io`**: real RFC 4180 reading and writing (commas, quotes and newlines inside cells used to
+  split rows); BOM skipped; short rows padded; columns are the union of all rows' keys. **Formula
+  injection**: string cells starting with `= + - @` are prefixed with `'` on write (numbers are not
+  touched; `csv_write_opts(..., {"formula_protection": false})` turns it off).
+- **`logger`**: newlines, CR and ESC in messages and names are escaped (no forged log lines or terminal
+  escapes); `password`, `api_key`, `token`, `Authorization: Bearer ...` and similar are redacted by key
+  in `log_kv`/`log_map` and by pattern in free text; `logger_save` is atomic.
+- **`fs`**: writes are atomic; `fs_config_set` refuses to overwrite a config it cannot parse. New
+  opt-in sandbox: `fs_sandbox(root)`, `fs_sandbox_read/write/append/exists/remove` refuse `..`,
+  absolute paths, drive letters, backslashes and symlinks that leave the root.
+
+### Behaviour changes (breaking)
+- `csv_write` output now uses CRLF line endings and quotes cells; string cells that start with
+  `= + - @` gain a leading `'`. `csv_read` no longer trims values.
+- `db_delete` really deletes; `orm_model` returns `nil` for invalid names; `fs_write`/`db_save`/
+  `csv_write`/`logger_save` return `nil` (not a runtime error) when the write fails.
+- `dotenv` parsing is stricter and more correct (see above).
+
+### Known limits
+- `json_db`, `orm` and `fs_append` have **no locking**: two processes saving the same file at once
+  still lose one update (last writer wins). Atomic rename only guarantees the file is never half-written.
+- The fs sandbox checks the path and then uses it (a race exists if an attacker can create symlinks
+  inside the root while your program runs). Windows does not resolve symlinks.
+- Log redaction is best-effort: an unlabelled secret in free text cannot be detected.
+- `read_file`/`write_file` themselves are unchanged (still cut at the first NUL byte).
+
 ## v0.018.1 - 2026-11-18
 
 Package security, phase A2: the HTTP client (`requests`, the `http_*` natives, `openai`, `dns`).

@@ -183,7 +183,7 @@ jobs:
       shell: msys2 {0}
       run: ./kosh.exe tests/test_webi_secure_http.kh
 
-    - name: Run package tests (uuid, webi_auth, experimental placeholders)
+    - name: Run package tests (uuid, webi_auth, experimental placeholders, files/data packages)
       run: |
         ./kosh tests/test_uuid.kh
         ./kosh tests/test_webi_auth.kh
@@ -194,6 +194,12 @@ jobs:
         ./kosh tests/test_ssh.kh
         ./kosh tests/test_webi_socket.kh
         ./kosh tests/test_requests.kh
+        ./kosh tests/test_fs.kh
+        ./kosh tests/test_json_db.kh
+        ./kosh tests/test_orm.kh
+        ./kosh tests/test_csv_io.kh
+        ./kosh tests/test_dotenv.kh
+        ./kosh tests/test_logger.kh
         ./kosh tests/test_openai.kh
         ./kosh tests/test_dns_doh.kh
 

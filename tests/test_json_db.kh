@@ -23,4 +23,29 @@ let db2 = db_open("test_db.json")
 t = test_eq(t, "reopened count should be 42", db_get(db2, "count", 0), 42)
 t = test_true(t, "db_has count should be true", db_has(db2, "count"))
 
+
+# ---- Phase B hardening ------------------------------------------------
+# db_delete really removes the key
+let d1 = db_open("tests/_jdb1.json")
+d1 = db_set(d1, "a", 1)
+d1 = db_set(d1, "b", 2)
+d1 = db_delete(d1, "a")
+t = test_false(t, "deleted key: db_has is false", db_has(d1, "a"))
+t = test_eq(t, "deleted key: other key kept", db_get(d1, "b", 0), 2)
+t = test_eq(t, "deleted key: keys() has 1 entry", len(db_keys(d1)), 1)
+t = test_not_nil(t, "save returns bytes", db_save(d1))
+let d2 = db_open("tests/_jdb1.json")
+t = test_false(t, "deleted key stays deleted after reload", db_has(d2, "a"))
+t = test_eq(t, "kept key survives reload", db_get(d2, "b", 0), 2)
+# a corrupt file is not silently treated as empty and overwritten
+write_file("tests/_jdb_bad.json", "{this is not json")
+let d3 = db_open("tests/_jdb_bad.json")
+t = test_not_nil(t, "corrupt file: load_error set", d3["load_error"])
+t = test_nil(t, "corrupt file: save refused", db_save(d3))
+t = test_eq(t, "corrupt file: content untouched", read_file("tests/_jdb_bad.json"), "{this is not json")
+# no temp files left behind
+t = test_false(t, "no leftover temp file", file_exists("tests/_jdb1.json.kosh-tmp"))
+remove_file("tests/_jdb1.json")
+remove_file("tests/_jdb_bad.json")
+
 test_run(t)

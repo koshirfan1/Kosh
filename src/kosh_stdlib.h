@@ -40,5 +40,8 @@ void fn_exit(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_sleep(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_base64_decode_to_file(Value *result, Interpreter *interp, int argc, Value *args);
 void fn_remove_file(Value *result, Interpreter *interp, int argc, Value *args);
+void fn_write_file_atomic(Value *result, Interpreter *interp, int argc, Value *args);
+void fn_path_real(Value *result, Interpreter *interp, int argc, Value *args);
+void fn_file_mode(Value *result, Interpreter *interp, int argc, Value *args);
 
 #endif

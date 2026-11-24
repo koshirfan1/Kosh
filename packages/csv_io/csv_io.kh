@@ -1,86 +1,165 @@
-# Kosh CSV I/O Package
+# Kosh CSV I/O Package v1.1.0
 # Usage: import "csv_io"
+#
+#   let rows = csv_read("people.csv")          # array of maps (header row = keys)
+#   csv_write("out.csv", rows)                 # quoted per RFC 4180, atomic
+#   let grid = csv_parse("a,\"b,c\"\n1,2")      # array of arrays of strings
+#   let text = csv_stringify(rows)
+#
+# Reading follows RFC 4180: quoted fields may contain commas, quotes
+# ("" = one quote) and newlines; CRLF and LF both end a record; a UTF-8
+# BOM is skipped. Values are NOT trimmed. csv_parse returns nil for an
+# unterminated quote instead of guessing.
+#
+# Writing quotes any field containing , " CR or LF. FORMULA PROTECTION:
+# a *string* cell starting with = + - @ (or tab/CR) is prefixed with a
+# single quote so spreadsheets do not run it as a formula (CSV injection).
+# Numbers are never altered. Turn it off with
+#   csv_write_opts(path, rows, {"formula_protection": false})
+#
+# Speed: parsing is a character loop in Kosh, fine for files up to a few
+# MB; use sqlite for anything bigger.
 
-# Internal helper: trim whitespace
-fn _trim(s):
-    if type(s) != "string":
-        return s
-    let start = 0
-    while start < len(s):
-        let c = substring(s, start, 1)
-        if c == " " or c == "\t" or c == "\r" or c == "\n":
-            start = start + 1
+fn csv_parse(text):
+    if type(text) != "string":
+        return nil
+    # skip UTF-8 BOM
+    if len(text) >= 3 and substring(text, 0, 3) == "\xEF\xBB\xBF":
+        text = substring(text, 3, len(text) - 3)
+    let rows = []
+    let row = []
+    let field = ""
+    let in_quotes = false
+    let was_quoted = false
+    let n = len(text)
+    let i = 0
+    let have_data = false
+    while i < n:
+        let c = substring(text, i, 1)
+        if in_quotes:
+            if c == "\"":
+                if i + 1 < n and substring(text, i + 1, 1) == "\"":
+                    field = field + "\""
+                    i = i + 1
+                else:
+                    in_quotes = false
+            else:
+                field = field + c
         else:
-            break
+            if c == "\"" and len(field) == 0 and not was_quoted:
+                in_quotes = true
+                was_quoted = true
+                have_data = true
+            else:
+                if c == ",":
+                    row = push(row, field)
+                    field = ""
+                    was_quoted = false
+                    have_data = true
+                else:
+                    if c == "\r" or c == "\n":
+                        if c == "\r" and i + 1 < n and substring(text, i + 1, 1) == "\n":
+                            i = i + 1
+                        if have_data or len(field) > 0:
+                            row = push(row, field)
+                            rows = push(rows, row)
+                        row = []
+                        field = ""
+                        was_quoted = false
+                        have_data = false
+                    else:
+                        field = field + c
+                        have_data = true
+        i = i + 1
+    if in_quotes:
+        return nil
+    if have_data or len(field) > 0:
+        row = push(row, field)
+        rows = push(rows, row)
+    return rows
 
-    let end = len(s)
-    while end > start:
-        let c = substring(s, end - 1, 1)
-        if c == " " or c == "\t" or c == "\r" or c == "\n":
-            end = end - 1
-        else:
-            break
-
-    return substring(s, start, end - start)
-
-# Public API
 fn csv_read(path):
     let content = read_file(path)
     if content == nil:
         return []
-
-    let lines = split(content, "\n")
-    if len(lines) == 0:
+    let grid = csv_parse(content)
+    if grid == nil:
+        print "csv_read: " + path + " has an unterminated quote"
         return []
-
-    let headers = split(lines[0], ",")
-    let k = 0
-    while k < len(headers):
-        headers[k] = _trim(headers[k])
-        k = k + 1
-
+    if len(grid) == 0:
+        return []
+    let headers = grid[0]
     let result = []
     let i = 1
-    while i < len(lines):
-        let line = _trim(lines[i])
-        if len(line) > 0:
-            let values = split(line, ",")
-            let row = {}
-            let j = 0
-            while j < len(headers) and j < len(values):
-                row[headers[j]] = _trim(values[j])
-                j = j + 1
-            result = push(result, row)
+    while i < len(grid):
+        let cells = grid[i]
+        let row = {}
+        let j = 0
+        while j < len(headers):
+            if j < len(cells):
+                row[headers[j]] = cells[j]
+            else:
+                row[headers[j]] = ""
+            j = j + 1
+        result = push(result, row)
         i = i + 1
     return result
 
-fn csv_write(path, rows):
+fn _csv_cell(v, protect):
+    let s = ""
+    if v == nil:
+        s = ""
+    else:
+        s = str(v)
+    if protect and type(v) == "string" and len(s) > 0:
+        let f = substring(s, 0, 1)
+        if f == "=" or f == "+" or f == "-" or f == "@" or f == "\t" or f == "\r":
+            s = "'" + s
+    if contains(s, ",") or contains(s, "\"") or contains(s, "\n") or contains(s, "\r"):
+        s = "\"" + str_replace(s, "\"", "\"\"") + "\""
+    return s
+
+fn csv_stringify_opts(rows, opts):
+    let protect = true
+    if opts != nil and has(opts, "formula_protection"):
+        protect = opts["formula_protection"]
     if len(rows) == 0:
-        return write_file(path, "")
-
-    let headers = keys(rows[0])
-    let content = ""
-
-    # Headers
-    let i = 0
-    while i < len(headers):
-        if i > 0:
-            content = content + ","
-        content = content + headers[i]
-        i = i + 1
-    content = content + "\n"
-
-    # Rows
-    let i = 0
-    while i < len(rows):
-        let row = rows[i]
-        let j = 0
+        return ""
+    # Columns: first row's keys, then any new keys from later rows.
+    let headers = []
+    for r in rows:
+        for k in keys(r):
+            let seen = false
+            for h in headers:
+                if h == k:
+                    seen = true
+            if not seen:
+                headers = push(headers, k)
+    let out = ""
+    let j = 0
+    while j < len(headers):
+        if j > 0:
+            out = out + ","
+        out = out + _csv_cell(headers[j], protect)
+        j = j + 1
+    out = out + "\r\n"
+    for r in rows:
+        j = 0
         while j < len(headers):
             if j > 0:
-                content = content + ","
-            content = content + str(row[headers[j]])
+                out = out + ","
+            if has(r, headers[j]):
+                out = out + _csv_cell(r[headers[j]], protect)
             j = j + 1
-        content = content + "\n"
-        i = i + 1
+        out = out + "\r\n"
+    return out
 
-    return write_file(path, content)
+fn csv_stringify(rows):
+    return csv_stringify_opts(rows, nil)
+
+# Returns bytes written, or nil on failure.
+fn csv_write_opts(path, rows, opts):
+    return write_file_atomic(path, csv_stringify_opts(rows, opts))
+
+fn csv_write(path, rows):
+    return csv_write_opts(path, rows, nil)

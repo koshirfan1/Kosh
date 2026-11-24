@@ -1,0 +1,62 @@
+# Tests for the fs package (atomic writes + opt-in sandbox).
+#   ./kosh tests/test_fs.kh        (run from the project root)
+# Symlink-escape tests need `ln -s`, so they live in tests/security/test_packages.py.
+import "../packages/fs/fs.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("fs: atomic writes and sandbox")
+
+# ---- atomic write -----------------------------------------------------
+t = test_eq(t, "fs_write returns bytes", fs_write("tests/_fs1.txt", "hello"), 5)
+t = test_eq(t, "fs_read gets it back", fs_read("tests/_fs1.txt"), "hello")
+t = test_eq(t, "overwrite works", fs_write("tests/_fs1.txt", "bye"), 3)
+t = test_eq(t, "overwritten content", fs_read("tests/_fs1.txt"), "bye")
+t = test_nil(t, "write into a missing directory fails (nil)", fs_write("tests/no_such_dir/x.txt", "a"))
+t = test_eq(t, "failed write left the old file alone", fs_read("tests/_fs1.txt"), "bye")
+t = test_eq(t, "fs_append adds", fs_append_line("tests/_fs1.txt", "!"), 5)
+t = test_eq(t, "appended content", fs_read("tests/_fs1.txt"), "bye!\n")
+t = test_not_nil(t, "fs_copy works", fs_copy("tests/_fs1.txt", "tests/_fs2.txt"))
+t = test_eq(t, "copy content", fs_read("tests/_fs2.txt"), "bye!\n")
+
+# ---- config: refuses to clobber an unparsable file --------------------
+write_file("tests/_fs_cfg.json", "{not json")
+t = test_nil(t, "config_set refuses corrupt file", fs_config_set("tests/_fs_cfg.json", "a", 1))
+t = test_eq(t, "corrupt config untouched", read_file("tests/_fs_cfg.json"), "{not json")
+remove_file("tests/_fs_cfg.json")
+fs_config_set("tests/_fs_cfg.json", "a", 1)
+t = test_eq(t, "config_set works on a new file", fs_config_get("tests/_fs_cfg.json", "a", 0), 1)
+remove_file("tests/_fs_cfg.json")
+
+# ---- sandbox ----------------------------------------------------------
+let sb = fs_sandbox("tests/fixtures")
+t = test_not_nil(t, "sandbox created for an existing dir", sb)
+t = test_nil(t, "sandbox for a missing dir is nil", fs_sandbox("tests/no_such_dir"))
+t = test_nil(t, "sandbox for empty string is nil", fs_sandbox(""))
+t = test_not_nil(t, "write inside sandbox ok", fs_sandbox_write(sb, "_in.txt", "inside"))
+t = test_eq(t, "read inside sandbox ok", fs_sandbox_read(sb, "_in.txt"), "inside")
+t = test_true(t, "exists inside", fs_sandbox_exists(sb, "_in.txt"))
+t = test_not_nil(t, "append inside ok", fs_sandbox_append(sb, "_in.txt", "+"))
+t = test_eq(t, "appended", fs_sandbox_read(sb, "_in.txt"), "inside+")
+write_file("tests/_outside.txt", "secret")
+t = test_nil(t, "../ read blocked", fs_sandbox_read(sb, "../_outside.txt"))
+t = test_nil(t, "../ write blocked", fs_sandbox_write(sb, "../_escaped.txt", "x"))
+t = test_false(t, "escaped file was not created", file_exists("tests/_escaped.txt"))
+t = test_nil(t, "nested ../ blocked", fs_sandbox_read(sb, "a/../../_outside.txt"))
+t = test_nil(t, "absolute path blocked", fs_sandbox_read(sb, "/etc/passwd"))
+t = test_nil(t, "backslash blocked", fs_sandbox_read(sb, "..\\_outside.txt"))
+t = test_nil(t, "drive letter blocked", fs_sandbox_read(sb, "C:/x"))
+t = test_nil(t, "empty path blocked", fs_sandbox_read(sb, ""))
+t = test_nil(t, "non-string path blocked", fs_sandbox_read(sb, 5))
+t = test_nil(t, "nil sandbox blocked", fs_sandbox_read(nil, "x"))
+t = test_nil(t, "missing subdir blocked", fs_sandbox_write(sb, "nodir/x.txt", "x"))
+# a sibling dir that merely shares the root's name as a prefix must not pass
+t = test_nil(t, "prefix-sibling blocked", fs_sandbox_read(sb, "../fixtures_evil/x"))
+t = test_true(t, "remove inside ok", fs_sandbox_remove(sb, "_in.txt"))
+t = test_false(t, "removed", fs_sandbox_exists(sb, "_in.txt"))
+t = test_false(t, "remove outside refused", fs_sandbox_remove(sb, "../_outside.txt"))
+t = test_true(t, "outside file still there", file_exists("tests/_outside.txt"))
+
+remove_file("tests/_fs1.txt")
+remove_file("tests/_fs2.txt")
+remove_file("tests/_outside.txt")
+test_run(t)

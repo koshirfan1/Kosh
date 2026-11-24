@@ -81,10 +81,10 @@ Every package installs the same way, regardless of category: `kh install <name>`
 | `colors` | 1.0.0 | Terminal color output using ANSI codes: red, green, bold, boxes, etc. |
 | `argparse` | 1.0.0 | Command-line argument parser |
 | `validation` | 1.0.0 | Data validation utilities: emails, lengths, numeric checks |
-| `dotenv` | 1.0.0 | Load environment variables from .env files |
+| `dotenv` | 1.1.0 | Load environment variables from .env files |
 | `uuid` | 1.1.0 | Unique ID generation: uuid_v4 (CSPRNG), short IDs, named entity IDs, sequential counters, strict validation |
 | `events` | 1.0.1 | Event emitter system: on, emit, once, off, history — built for Kosh Engine game events |
-| `logger` | 1.0.1 | Structured logger: debug/info/warn/error levels, file output, silent mode |
+| `logger` | 1.1.0 | Structured logger: debug/info/warn/error levels, file output, silent mode |
 | `test` | 1.0.0 | Unit testing framework: assertions, test suites, pass/fail reporting |
 | `datetime` | 1.0.1 | Date and time utilities: timer, elapsed, human-readable duration, sleep helpers |
 
@@ -110,10 +110,10 @@ Every package installs the same way, regardless of category: `kh install <name>`
 
 | Package | Version | Description |
 |---|---|---|
-| `fs` | 1.0.1 | File system utilities: read, write, append, copy, path helpers, JSON config |
-| `csv_io` | 1.0.0 | CSV file reader and writer |
-| `json_db` | 1.0.0 | Simple NoSQL database using JSON files |
-| `orm` | 1.0.0 | Simple Object-Relational Mapper for JSON databases |
+| `fs` | 1.1.0 | File system utilities: read, write, append, copy, path helpers, JSON config |
+| `csv_io` | 1.1.0 | CSV file reader and writer |
+| `json_db` | 1.1.0 | Simple NoSQL database using JSON files |
+| `orm` | 1.1.0 | Simple Object-Relational Mapper for JSON databases |
 | `sqlite` | 1.0.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
 
 ### Computer vision & OCR

@@ -1,24 +1,95 @@
-# Kosh ORM (Object-Relational Mapper)
+# Kosh ORM (Object-Relational Mapper) v1.1.0
 # Usage: import "orm"
+#
+# Rows are stored as JSON in "<table>.json" in the current directory.
+#
+#   let users = orm_model("users")
+#   users = orm_create(users, {"name": "Ann"})
+#
+# Table names must be letters, digits and underscores only, so a table
+# name can never become a file path ("../x" and "/etc/x" are refused).
+#
+# Optional schema: orm_define("users", {"name": "string", "age": "number"})
+# rejects rows with missing fields, wrong types, or unknown fields.
+# Types: string, number, bool, array, map, any.
+#
+# On any failure the functions return nil and print the reason; orm_create
+# on a bad row returns the model unchanged with model["error"] set.
 
 import "json_db"
 
-fn orm_model(table_name):
+fn _orm_valid_name(name):
+    if type(name) != "string" or len(name) == 0 or len(name) > 64:
+        return false
+    # (Kosh string < / > compare is not alphabetical, so test membership.)
+    let allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+    let i = 0
+    while i < len(name):
+        if not contains(allowed, substring(name, i, 1)):
+            return false
+        i = i + 1
+    return true
+
+fn orm_define(table_name, schema):
+    if not _orm_valid_name(table_name):
+        print "orm: invalid table name (use letters, digits, _ only)"
+        return nil
+    let db = db_open(table_name + ".json")
+    if db["load_error"] != nil:
+        print "orm: " + table_name + ".json " + db["load_error"]
+        return nil
     return {
         "table": table_name,
-        "db": db_open(table_name + ".json")
+        "db": db,
+        "schema": schema,
+        "error": nil
     }
 
+fn orm_model(table_name):
+    return orm_define(table_name, nil)
+
+fn _orm_check(model, data):
+    if type(data) != "map":
+        return "row must be a map"
+    let schema = model["schema"]
+    if schema == nil:
+        return nil
+    for f in keys(schema):
+        if not has(data, f):
+            return "missing field '" + f + "'"
+        let want = schema[f]
+        if want != "any" and type(data[f]) != want:
+            return "field '" + f + "' must be " + want
+    for f in keys(data):
+        if not has(schema, f):
+            return "unknown field '" + f + "'"
+    return nil
+
 fn orm_create(model, data):
-    let db = model["db"]
+    if model == nil:
+        return nil
+    let problem = _orm_check(model, data)
+    if problem != nil:
+        model["error"] = problem
+        return model
+    # Reload so rows saved by other callers are not lost.
+    let db = db_open(model["table"] + ".json")
+    if db["load_error"] != nil:
+        model["error"] = db["load_error"]
+        return model
     let items = db_get(db, "items", [])
     items = push(items, data)
     db = db_set(db, "items", items)
-    db_save(db)
+    if db_save(db) == nil:
+        model["error"] = "could not save"
+        return model
     model["db"] = db
+    model["error"] = nil
     return model
 
 fn orm_find_all(model):
+    if model == nil:
+        return []
     # Refresh from disk to ensure we have latest data
     let db = db_open(model["table"] + ".json")
     return db_get(db, "items", [])
@@ -26,7 +97,7 @@ fn orm_find_all(model):
 fn orm_find_one(model, field, value):
     let items = orm_find_all(model)
     for item in items:
-        if has(item, field):
+        if type(item) == "map" and has(item, field):
             if item[field] == value:
                 return item
     return nil

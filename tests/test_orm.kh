@@ -22,4 +22,35 @@ if irfan != nil:
 let missing = orm_find_one(User, "name", "NoOne")
 t = test_nil(t, "should not find missing user", missing)
 
+
+# ---- Phase B hardening ------------------------------------------------
+# table names can never become paths
+t = test_nil(t, "rejects ../ in table name", orm_model("../escaped"))
+t = test_nil(t, "rejects absolute table name", orm_model("/tmp/escaped"))
+t = test_nil(t, "rejects dot in table name", orm_model("a.b"))
+t = test_nil(t, "rejects slash", orm_model("a/b"))
+t = test_nil(t, "rejects empty name", orm_model(""))
+t = test_nil(t, "rejects non-string name", orm_model(5))
+t = test_false(t, "no escaped file was created", file_exists("../escaped.json"))
+t = test_not_nil(t, "accepts normal name", orm_model("ok_table_1"))
+# schema validation
+write_file("tests/_orm_s.json", "{}")
+let S = orm_define("tests_orm_s_dummy", {"name": "string", "age": "number"})
+t = test_not_nil(t, "schema model created", S)
+let good = orm_create(S, {"name": "Ann", "age": 30})
+t = test_nil(t, "valid row: no error", good["error"])
+let bad1 = orm_create(good, {"name": "Bob"})
+t = test_eq(t, "missing field rejected", bad1["error"], "missing field 'age'")
+let bad2 = orm_create(good, {"name": "Bob", "age": "x"})
+t = test_eq(t, "wrong type rejected", bad2["error"], "field 'age' must be number")
+let bad3 = orm_create(good, {"name": "Bob", "age": 1, "evil": 1})
+t = test_eq(t, "unknown field rejected", bad3["error"], "unknown field 'evil'")
+t = test_eq(t, "only the valid row was stored", len(orm_find_all(good)), 1)
+# nil model is handled
+t = test_nil(t, "create on nil model is nil", orm_create(nil, {"a": 1}))
+t = test_eq(t, "find_all on nil model is empty", len(orm_find_all(nil)), 0)
+remove_file("tests_orm_s_dummy.json")
+remove_file("tests/_orm_s.json")
+remove_file("ok_table_1.json")
+
 test_run(t)

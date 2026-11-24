@@ -1,0 +1,70 @@
+# Tests for the logger package (log-forging protection + secret redaction).
+#   ./kosh tests/test_logger.kh        (run from the project root)
+import "../packages/logger/logger.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("logger: escaping and redaction")
+
+fn msgs(log):
+    let out = []
+    for e in log["entries"]:
+        out = push(out, e["message"])
+    return out
+
+let log = logger_silent(logger_new("app"))
+
+# ---- log forging ------------------------------------------------------
+log = log_error(log, "bad\n[app] [ERROR] FORGED")
+t = test_eq(t, "newline is escaped", msgs(log)[0], "bad\\n[app] [ERROR] FORGED")
+t = test_eq(t, "still one entry", logger_count(log), 1)
+t = test_false(t, "no raw newline in message", contains(msgs(log)[0], "\n"))
+log = log_info(log, "cr\rhere")
+t = test_false(t, "CR is escaped", contains(msgs(log)[1], "\r"))
+log = log_info(log, "\x1b[31mred")
+t = test_false(t, "ESC is escaped", contains(msgs(log)[2], "\x1b"))
+let out = logger_to_string(log)
+t = test_eq(t, "saved text has exactly 3 lines", len(split(out, "\n")) - 1, 3)
+let evil = logger_silent(logger_new("a\n[x] [ERROR] "))
+evil = log_info(evil, "m")
+t = test_eq(t, "logger name newline escaped", len(split(logger_to_string(evil), "\n")) - 1, 1)
+
+# ---- redaction by key -------------------------------------------------
+let r = logger_silent(logger_new("app"))
+r = log_kv(r, "password", "hunter2")
+r = log_kv(r, "API_KEY", "sk-123")
+r = log_kv(r, "db_token", "t0k")
+r = log_kv(r, "user", "ann")
+let m = msgs(r)
+t = test_eq(t, "password redacted", m[0], "password = [REDACTED]")
+t = test_eq(t, "API_KEY redacted (case-insens.)", m[1], "API_KEY = [REDACTED]")
+t = test_eq(t, "compound key redacted", m[2], "db_token = [REDACTED]")
+t = test_eq(t, "harmless key kept", m[3], "user = ann")
+r = log_map(r, "cfg", {"host": "h", "db_password": "p"})
+t = test_false(t, "map: password value not logged", contains(logger_to_string(r), "\": p") or contains(logger_to_string(r), "db_password: p"))
+t = test_contains_str(t, "map: harmless value kept", logger_to_string(r), "host: h")
+
+# ---- redaction inside free text --------------------------------------
+let x = logger_silent(logger_new("app"))
+x = log_info(x, "login ok password = hunter2 and api_key: sk-123, next")
+x = log_info(x, "Authorization: Bearer abc.def.ghi done")
+x = log_info(x, "GET /cb?token=zzz&x=1")
+x = log_info(x, "secret='two words' end")
+x = log_info(x, "tokenizer finished, no secrets here")
+let y = msgs(x)
+t = test_eq(t, "password=value in text", y[0], "login ok password = [REDACTED] and api_key: [REDACTED], next")
+t = test_eq(t, "Authorization Bearer fully removed", y[1], "Authorization: [REDACTED] done")
+t = test_eq(t, "query-string token, other params kept", y[2], "GET /cb?token=[REDACTED]&x=1")
+t = test_eq(t, "quoted secret", y[3], "secret=[REDACTED] end")
+t = test_eq(t, "words merely containing 'token' untouched", y[4], "tokenizer finished, no secrets here")
+t = test_false(t, "hunter2 never stored", contains(logger_to_string(x), "hunter2"))
+t = test_false(t, "bearer value never stored", contains(logger_to_string(x), "abc.def"))
+
+# ---- opt-out and save -------------------------------------------------
+let o = logger_redact(logger_silent(logger_new("app")), false)
+o = log_kv(o, "password", "visible")
+t = test_eq(t, "redaction can be turned off", msgs(o)[0], "password = visible")
+t = test_not_nil(t, "logger_save is atomic and returns bytes", logger_save(x, "tests/_log.txt"))
+t = test_eq(t, "saved file matches", read_file("tests/_log.txt"), logger_to_string(x))
+remove_file("tests/_log.txt")
+
+test_run(t)

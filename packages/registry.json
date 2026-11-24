@@ -69,13 +69,13 @@
     },
     {
       "name": "fs",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "File system utilities: read, write, append, copy, path helpers, JSON config",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/fs/fs.kh",
       "sha256": {
-        "fs.kh": "8080f1e944530f8433676b84b9ebf82c80e24b21fae61c6deeb9220f41df4faa"
+        "fs.kh": "4ec202a8530361ca25970f2754b58cabe63b50cf43ebfd776b358a1ad17afe83"
       }
     },
     {
@@ -113,13 +113,13 @@
     },
     {
       "name": "logger",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Structured logger: debug/info/warn/error levels, file output, silent mode",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/logger/logger.kh",
       "sha256": {
-        "logger.kh": "3ffea2d4ddf43fca1f33ec6d641432afc41e98846b182473858f8e38123fd95d"
+        "logger.kh": "b6d1c04c1c6d022915ed855df47b03f05e3ac7a03fadc0c7bc21b2a976a2e687"
       }
     },
     {
@@ -249,35 +249,35 @@
     },
     {
       "name": "dotenv",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Load environment variables from .env files",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/dotenv/dotenv.kh",
       "sha256": {
-        "dotenv.kh": "b4dfc5b891cc7da3b5d9f676a054b77a11e23b8eb3389137cf5a6676fee52a3d"
+        "dotenv.kh": "0c9619858bde8902b9c87e7a280f9b31917889db13c3494e1594baad79ea176c"
       }
     },
     {
       "name": "json_db",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Simple NoSQL database using JSON files",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/json_db/json_db.kh",
       "sha256": {
-        "json_db.kh": "ef94a16805cbd3590849635dfc415c499f60965ea27bcc2e615b40aaf050b369"
+        "json_db.kh": "dcce07f5ec68d03578671a2f26dc3fd0669be035d1ef7323f1345983f5d72b71"
       }
     },
     {
       "name": "csv_io",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "CSV file reader and writer",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/csv_io/csv_io.kh",
       "sha256": {
-        "csv_io.kh": "5997216eededdca57f611a53c27f1e62eeece36dccd06e5111e7ed51e91cc5bc"
+        "csv_io.kh": "141088eb473acd310fb88555043bbbff0b8d2232518d2ff22eb6040efa53104f"
       }
     },
     {
@@ -334,7 +334,7 @@
     },
     {
       "name": "orm",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Simple Object-Relational Mapper for JSON databases",
       "author": "koshirfan1",
@@ -343,7 +343,7 @@
         "json_db"
       ],
       "sha256": {
-        "orm.kh": "8bb7ed283e8ddf600be2ac80d749ef436c31160216b7085f30a4e258a46de328"
+        "orm.kh": "80a6563054d011bc3b61ac637c3ceaf21b58ed1776bceeb4e70071ecb56182bc"
       }
     },
     {

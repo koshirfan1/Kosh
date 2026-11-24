@@ -42,6 +42,9 @@ void vm_register_builtins(VM *vm) {
     vm_global_set_native(vm, "sleep",      fn_sleep);
     vm_global_set_native(vm, "base64_decode_to_file", fn_base64_decode_to_file);
     vm_global_set_native(vm, "remove_file", fn_remove_file);
+    vm_global_set_native(vm, "write_file_atomic", fn_write_file_atomic);
+    vm_global_set_native(vm, "path_real", fn_path_real);
+    vm_global_set_native(vm, "file_mode", fn_file_mode);
 }
 
 void json_register_all_vm(VM *vm) {

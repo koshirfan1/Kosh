@@ -23,4 +23,51 @@ let read_back = csv_read("output.csv")
 t = test_eq(t, "read back len should be 2", len(read_back), 2)
 t = test_eq(t, "first status should be OK", read_back[0]["Status"], "OK")
 
+
+# ---- Phase B hardening ------------------------------------------------
+# RFC 4180 round trip: commas, quotes and newlines inside cells
+let tricky = [
+    {"a": "x,y", "b": "he said \"hi\""},
+    {"a": "line1\nline2", "b": "plain"},
+    {"a": "", "b": "last"}
+]
+csv_write("tests/_csv_rt.csv", tricky)
+let rt = csv_read("tests/_csv_rt.csv")
+t = test_eq(t, "round trip keeps 3 rows", len(rt), 3)
+t = test_eq(t, "comma survives", rt[0]["a"], "x,y")
+t = test_eq(t, "quotes survive", rt[0]["b"], "he said \"hi\"")
+t = test_eq(t, "newline survives", rt[1]["a"], "line1\nline2")
+t = test_eq(t, "empty cell survives", rt[2]["a"], "")
+# parser details
+let g = csv_parse("a,b\r\n1,\"2,3\"\r\n\r\n4,5")
+t = test_eq(t, "CRLF + blank line: 3 records", len(g), 3)
+t = test_eq(t, "quoted comma is one field", g[1][1], "2,3")
+t = test_eq(t, "no trailing newline ok", g[2][1], "5")
+t = test_eq(t, "escaped quote", csv_parse("\"a\"\"b\"")[0][0], "a\"b")
+t = test_nil(t, "unterminated quote -> nil", csv_parse("a,\"oops"))
+t = test_eq(t, "BOM skipped", csv_parse("\xEF\xBB\xBFh1,h2\n1,2")[0][0], "h1")
+t = test_eq(t, "values not trimmed", csv_parse("a, b ")[0][1], " b ")
+# short rows are padded, not dropped
+write_file("tests/_csv_short.csv", "a,b,c\n1,2\n")
+let sh = csv_read("tests/_csv_short.csv")
+t = test_eq(t, "short row padded with empty", sh[0]["c"], "")
+# formula (CSV) injection protection
+let inj = csv_stringify([{"v": "=HYPERLINK(\"http://evil\")"}, {"v": "@SUM(A1)"}, {"v": "+1"}, {"v": "-1+1"}, {"v": 5}, {"v": -5}])
+let lines = split(inj, "\r\n")
+t = test_contains_str(t, "= is neutralised", lines[1], "'=HYPERLINK")
+t = test_eq(t, "@ is neutralised", lines[2], "'@SUM(A1)")
+t = test_eq(t, "+ is neutralised", lines[3], "'+1")
+t = test_eq(t, "- string is neutralised", lines[4], "'-1+1")
+t = test_eq(t, "number 5 untouched", lines[5], "5")
+t = test_eq(t, "number -5 untouched", lines[6], "-5")
+let raw = csv_stringify_opts([{"v": "=1"}], {"formula_protection": false})
+t = test_eq(t, "protection can be turned off", split(raw, "\r\n")[1], "=1")
+# columns: union of keys, missing cells empty
+
+let un = csv_stringify([{"a": 1}, {"a": 2, "b": 3}])
+t = test_eq(t, "union of columns in header", split(un, "\r\n")[0], "a,b")
+t = test_eq(t, "missing cell is empty", split(un, "\r\n")[1], "1,")
+remove_file("tests/_csv_rt.csv")
+remove_file("tests/_csv_short.csv")
+
 test_run(t)

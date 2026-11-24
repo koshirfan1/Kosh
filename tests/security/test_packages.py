@@ -581,6 +581,60 @@ def test_session_and_retry_wire():
     finally:
         S.stop(); EVIL.stop()
 
+# --------------------------------------------------------------------------- Phase B: files
+def test_files():
+    """fs sandbox vs symlinks, atomic write failure handling, dotenv permissions, orm path names."""
+    posix = os.name != "nt"
+    base = tempfile.mkdtemp(prefix="kosh_files_")
+    try:
+        root = os.path.join(base, "root"); os.mkdir(root)
+        outside = os.path.join(base, "outside.txt"); open(outside, "w").write("TOPSECRET")
+        os.mkdir(os.path.join(base, "other")); open(os.path.join(base, "other", "x.txt"), "w").write("other")
+        b = base.replace("\\", "/")
+        pre = 'import "%s"\n' % pkg("fs")
+        if posix:
+            os.symlink(outside, os.path.join(root, "link.txt"))
+            os.symlink(os.path.join(base, "other"), os.path.join(root, "dirlink"))
+            rc, out = kosh_src(pre + 'let sb = fs_sandbox("%s/root")\nprint fs_sandbox_read(sb, "link.txt")\nprint fs_sandbox_read(sb, "dirlink/x.txt")\nprint fs_sandbox_write(sb, "dirlink/new.txt", "z")\n' % b)
+            check("sandbox refuses a symlink pointing outside (file and directory)", out.split() == ["nil", "nil", "nil"] and "TOPSECRET" not in out and not os.path.exists(os.path.join(base, "other", "new.txt")), out)
+            os.symlink(root, os.path.join(base, "rootlink"))
+            rc, out = kosh_src(pre + 'let sb = fs_sandbox("%s/rootlink")\nprint fs_sandbox_write(sb, "ok.txt", "hi")\nprint fs_sandbox_read(sb, "ok.txt")\n' % b)
+            check("a symlinked sandbox root still works and is resolved", out.split() == ["2", "hi"] and os.path.exists(os.path.join(root, "ok.txt")), out)
+        rc, out = kosh_src(pre + 'let sb = fs_sandbox("%s/root")\nprint fs_sandbox_read(sb, "../outside.txt")\nprint fs_sandbox_write(sb, "../escaped.txt", "x")\n' % b)
+        check("sandbox refuses ../ read and write", out.split() == ["nil", "nil"] and not os.path.exists(os.path.join(base, "escaped.txt")), out)
+
+        # atomic write: when the target cannot be replaced, the old data and the directory stay clean
+        target = os.path.join(base, "adir"); os.mkdir(target)
+        rc, out = kosh_src('print write_file_atomic("%s/adir", "x")\n' % b)
+        check("write_file_atomic returns nil when the target is a directory, leaves no temp file", out.strip() == "nil" and os.listdir(base).count("adir") == 1 and not [f for f in os.listdir(base) if "kosh-tmp" in f], (out, os.listdir(base)))
+        f = os.path.join(base, "keep.txt"); open(f, "w").write("OLD" * 1000)
+        rc, out = kosh_src('print write_file_atomic("%s/keep.txt", "NEW")\n' % b)
+        check("write_file_atomic replaces content and leaves no temp files", out.strip() == "3" and open(f).read() == "NEW" and not [x for x in os.listdir(base) if "kosh-tmp" in x], out)
+        rc, out = kosh_src('let s = "%s"\nprint write_file_atomic("%s/big.txt", s + s)\n' % ("A" * 200000, b))
+        check("large atomic write is complete", out.strip() == "400000" and os.path.getsize(os.path.join(base, "big.txt")) == 400000, out)
+
+        # dotenv permissions
+        if posix:
+            env = os.path.join(base, ".env"); open(env, "w").write("K=v\n")
+            pre2 = 'import "%s"\n' % pkg("dotenv")
+            os.chmod(env, 0o644)
+            rc, out = kosh_src(pre2 + 'print load_env_strict("%s/.env")\n' % b)
+            check("load_env_strict refuses a world-readable .env", out.strip().endswith("nil") and "chmod 600" in out, out)
+            os.chmod(env, 0o640)
+            rc, out = kosh_src(pre2 + 'print load_env_strict("%s/.env")\n' % b)
+            check("load_env_strict refuses a group-readable .env", out.strip().endswith("nil"), out)
+            os.chmod(env, 0o600)
+            rc, out = kosh_src(pre2 + 'print env_get(load_env_strict("%s/.env"), "K")\n' % b)
+            check("load_env_strict accepts mode 600", out.strip() == "v", out)
+
+        # orm table names cannot reach outside the working directory
+        # (orm imports json_db by name, which resolves against ./packages, so run from ROOT)
+        pwn = os.path.join(ROOT, "..", "pwn.json")
+        rc, out = kosh_src('import "orm"\nlet m = orm_model("../pwn")\nlet m2 = orm_create(m, {"x": 1})\nprint m\nlet n = orm_model("%s/pwn")\nprint n\n' % b)
+        check("orm refuses ../ and absolute table names; no file created", out.count("nil") == 2 and not os.path.exists(pwn) and not os.path.exists(os.path.join(base, "pwn.json")), out)
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
 def run():
     test_uuid()
     test_webi_auth_wire()
@@ -588,6 +642,7 @@ def run():
     test_openai_wire()
     test_dns_wire()
     test_session_and_retry_wire()
+    test_files()
     print("\n  %d/%d passed   |   %d failed" % (passed, passed + failed, failed))
     return 1 if failed else 0
 

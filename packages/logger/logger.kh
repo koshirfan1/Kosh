@@ -1,4 +1,4 @@
-# Kosh logger package v1.0.0
+# Kosh logger package v1.1.0
 # Author: Irfan Khan
 # Structured logging with levels, file output, and formatting
 #
@@ -20,6 +20,18 @@ let LOG_WARN  = 2
 let LOG_ERROR = 3
 let LOG_NONE  = 4
 
+# SAFETY (v1.1.0)
+#   - Newlines, carriage returns and ESC in a message or logger name are
+#     escaped (\n, \r, \x1b), so user input cannot forge extra log lines
+#     or inject terminal escape sequences.
+#   - Secrets are redacted: in log_kv / log_map by key name, and in any
+#     message by scanning for  password|passwd|secret|token|api_key|
+#     apikey|authorization|bearer|cookie|private_key|access_key  followed
+#     by = or : and a value (the value becomes [REDACTED]).
+#     This is a best-effort safety net, NOT a guarantee: a secret that is
+#     not labelled (a bare "sk-123" in text) cannot be detected. Do not log
+#     secrets. Turn off with  log = logger_redact(log, false).
+
 # ─────────────────────────────────────────────────────────────
 # LOGGER
 # ─────────────────────────────────────────────────────────────
@@ -29,8 +41,13 @@ fn logger_new(name):
         "name":    name,
         "entries": [],
         "level":   LOG_INFO,
-        "silent":  false
+        "silent":  false,
+        "redact":  true
     }
+
+fn logger_redact(log, on):
+    log["redact"] = on
+    return log
 
 fn logger_set_level(log, level):
     log["level"] = level
@@ -55,19 +72,108 @@ fn _log_level_str(level):
         return "ERROR"
     return "???"
 
+let _LOG_SENSITIVE = ["password", "passwd", "secret", "token", "api_key", "apikey", "api-key", "authorization", "bearer", "cookie", "private_key", "access_key", "credential"]
+
+# Escape characters that could forge log lines or drive the terminal.
+fn _log_clean(s):
+    s = str(s)
+    s = str_replace(s, "\\", "\\\\")
+    s = str_replace(s, "\n", "\\n")
+    s = str_replace(s, "\r", "\\r")
+    s = str_replace(s, "\x1b", "\\x1b")
+    return s
+
+fn _log_is_sensitive_key(key):
+    let k = lower(str(key))
+    for w in _LOG_SENSITIVE:
+        if contains(k, w):
+            return true
+    return false
+
+fn _log_is_value_end(c):
+    return c == " " or c == "\t" or c == "," or c == ";" or c == "&" or c == "\n" or c == "\r" or c == ")" or c == "]" or c == "}"
+
+# Replace the value after "<sensitive word> = " / ": " / "bearer " with [REDACTED].
+fn _log_redact_text(msg):
+    let low = lower(msg)
+    let n = len(msg)
+    let out = ""
+    let i = 0
+    while i < n:
+        let hit = ""
+        for w in _LOG_SENSITIVE:
+            if hit == "" and i + len(w) <= n and substring(low, i, len(w)) == w:
+                hit = w
+        if hit == "":
+            out = out + substring(msg, i, 1)
+            i = i + 1
+        else:
+            let j = i + len(hit)
+            # let a word like api_key_id / password2 run on
+            while j < n and not _log_is_value_end(substring(msg, j, 1)) and substring(msg, j, 1) != "=" and substring(msg, j, 1) != ":":
+                j = j + 1
+            let k = j
+            while k < n and substring(msg, k, 1) == " ":
+                k = k + 1
+            let sep = ""
+            if k < n:
+                sep = substring(msg, k, 1)
+            let is_bearer = (hit == "bearer")
+            if sep == "=" or sep == ":" or (is_bearer and k > j):
+                if sep == "=" or sep == ":":
+                    k = k + 1
+                    while k < n and substring(msg, k, 1) == " ":
+                        k = k + 1
+                # value: already redacted, quoted, or up to a delimiter
+                let v_end = k
+                let done = false
+                if k + 10 <= n and substring(msg, k, 10) == "[REDACTED]":
+                    v_end = k + 10
+                    done = true
+                if not done and k < n and (substring(msg, k, 1) == "\"" or substring(msg, k, 1) == "'"):
+                    let q = substring(msg, k, 1)
+                    v_end = k + 1
+                    while v_end < n and substring(msg, v_end, 1) != q:
+                        v_end = v_end + 1
+                    if v_end < n:
+                        v_end = v_end + 1
+                    done = true
+                if not done:
+                    while v_end < n and not _log_is_value_end(substring(msg, v_end, 1)):
+                        v_end = v_end + 1
+                # "Authorization: Bearer xyz" / "Basic xyz": also eat the credential
+                let word = lower(substring(msg, k, v_end - k))
+                if (word == "bearer" or word == "basic") and v_end < n and substring(msg, v_end, 1) == " ":
+                    v_end = v_end + 1
+                    while v_end < n and not _log_is_value_end(substring(msg, v_end, 1)):
+                        v_end = v_end + 1
+                out = out + substring(msg, i, k - i) + "[REDACTED]"
+                i = v_end
+            else:
+                out = out + substring(msg, i, j - i)
+                i = j
+    return out
+
+fn _log_prepare(log, msg):
+    let m = str(msg)
+    if log["redact"]:
+        m = _log_redact_text(m)
+    return _log_clean(m)
+
 fn _log_write(log, level, msg):
     if level < log["level"]:
         return log
+    let clean = _log_prepare(log, msg)
     let entry = {
         "level":   level,
         "label":   _log_level_str(level),
-        "message": msg,
+        "message": clean,
         "time":    clock(),
-        "source":  log["name"]
+        "source":  _log_clean(log["name"])
     }
     log["entries"] = push(log["entries"], entry)
     if log["silent"] == false:
-        print "[" + log["name"] + "] [" + entry["label"] + "] " + msg
+        print "[" + entry["source"] + "] [" + entry["label"] + "] " + clean
     return log
 
 # ─────────────────────────────────────────────────────────────
@@ -87,12 +193,17 @@ fn log_divider(log):
     return log_info(log, "────────────────────────────────────────")
 
 fn log_kv(log, key, value):
-    return log_info(log, key + " = " + str(value))
+    if log["redact"] and _log_is_sensitive_key(key):
+        return log_info(log, str(key) + " = [REDACTED]")
+    return log_info(log, str(key) + " = " + str(value))
 
 fn log_map(log, label, m):
     log = log_info(log, label + ":")
     for k in keys(m):
-        log = log_info(log, "  " + str(k) + ": " + str(m[k]))
+        if log["redact"] and _log_is_sensitive_key(k):
+            log = log_info(log, "  " + str(k) + ": [REDACTED]")
+        else:
+            log = log_info(log, "  " + str(k) + ": " + str(m[k]))
     return log
 
 # ─────────────────────────────────────────────────────────────
@@ -130,7 +241,7 @@ fn logger_to_string(log):
     return out
 
 fn logger_save(log, path):
-    return write_file(path, logger_to_string(log))
+    return write_file_atomic(path, logger_to_string(log))
 
 fn logger_summary(log):
     let errors = len(logger_errors(log))

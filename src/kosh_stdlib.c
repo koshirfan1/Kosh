@@ -5,6 +5,14 @@
 #include <math.h>
 #include <time.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include "kosh_stdlib.h"
 
 // ===========================================================================
@@ -561,6 +569,93 @@ void fn_remove_file(Value *result, Interpreter *interp, int argc, Value *args) {
     *result = value_bool(remove(path) == 0);
 }
 
+
+/* ---------------------------------------------------------------------
+ * write_file_atomic(path, content) -> bytes written, or nil on failure.
+ * Writes to a temp file in the SAME directory, flushes it to disk, then
+ * renames it over `path`, so a crash or full disk can never leave `path`
+ * truncated (plain write_file() truncates first). Never raises a runtime
+ * error: failure is just nil, so callers can handle it.
+ * --------------------------------------------------------------------- */
+void fn_write_file_atomic(Value *result, Interpreter *interp, int argc, Value *args) {
+    (void)interp;
+    *result = value_nil();
+    if (argc != 2 || args[0].type != VAL_STRING || args[1].type != VAL_STRING) return;
+    const char *path = args[0].as.string;
+    const char *content = args[1].as.string;
+    size_t plen = strlen(path), clen = strlen(content);
+    if (plen == 0 || plen > 3800) return;
+    char tmp[4096];
+    snprintf(tmp, sizeof(tmp), "%s.kosh-tmp-%ld", path, (long)clock() ^ (long)(size_t)content);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return;
+    int ok = (fwrite(content, 1, clen, f) == clen) && fflush(f) == 0;
+#ifndef _WIN32
+    if (ok) ok = fsync(fileno(f)) == 0;
+#endif
+    if (fclose(f) != 0) ok = 0;
+    if (ok) {
+#ifdef _WIN32
+        ok = MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+        ok = rename(tmp, path) == 0;
+#endif
+    }
+    if (!ok) { remove(tmp); return; }
+    *result = value_number((double)clen);
+}
+
+/* path_real(path [, must_exist]) -> absolute, normalised path (symlinks and ".."
+ * resolved) even when the final component does not exist yet; nil if the
+ * parent directory does not exist. Used by the fs sandbox. */
+void fn_path_real(Value *result, Interpreter *interp, int argc, Value *args) {
+    (void)interp;
+    *result = value_nil();
+    if ((argc != 1 && argc != 2) || args[0].type != VAL_STRING) return;
+    const char *path = args[0].as.string;
+    /* path_real(path, true): the path itself must already exist */
+    int must_exist = (argc == 2 && args[1].type == VAL_BOOL && args[1].as.boolean);
+    char out[4096];
+#ifdef _WIN32
+    if (must_exist) { FILE *probe = fopen(path, "rb"); DWORD a = GetFileAttributesA(path); if (!probe && a == INVALID_FILE_ATTRIBUTES) return; if (probe) fclose(probe); }
+    if (!_fullpath(out, path, sizeof(out))) return;
+    for (char *p = out; *p; p++) if (*p == '\\') *p = '/';
+    *result = value_string(out);
+#else
+    if (realpath(path, out)) { *result = value_string(out); return; }
+    if (must_exist) return;
+    /* final component missing: resolve the parent, re-append the name */
+    char tmp[4096];
+    if (strlen(path) >= sizeof(tmp)) return;
+    strcpy(tmp, path);
+    size_t n = strlen(tmp);
+    while (n > 1 && tmp[n-1] == '/') tmp[--n] = '\0';
+    char *slash = strrchr(tmp, '/');
+    const char *base; char parent[4096];
+    if (!slash) { strcpy(parent, "."); base = tmp; }
+    else if (slash == tmp) { strcpy(parent, "/"); base = slash + 1; }
+    else { *slash = '\0'; strcpy(parent, tmp); base = slash + 1; }
+    if (strcmp(base, "..") == 0 || strcmp(base, ".") == 0 || !*base) return;
+    char rp[4096];
+    if (!realpath(parent, rp)) return;
+    if (strlen(rp) + strlen(base) + 2 >= sizeof(out)) return;
+    snprintf(out, sizeof(out), "%s%s%s", rp, strcmp(rp, "/") == 0 ? "" : "/", base);
+    *result = value_string(out);
+#endif
+}
+
+/* file_mode(path) -> permission bits as a number (e.g. 384 for 0600), or
+ * nil if the file is missing or the platform has no POSIX modes. */
+void fn_file_mode(Value *result, Interpreter *interp, int argc, Value *args) {
+    (void)interp;
+    *result = value_nil();
+    if (argc != 1 || args[0].type != VAL_STRING) return;
+#ifndef _WIN32
+    struct stat st;
+    if (stat(args[0].as.string, &st) == 0) *result = value_number((double)(st.st_mode & 0777));
+#endif
+}
+
 // ===========================================================================
 // Utility functions
 // ===========================================================================
@@ -757,4 +852,7 @@ void stdlib_register_all(Environment *env) {
     env_define(env, "exit", value_native("exit", fn_exit));
     env_define(env, "base64_decode_to_file", value_native("base64_decode_to_file", fn_base64_decode_to_file));
     env_define(env, "remove_file", value_native("remove_file", fn_remove_file));
+    env_define(env, "write_file_atomic", value_native("write_file_atomic", fn_write_file_atomic));
+    env_define(env, "path_real", value_native("path_real", fn_path_real));
+    env_define(env, "file_mode", value_native("file_mode", fn_file_mode));
 }
