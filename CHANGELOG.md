@@ -3,6 +3,50 @@
 Versions are `0.x` until the roadmap's 1.0 criteria are met (see
 `ROADMAP_STATUS_UPDATED.md`). Newest first.
 
+## v0.020.0 - 2026-11-24
+
+Package security and data integrity, phase C: `sqlite`, `swagger`, `tensor` (reshape), `quant`,
+`kbrain`. Every problem was reproduced on a live process first, fixed, and covered by a test.
+ASan/UBSan clean. Requires v0.019.0 (phase B) to be applied first.
+
+### New builtin
+- `sqlite_busy_timeout(db, ms)`: how long to wait for another connection's lock (default now 5000 ms).
+
+### Fixed
+- **`sqlite` silent failures** (each used to report success):
+  - Two statements in one call ran only the first and returned `true`. Now an error; use the new
+    `db_exec_many(db, statements)` to run several in one transaction (all or nothing).
+  - Fewer values than `?` placeholders bound NULL silently (`DELETE ... WHERE id = ?` with `[]` deleted
+    nothing and said `true`). The count must now match exactly, and `params` must be an array.
+  - Whole numbers are bound as INTEGER; an INTEGER beyond +/-2^53 is returned as an exact decimal
+    string instead of a rounded number (`9007199254740993` used to come back as `...992`).
+  - BLOBs are binary-safe: store with `db_blob("41004243")`, read back as `{"type":"blob","size":4,"hex":"..."}`
+    (they used to be cut at the first NUL byte).
+  - A query that failed half way returned the rows read so far as if it had worked. Now `nil`.
+  - No busy timeout (instant "database is locked"). Default is now 5 s.
+  - `db_init` printed "Initializing" but did nothing; it is now a documented no-op.
+- **`swagger`**: route text is HTML-escaped (`/<script>` was inserted raw = XSS), plus a
+  Content-Security-Policy meta tag that forbids scripts.
+- **`tensor` reshape / sum_to_shape**: dimension product overflowed an `int` and negative dims could
+  "match" (`reshape(t, [-2, -2])` on 4 elements succeeded and produced a tensor with a negative shape).
+  Dims must now be whole numbers from 0 up, and the element count must fit an int.
+- **`quant`**: `bits` of 0, 1, -1, 64 or 7.5, non-numeric matrices, empty rows and out-of-range
+  fractions returned garbage scales or crashed with a division by zero. All public functions now validate
+  and return `nil` with a message. `quant_error` handles all-zero references and shape mismatches.
+- **`kbrain`**: with a learning rate too high for the data, weights silently became `nan`. Training now
+  stops at the first non-finite or >1e15 weight, sets `"diverged": true`, and `predict` refuses such a
+  model. `train`/`predict` validate their input.
+
+### Behaviour changes (breaking)
+- `sqlite`: multi-statement SQL, wrong param counts and non-array params are errors; big INTEGERs and
+  BLOBs come back in the new forms above; failed queries return `nil`.
+- `quant` and `kbrain` return `nil` on bad input instead of a plausible-looking result.
+
+### Known limits
+- sqlite TEXT values are still cut at an embedded NUL byte (a Kosh string limit); use BLOBs for binary data.
+- `sqlite` and `json_db` both define `db_open`/`db_exec`-style names; import only one per program.
+- Windows: the new code is plain C (sqlite is linked statically as before) but was not run there.
+
 ## v0.019.0 - 2026-11-22
 
 Package security and data integrity, phase B: the file and data packages (`fs`, `json_db`, `orm`,

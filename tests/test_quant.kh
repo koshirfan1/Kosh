@@ -1,0 +1,64 @@
+# Tests for the quant package: argument validation and basic correctness.
+#   ./kosh tests/test_quant.kh        (run from the project root)
+import "../packages/quant/quant.kh"
+import "../packages/test/test.kh"
+
+let t = test_suite("quant: argument checks and correctness")
+
+let W = [[1.0, -2.0, 3.0], [0.5, 0.25, -0.125]]
+
+# ---- bits ---------------------------------------------------------------
+t = test_nil(t, "bits = 0 refused", quantize_per_channel(W, 0))
+t = test_nil(t, "bits = 1 refused (no positive levels)", quantize_per_channel(W, 1))
+t = test_nil(t, "bits = -1 refused", quantize_per_channel(W, -1))
+t = test_nil(t, "bits = 64 refused", quantize_per_channel(W, 64))
+t = test_nil(t, "bits = 33 refused", quantize_per_channel(W, 33))
+t = test_nil(t, "bits = 7.5 refused", quantize_per_channel(W, 7.5))
+t = test_nil(t, "bits as a string refused", quantize_per_channel(W, "8"))
+t = test_not_nil(t, "bits = 2 accepted", quantize_per_channel(W, 2))
+t = test_not_nil(t, "bits = 8 accepted", quantize_per_channel(W, 8))
+t = test_not_nil(t, "bits = 32 accepted", quantize_per_channel(W, 32))
+t = test_nil(t, "bias_corrected checks bits", quantize_per_channel_bias_corrected(W, 0))
+t = test_nil(t, "outlier_aware checks bits", quantize_outlier_aware(W, -1, 0.1))
+t = test_nil(t, "mixed_precision checks bits", quantize_mixed_precision(W, 64, 0.1))
+
+# ---- matrix -------------------------------------------------------------
+t = test_nil(t, "W not an array refused", quantize_per_channel(5, 8))
+t = test_nil(t, "row not an array refused", quantize_per_channel([1, 2, 3], 8))
+t = test_nil(t, "empty row refused", quantize_per_channel([[1, 2], []], 8))
+t = test_nil(t, "non-number element refused", quantize_per_channel([[1, "x"]], 8))
+t = test_eq(t, "empty W gives empty result", len(quantize_per_channel([], 8)["data"]), 0)
+t = test_nil(t, "real_per_channel checks W", quantize_real_per_channel([[1, "x"]]))
+
+# ---- fractions / thresholds ---------------------------------------------
+t = test_nil(t, "keep_fraction 0 refused", quantize_per_channel_calibrated(W, 0))
+t = test_nil(t, "keep_fraction 1.5 refused", quantize_per_channel_calibrated(W, 1.5))
+t = test_nil(t, "keep_fraction negative refused", quantize_per_channel_calibrated(W, -0.1))
+t = test_not_nil(t, "keep_fraction 1 accepted", quantize_per_channel_calibrated(W, 1))
+t = test_nil(t, "outlier_fraction 1 refused", quantize_outlier_aware(W, 8, 1))
+t = test_nil(t, "outlier_fraction negative refused", quantize_outlier_aware(W, 8, -0.5))
+t = test_not_nil(t, "outlier_fraction 0 accepted", quantize_outlier_aware(W, 8, 0))
+t = test_nil(t, "negative error_threshold refused", quantize_mixed_precision(W, 8, -1))
+
+# ---- correctness --------------------------------------------------------
+let q8 = quantize_per_channel(W, 8)
+t = test_eq(t, "8-bit: one scale per row", len(q8["scales"]), 2)
+t = test_eq(t, "8-bit: bits recorded", q8["bits"], 8)
+t = test_true(t, "8-bit: scale = rowmax/127", abs(q8["scales"][0] - 3.0 / 127) < 0.0000001)
+t = test_true(t, "8-bit: max value reproduced", abs(q8["data"][0][2] - 3.0) < 0.0000001)
+t = test_true(t, "8-bit error is small", quant_error(W, q8["data"]) < 0.01)
+let q2 = quantize_per_channel(W, 2)
+t = test_true(t, "2-bit error is larger than 8-bit", quant_error(W, q2["data"]) > quant_error(W, q8["data"]))
+let z = quantize_per_channel([[0, 0, 0]], 8)
+t = test_eq(t, "all-zero row gets scale 1 and zeros", z["data"][0][1], 0)
+let mp = quantize_mixed_precision(W, 2, 0.0001)
+t = test_eq(t, "mixed precision keeps bad rows full precision", mp["full_precision_rows"], 2)
+
+# ---- quant_error edge cases ----------------------------------------------
+t = test_eq(t, "identical matrices: error 0", quant_error(W, W), 0)
+t = test_nil(t, "different row counts refused", quant_error(W, [[1, 2, 3]]))
+t = test_nil(t, "different row lengths refused", quant_error(W, [[1, 2], [3, 4]]))
+t = test_eq(t, "all-zero reference, identical: 0 (was a division by zero)", quant_error([[0, 0]], [[0, 0]]), 0)
+t = test_nil(t, "all-zero reference, different: undefined -> nil", quant_error([[0, 0]], [[1, 0]]))
+
+test_run(t)

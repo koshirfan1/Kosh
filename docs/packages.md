@@ -103,7 +103,7 @@ Every package installs the same way, regardless of category: `kh install <name>`
 |---|---|---|
 | `requests` | 1.2.0 | HTTP client v1.2: http/https only, timeouts, size caps, URL-encoded queries, sessions, capped retries |
 | `postman` | 1.0.0 | API testing toolkit: send requests, assert responses, run test suites |
-| `swagger` | 1.0.0 | Swagger UI and API documentation generator |
+| `swagger` | 1.1.0 | Swagger UI and API documentation generator |
 | `openai` | 2.1.0 | OpenAI API client: chat completions, conversations, embeddings, moderation, model listing. Enforced timeouts, capped retries, API key kept out of the client map, https-only base URL. |
 
 ### Data & storage
@@ -114,7 +114,7 @@ Every package installs the same way, regardless of category: `kh install <name>`
 | `csv_io` | 1.1.0 | CSV file reader and writer |
 | `json_db` | 1.1.0 | Simple NoSQL database using JSON files |
 | `orm` | 1.1.0 | Simple Object-Relational Mapper for JSON databases |
-| `sqlite` | 1.0.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
+| `sqlite` | 1.1.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
 
 ### Computer vision & OCR
 
@@ -129,9 +129,9 @@ Every package installs the same way, regardless of category: `kh install <name>`
 |---|---|---|
 | [`tensor`](tensor.md) | 2.0.0 | Native n-dimensional tensors with automatic differentiation |
 | [`nn`](nn.md) | 1.0.0 | Minimal neural-network module on top of tensor: Dense, ReLU, Sequential, MSE/cross-entropy losses, SGD and Adam optimizers. Requires the tensor package. |
-| `kbrain` | 1.0.0 | Simple machine learning and AI utilities |
+| `kbrain` | 1.1.0 | Simple machine learning and AI utilities |
 | `nlp` | 1.0.0 | Natural Language Processing and Sentiment Analysis |
-| `quant` | 1.0.0 | Accuracy-preserving quantization in pure Kosh: per-channel calibration, bias correction, outlier-aware sparse decomposition and mixed-precision strategies. |
+| `quant` | 1.1.0 | Accuracy-preserving quantization in pure Kosh: per-channel calibration, bias correction, outlier-aware sparse decomposition and mixed-precision strategies. |
 
 ### Networking & protocols
 

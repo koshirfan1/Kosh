@@ -635,6 +635,36 @@ def test_files():
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
+# --------------------------------------------------------------------------- Phase C: sqlite locking
+def test_sqlite_lock():
+    """Another connection holds a write lock: Kosh waits for the busy timeout, then reports failure (not a hang, not a fake true)."""
+    import sqlite3, time
+    base = tempfile.mkdtemp(prefix="kosh_sqlite_")
+    try:
+        dbp = os.path.join(base, "l.db")
+        c = sqlite3.connect(dbp, isolation_level=None, check_same_thread=False)
+        c.execute("CREATE TABLE t (v)")
+        c.execute("BEGIN EXCLUSIVE")          # hold the lock
+        b = dbp.replace("\\", "/")
+        pre = 'import "%s"\n' % pkg("sqlite")
+        t0 = time.time()
+        rc, out = kosh_src(pre + 'let db = db_open("%s")\ndb_busy_timeout(db, 0)\nprint db_exec(db, "INSERT INTO t VALUES (1)", [])\n' % b)
+        fast = time.time() - t0
+        check("busy timeout 0: fails at once with false and a 'locked' message", out.split()[0] == "false" and "locked" in out and fast < 3, (out, fast))
+        t0 = time.time()
+        rc, out = kosh_src(pre + 'let db = db_open("%s")\ndb_busy_timeout(db, 700)\nprint db_exec(db, "INSERT INTO t VALUES (1)", [])\n' % b)
+        waited = time.time() - t0
+        check("busy timeout 700 ms: waits about that long, then false", out.split()[0] == "false" and "locked" in out and waited >= 0.6, (out, waited))
+        # the lock is released while Kosh is waiting -> the write succeeds (default timeout is 5 s)
+        import threading
+        threading.Timer(0.8, lambda: c.execute("COMMIT")).start()
+        rc, out = kosh_src(pre + 'let db = db_open("%s")\nprint db_exec(db, "INSERT INTO t VALUES (7)", [])\n' % b)
+        check("default busy timeout: waits for the other connection and then succeeds", out.split()[0] == "true", out)
+        rows = sqlite3.connect(dbp).execute("SELECT v FROM t").fetchall()
+        check("the waited-for row is really in the database", rows == [(7,)], rows)
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
 def run():
     test_uuid()
     test_webi_auth_wire()
@@ -643,6 +673,7 @@ def run():
     test_dns_wire()
     test_session_and_retry_wire()
     test_files()
+    test_sqlite_lock()
     print("\n  %d/%d passed   |   %d failed" % (passed, passed + failed, failed))
     return 1 if failed else 0
 

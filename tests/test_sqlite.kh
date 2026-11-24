@@ -1,15 +1,91 @@
-# Test for sqlite package
+# Tests for the sqlite package and the native bridge behind it.
+#   ./kosh tests/test_sqlite.kh        (run from the project root)
+# The two-connection lock test is in tests/security/test_packages.py.
 import "../packages/sqlite/sqlite.kh"
 import "../packages/test/test.kh"
 
 let t = test_suite("SQLite Suite")
 
-let db = db_open("app.db")
-t = test_eq(t, "db path check", db["path"], "app.db")
+let PATH = "tests/_t_sqlite.db"
+remove_file(PATH)
+let db = db_open(PATH)
+t = test_eq(t, "db path check", db["path"], PATH)
+t = test_true(t, "create table", db_exec(db, "CREATE TABLE a (id INTEGER PRIMARY KEY, n INTEGER, t TEXT, b BLOB)", []))
+fn count():
+    return db_query(db, "SELECT count(*) AS c FROM a", [])[0]["c"]
 
-let ok = db_exec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", [])
-t = test_true(t, "exec check", ok)
+# ---- round trip + injection safety -------------------------------------
+t = test_true(t, "insert with params", db_exec(db, "INSERT INTO a (n, t) VALUES (?, ?)", [5, "hello"]))
+let r = db_query(db, "SELECT n, t FROM a WHERE n = ?", [5])
+t = test_eq(t, "row read back", r[0]["t"], "hello")
+let evil = "x'); DROP TABLE a; --"
+t = test_true(t, "injection string stored as text", db_exec(db, "INSERT INTO a (t) VALUES (?)", [evil]))
+t = test_eq(t, "table still exists", count(), 2)
+t = test_eq(t, "evil text round trips", db_query(db, "SELECT t FROM a WHERE t = ?", [evil])[0]["t"], evil)
+t = test_true(t, "null, bool and float params", db_exec(db, "INSERT INTO a (n, t) VALUES (?, ?)", [nil, "n"]))
+t = test_true(t, "bool param", db_exec(db, "INSERT INTO a (n) VALUES (?)", [true]))
+t = test_eq(t, "whole numbers are INTEGER", db_query(db, "SELECT typeof(n) ty FROM a WHERE t = 'hello'", [])[0]["ty"], "integer")
+let before = count()
 
-db_init(db)
+# ---- multi statement is refused, not half-run --------------------------
+t = test_false(t, "two statements refused", db_exec(db, "INSERT INTO a (n) VALUES (101); INSERT INTO a (n) VALUES (102)", []))
+t = test_eq(t, "...and NEITHER ran", count(), before)
+t = test_true(t, "one statement with trailing ; is fine", db_exec(db, "INSERT INTO a (n) VALUES (103);  ", []))
+t = test_true(t, "trailing comment is fine", db_exec(db, "INSERT INTO a (n) VALUES (104); -- note", []))
+t = test_false(t, "empty SQL refused", db_exec(db, "   ", []))
+t = test_false(t, "comment-only SQL refused", db_exec(db, "-- nothing", []))
+t = test_nil(t, "query: two statements refused", db_query(db, "SELECT 1; SELECT 2", []))
+t = test_false(t, "syntax error is false", db_exec(db, "INSRT INTO nope", []))
+
+# ---- placeholder / params count ----------------------------------------
+let mid = count()
+t = test_false(t, "too few params refused", db_exec(db, "INSERT INTO a (n, t) VALUES (?, ?)", [7]))
+t = test_false(t, "no params for a ? refused", db_exec(db, "DELETE FROM a WHERE id = ?", []))
+t = test_false(t, "too many params refused", db_exec(db, "INSERT INTO a (n) VALUES (?)", [1, 2]))
+t = test_false(t, "params not an array refused", db_exec(db, "INSERT INTO a (n) VALUES (?)", "99"))
+t = test_false(t, "map param that is not a blob refused", db_exec(db, "INSERT INTO a (n) VALUES (?)", [{"a": 1}]))
+t = test_eq(t, "refused calls changed nothing", count(), mid)
+t = test_true(t, "zero placeholders, zero params ok", db_exec(db, "DELETE FROM a WHERE n = 104", []))
+
+# ---- big integers -------------------------------------------------------
+t = test_true(t, "exact big int via SQL literal", db_exec(db, "INSERT INTO a (n) VALUES (9007199254740993)", []))
+let big = db_query(db, "SELECT n FROM a WHERE n > 9007199254740992", [])
+t = test_eq(t, "big INTEGER comes back as exact string", big[0]["n"], "9007199254740993")
+t = test_true(t, "big int stored exactly from a string param", db_exec(db, "INSERT INTO a (n) VALUES (?)", ["9223372036854775807"]))
+t = test_eq(t, "max int64 is exact", db_query(db, "SELECT n FROM a WHERE n > 9100000000000000", [])[0]["n"], "9223372036854775807")
+t = test_eq(t, "small ints stay numbers", type(db_query(db, "SELECT n FROM a WHERE t = 'hello'", [])[0]["n"]), "number")
+t = test_false(t, "Infinity param refused", db_exec(db, "INSERT INTO a (n) VALUES (?)", [pow(10, 999)]))
+
+# ---- BLOB ---------------------------------------------------------------
+t = test_true(t, "blob with embedded NUL stored", db_exec(db, "INSERT INTO a (b) VALUES (?)", [db_blob("41004243")]))
+let bl = db_query(db, "SELECT length(b) AS l, b FROM a WHERE b IS NOT NULL", [])
+t = test_eq(t, "blob length is 4", bl[0]["l"], 4)
+t = test_true(t, "blob comes back as a blob value", db_is_blob(bl[0]["b"]))
+t = test_eq(t, "blob bytes survive the NUL", db_blob_hex(bl[0]["b"]), "41004243")
+t = test_eq(t, "blob size field", bl[0]["b"]["size"], 4)
+t = test_true(t, "empty blob ok", db_exec(db, "INSERT INTO a (b) VALUES (?)", [db_blob("")]))
+t = test_false(t, "odd-length hex refused", db_exec(db, "INSERT INTO a (b) VALUES (?)", [db_blob("abc")]))
+t = test_false(t, "non-hex refused", db_exec(db, "INSERT INTO a (b) VALUES (?)", [db_blob("zz")]))
+
+# ---- query errors give nil, not partial rows ----------------------------
+db_exec(db, "CREATE TABLE z (v)", [])
+db_exec(db, "INSERT INTO z VALUES (1)", [])
+t = test_nil(t, "failure mid-query is nil", db_query(db, "SELECT abs(v) FROM z UNION ALL SELECT json_extract('{bad', '$')", []))
+t = test_eq(t, "empty result is an empty array", len(db_query(db, "SELECT * FROM z WHERE v = 99", [])), 0)
+
+# ---- transactions -------------------------------------------------------
+db_exec(db, "CREATE TABLE tx (v INTEGER UNIQUE)", [])
+t = test_true(t, "exec_many commits", db_exec_many(db, ["INSERT INTO tx VALUES (1)", ["INSERT INTO tx VALUES (?)", [2]]]))
+t = test_false(t, "exec_many fails on a bad statement", db_exec_many(db, ["INSERT INTO tx VALUES (3)", "INSERT INTO tx VALUES (1)"]))
+t = test_eq(t, "...and rolled everything back", len(db_query(db, "SELECT * FROM tx", [])), 2)
+t = test_false(t, "exec_many rejects a non-array", db_exec_many(db, "x"))
+
+# ---- handles ------------------------------------------------------------
+t = test_true(t, "busy timeout can be set", db_busy_timeout(db, 100))
+t = test_false(t, "busy timeout out of range refused", db_busy_timeout(db, -1))
+t = test_true(t, "close", db_close(db))
+t = test_false(t, "closed handle is refused", db_exec(db, "SELECT 1", []))
+t = test_nil(t, "closed handle query is nil", db_query(db, "SELECT 1", []))
+remove_file(PATH)
 
 test_run(t)

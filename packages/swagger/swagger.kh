@@ -1,21 +1,43 @@
-# Kosh Swagger Package
+# Kosh Swagger Package v1.1.0
 # Usage: import "swagger"
+#
+#   app = swagger_ui(app, "/docs")
+#
+# Serves a simple HTML list of the app's routes. Route text is HTML-escaped
+# (a route like "/<script>..." used to be inserted raw = XSS), and the page
+# carries a Content-Security-Policy meta tag that forbids scripts, so even a
+# future escaping mistake cannot run code.
+#
+# NOTE: this lists "METHOD /path" strings only; it is not a full OpenAPI /
+# Swagger UI. Do not expose it on a production server unless you want the
+# route list to be public.
 
 import "webi"
+
+fn _swagger_esc(s):
+    s = str(s)
+    s = str_replace(s, "&", "&amp;")
+    s = str_replace(s, "<", "&lt;")
+    s = str_replace(s, ">", "&gt;")
+    s = str_replace(s, "\"", "&quot;")
+    s = str_replace(s, "'", "&#39;")
+    return s
 
 fn swagger_ui(app, path):
     let routes = webi_routes(app)
 
     # Internal handler that uses the captured routes
     fn _swagger_handler(req):
-        let html = "<html><head><title>Swagger UI</title>"
+        let html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+        html = html + "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\">"
+        html = html + "<title>Swagger UI</title>"
         html = html + "<style>body{font-family:sans-serif;padding:20px} .route{border-bottom:1px solid #ccc;padding:10px}</style></head>"
         html = html + "<body><h1>API Documentation</h1>"
 
         # routes is an array of strings e.g. "GET /hello"
         for r in routes:
             html = html + "<div class='route'>"
-            html = html + "<b>" + r + "</b>"
+            html = html + "<b>" + _swagger_esc(r) + "</b>"
             html = html + "</div>"
 
         html = html + "</body></html>"

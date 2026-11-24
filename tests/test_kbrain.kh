@@ -20,4 +20,21 @@ print "Prediction for 5: " + str(p)
 t = test_true(t, "prediction should be > 9.9", p > 9.9)
 t = test_true(t, "prediction should be < 10.1", p < 10.1)
 
+
+# ---- Phase C: divergence and input checks --------------------------------
+let big = set_params(linear_regression(), 0.01, 1000)
+big = train(big, [[1000], [2000], [3000]], [5, 10, 15])
+t = test_true(t, "diverging training is flagged", big["diverged"])
+t = test_true(t, "weights stay finite (no NaN)", big["weights"] == big["weights"] and abs(big["weights"]) < pow(10, 16))
+t = test_nil(t, "predict refuses a diverged model", predict(big, [10]))
+let fixed = set_params(linear_regression(), 0.0000001, 2000)
+fixed = train(fixed, [[1000], [2000], [3000]], [5, 10, 15])
+t = test_false(t, "a lower learning rate does not diverge", fixed["diverged"])
+t = test_nil(t, "x/y length mismatch refused", train(linear_regression(), [[1], [2]], [1]))
+t = test_nil(t, "x rows must be arrays", train(linear_regression(), [1, 2], [1, 2]))
+t = test_nil(t, "non-number y refused", train(linear_regression(), [[1]], ["a"]))
+t = test_nil(t, "bad lr refused", train(set_params(linear_regression(), 0, 10), [[1]], [1]))
+t = test_nil(t, "predict checks its input", predict(model, 5))
+t = test_eq(t, "empty data returns the model unchanged", train(linear_regression(), [], [])["weights"], 0.0)
+
 test_run(t)

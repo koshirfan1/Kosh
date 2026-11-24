@@ -26,4 +26,18 @@ t = test_eq(t, "status should be 200", res["status"], 200)
 t = test_contains_str(t, "body should contain API Documentation", res["body"], "API Documentation")
 t = test_contains_str(t, "body should list /hello route", res["body"], "/hello")
 
+
+# ---- Phase C: route text is HTML-escaped (was raw = XSS) -----------------
+let app2 = webi_app()
+app2 = get_route(app2, "/<script>alert(1)</script>", hello_handler)
+app2 = get_route(app2, "/a'b\"c&d", hello_handler)
+app2 = swagger_ui(app2, "/docs")
+let res2 = webi_handle(app2, "GET", "/docs", "", "", "", "127.0.0.1")
+t = test_eq(t, "escaped page still 200", res2["status"], 200)
+t = test_false(t, "no raw <script> tag in the page", contains(res2["body"], "<script"))
+t = test_contains_str(t, "script is shown as text", res2["body"], "&lt;script&gt;alert(1)&lt;/script&gt;")
+t = test_contains_str(t, "quote and ampersand escaped", res2["body"], "a&#39;b&quot;c&amp;d")
+t = test_contains_str(t, "CSP meta tag present", res2["body"], "Content-Security-Policy")
+t = test_contains_str(t, "CSP forbids scripts (default-src none)", res2["body"], "default-src 'none'")
+
 test_run(t)

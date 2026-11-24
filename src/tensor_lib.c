@@ -354,6 +354,30 @@ void fn_tensor_transpose(Value *result, Interpreter *interp, int argc, Value *ar
     free(out);
 }
 
+/* Validates one entry of a user-supplied shape and folds it into the running
+ * element count. Rejects non-numbers, NaN/Infinity, fractions, negatives, and
+ * any product that does not fit an int (the old `size *= dim` overflowed:
+ * reshape(t, [65536, 65536]) wrapped to 0 and could "match" a tiny tensor,
+ * which then claimed a 4-billion-element shape over 1 element of data). */
+static int shape_dim_checked(const char *fname, Value item, int *dim_out, long long *size) {
+    if (item.type != VAL_NUMBER) {
+        fprintf(stderr, "Runtime error: %s() shape must be an array of numbers\n", fname);
+        return 0;
+    }
+    double d = item.as.number;
+    if (!(d >= 0.0 && d <= 2147483647.0) || d != (double)(long long)d) {
+        fprintf(stderr, "Runtime error: %s() each dimension must be a whole number between 0 and %d (got %g)\n", fname, 2147483647, d);
+        return 0;
+    }
+    *size *= (long long)d;
+    if (*size > 2147483647LL) {
+        fprintf(stderr, "Runtime error: %s() shape has too many elements (more than %d)\n", fname, 2147483647);
+        return 0;
+    }
+    *dim_out = (int)d;
+    return 1;
+}
+
 void fn_tensor_reshape(Value *result, Interpreter *interp, int argc, Value *args) {
     (void)interp;
     *result = value_nil();
@@ -367,16 +391,12 @@ void fn_tensor_reshape(Value *result, Interpreter *interp, int argc, Value *args
         return;
     }
     int shape[TENSOR_MAX_NDIM];
-    int size = 1;
+    long long size_ll = 1;
     Value *items = AS_ARRAY_ITEMS(args[1]);
     for (int i = 0; i < ndim; i++) {
-        if (items[i].type != VAL_NUMBER) {
-            fprintf(stderr, "Runtime error: _tensor_reshape() shape must be an array of numbers\n");
-            return;
-        }
-        shape[i] = (int)items[i].as.number;
-        size *= shape[i];
+        if (!shape_dim_checked("_tensor_reshape", items[i], &shape[i], &size_ll)) return;
     }
+    int size = (int)size_ll;
     if (size != AS_TENSOR_SIZE(args[0])) {
         fprintf(stderr, "Runtime error: _tensor_reshape() total size mismatch (%d vs %d)\n",
                 size, AS_TENSOR_SIZE(args[0]));
@@ -423,15 +443,11 @@ void fn_tensor_sum_to_shape(Value *result, Interpreter *interp, int argc, Value 
     }
     int target_shape[TENSOR_MAX_NDIM];
     Value *items = AS_ARRAY_ITEMS(args[1]);
-    int target_size = 1;
+    long long target_size_ll = 1;
     for (int i = 0; i < target_ndim; i++) {
-        if (items[i].type != VAL_NUMBER) {
-            fprintf(stderr, "Runtime error: _tensor_sum_to_shape() shape must be an array of numbers\n");
-            return;
-        }
-        target_shape[i] = (int)items[i].as.number;
-        target_size *= target_shape[i];
+        if (!shape_dim_checked("_tensor_sum_to_shape", items[i], &target_shape[i], &target_size_ll)) return;
     }
+    int target_size = (int)target_size_ll;
 
     if (target_size == AS_TENSOR_SIZE(g)) {
         /* nothing was actually broadcast -- just reshape */

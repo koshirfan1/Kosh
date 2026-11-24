@@ -1,4 +1,4 @@
-# Kosh Quantization Package
+# Kosh Quantization Package v1.1.0
 # Usage: import "quant"
 #
 # Accuracy-preserving quantization, in pure Kosh - no native C bridge, no
@@ -20,7 +20,38 @@
 # row (per output channel), not one scale for the whole matrix. See
 # quant_error() below and docs/llm.md for why per-channel matters.
 
+# ---------------------------------------------------------------------------
+# Argument checks (v1.1.0). Before this, quantize_per_channel(W, 0), (W, -1) or
+# (W, 64) returned garbage scales (division by zero, negative or absurd qmax)
+# with no error. Every public function now validates its arguments and, on bad
+# input, prints "quant: ..." and returns nil - it never returns a plausible-
+# looking but meaningless result.
+
+fn _quant_fail(fname, why):
+    print "quant: " + fname + "() " + why
+    return false
+
+# bits: a whole number from 2 to 32 (1 bit leaves no positive levels: qmax = 0)
+fn _quant_check_bits(fname, bits):
+    if type(bits) != "number" or bits != floor(bits) or bits < 2 or bits > 32:
+        return _quant_fail(fname, "bits must be a whole number from 2 to 32")
+    return true
+
+# W: an array of non-empty rows of numbers
+fn _quant_check_matrix(fname, W):
+    if type(W) != "array":
+        return _quant_fail(fname, "W must be an array of rows")
+    for row in W:
+        if type(row) != "array" or len(row) == 0:
+            return _quant_fail(fname, "every row of W must be a non-empty array")
+        for v in row:
+            if type(v) != "number":
+                return _quant_fail(fname, "W must contain only numbers")
+    return true
+
 fn quantize_per_channel(W, bits):
+    if not _quant_check_matrix("quantize_per_channel", W) or not _quant_check_bits("quantize_per_channel", bits):
+        return nil
     let qmax = pow(2, bits - 1) - 1
     let data = []
     let scales = []
@@ -62,6 +93,11 @@ fn quantize_per_channel(W, bits):
 # don't clip) - this function is the right shape for activation
 # calibration, not a general-purpose "handle outliers" tool.
 fn quantize_per_channel_calibrated(W, keep_fraction):
+    if not _quant_check_matrix("quantize_per_channel_calibrated", W):
+        return nil
+    if type(keep_fraction) != "number" or keep_fraction <= 0 or keep_fraction > 1:
+        _quant_fail("quantize_per_channel_calibrated", "keep_fraction must be a number above 0 and at most 1")
+        return nil
     let qmax = 127
     let data = []
     let scales = []
@@ -101,26 +137,36 @@ fn quantize_per_channel_calibrated(W, keep_fraction):
 # Relative L2 error between a true matrix and a quantized+dequantized one -
 # the actual metric the earlier chat numbers were computed with.
 fn quant_error(W_true, W_quant):
+    if not _quant_check_matrix("quant_error", W_true) or not _quant_check_matrix("quant_error", W_quant):
+        return nil
+    if len(W_true) != len(W_quant):
+        _quant_fail("quant_error", "the two matrices must have the same number of rows")
+        return nil
     let num = 0
     let den = 0
     let i = 0
     while i < len(W_true):
+        if len(W_true[i]) != len(W_quant[i]):
+            _quant_fail("quant_error", "the two matrices must have the same shape")
+            return nil
         let j = 0
-        while j < len(W_true[0]):
+        while j < len(W_true[i]):
             let d = W_true[i][j] - W_quant[i][j]
             num = num + d * d
             den = den + W_true[i][j] * W_true[i][j]
             j = j + 1
         i = i + 1
+    if den == 0:
+        # relative error is undefined for an all-zero reference
+        if num == 0:
+            return 0
+        _quant_fail("quant_error", "W_true is all zeros, so a relative error is undefined")
+        return nil
     return sqrt(num / den)
 
-# Bias correction: round-to-nearest error isn't always zero-mean per channel
-# (it's only symmetric if the values in that channel are symmetric around
-# zero). This measures each channel's own mean signed error after
-# quantizing and adds it back - cheap, and only helps when a channel's
-# error genuinely has a non-zero mean; on already-symmetric data (like the
-# synthetic test earlier) expect this to do very little, honestly.
 fn quantize_per_channel_bias_corrected(W, bits):
+    if not _quant_check_matrix("quantize_per_channel_bias_corrected", W) or not _quant_check_bits("quantize_per_channel_bias_corrected", bits):
+        return nil
     let q = quantize_per_channel(W, bits)
     let corrected = []
     let i = 0
@@ -158,6 +204,11 @@ fn quantize_per_channel_bias_corrected(W, bits):
 # sparse {index, value} list (which "outliers" already is, per row), only
 # reconstructing the dense form at compute time.
 fn quantize_outlier_aware(W, bits, outlier_fraction):
+    if not _quant_check_matrix("quantize_outlier_aware", W) or not _quant_check_bits("quantize_outlier_aware", bits):
+        return nil
+    if type(outlier_fraction) != "number" or outlier_fraction < 0 or outlier_fraction >= 1:
+        _quant_fail("quantize_outlier_aware", "outlier_fraction must be a number from 0 up to (not including) 1")
+        return nil
     let qmax = pow(2, bits - 1) - 1
     let data = []
     let scales = []
@@ -220,6 +271,11 @@ fn quantize_outlier_aware(W, bits, outlier_fraction):
 # instead. Reports how many rows ended up full-precision so the size/
 # accuracy trade-off is visible, not hidden.
 fn quantize_mixed_precision(W, bits, error_threshold):
+    if not _quant_check_matrix("quantize_mixed_precision", W) or not _quant_check_bits("quantize_mixed_precision", bits):
+        return nil
+    if type(error_threshold) != "number" or error_threshold < 0:
+        _quant_fail("quantize_mixed_precision", "error_threshold must be a number >= 0")
+        return nil
     let q = quantize_per_channel(W, bits)
     let data = []
     let kept_full_precision = 0
@@ -252,6 +308,8 @@ fn quantize_mixed_precision(W, bits, error_threshold):
 # above. int8_pack() is int8-only (no bits parameter - that's the honest
 # current scope, see int8array_lib.h).
 fn quantize_real_per_channel(W):
+    if not _quant_check_matrix("quantize_real_per_channel", W):
+        return nil
     let rows = []
     let scales = []
     for row in W:

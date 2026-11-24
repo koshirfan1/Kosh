@@ -70,6 +70,18 @@ fn suite_tensor_native():
     t = test_nil(t, "ragged nested array is rejected", _tensor_from_nested([[1, 2], [3]]))
     t = test_nil(t, "matmul rejects non-2D", _tensor_matmul(vec, vec))
     t = test_nil(t, "reshape rejects a size mismatch", _tensor_reshape(a, [3]))
+    # shape validation (Phase C): the old `size *= dim` overflowed or accepted
+    # negative dims, e.g. [-2, -2] "matched" 4 elements.
+    let four = _tensor_from_nested([1, 2, 3, 4])
+    t = test_nil(t, "reshape rejects negative dims whose product matches", _tensor_reshape(four, [-2, -2]))
+    t = test_nil(t, "reshape rejects a negative dim", _tensor_reshape(four, [-4]))
+    t = test_nil(t, "reshape rejects int overflow (65536 x 65536)", _tensor_reshape(four, [65536, 65536]))
+    t = test_nil(t, "reshape rejects 2^32 x 0 style wraparound", _tensor_reshape(four, [4294967296, 0]))
+    t = test_nil(t, "reshape rejects a fractional dim", _tensor_reshape(four, [1.5, 2]))
+    t = test_nil(t, "reshape rejects Infinity", _tensor_reshape(four, [pow(10, 999)]))
+    t = test_nil(t, "reshape rejects a non-number dim", _tensor_reshape(four, [2, "x"]))
+    t = test_arr_eq(t, "reshape still works for a valid shape", _tensor_to_nested(_tensor_reshape(four, [2, 2])), [[1, 2], [3, 4]])
+    t = test_arr_eq(t, "reshape to 1-D still works", _tensor_to_nested(_tensor_reshape(four, [4])), [1, 2, 3, 4])
     t = test_nil(t, "add rejects a real shape mismatch", _tensor_add(vec, _tensor_from_nested([1, 2])))
 
     return t

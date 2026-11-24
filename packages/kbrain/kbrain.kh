@@ -9,11 +9,32 @@ fn linear_regression():
         "epochs": 1000
     }
 
+# train() checks its input and stops if gradient descent diverges.
+#   x: array of [value] rows,  y: array of numbers of the same length.
+# If the learning rate is too high for the scale of the data, the weights
+# blow up to inf and then NaN (this used to continue silently, so predict()
+# returned "nan"). Now training stops as soon as a weight is NaN or beyond
+# +/-1e15, the model gets "diverged": true, predict() returns nil, and a
+# message is printed; lower "lr" or scale the inputs
+# (e.g. divide x by its maximum) and train again. Returns nil on bad input.
 fn train(model, x, y):
     # Simple gradient descent for y = wx + b
+    if type(x) != "array" or type(y) != "array" or len(x) != len(y):
+        print "kbrain: train() needs x and y arrays of the same length"
+        return nil
     let n = len(x)
     if n == 0:
         return model
+    let k = 0
+    while k < n:
+        if type(x[k]) != "array" or len(x[k]) < 1 or type(x[k][0]) != "number" or type(y[k]) != "number":
+            print "kbrain: train() x must be rows like [value] and y numbers"
+            return nil
+        k = k + 1
+    if type(model["lr"]) != "number" or model["lr"] <= 0 or type(model["epochs"]) != "number" or model["epochs"] < 0 or model["epochs"] != floor(model["epochs"]):
+        print "kbrain: lr must be > 0 and epochs a whole number >= 0"
+        return nil
+    model["diverged"] = false
 
     let i = 0
     while i < model["epochs"]:
@@ -31,13 +52,26 @@ fn train(model, x, y):
             total_error_b = total_error_b + error
             j = j + 1
 
-        model["weights"] = model["weights"] - model["lr"] * (total_error_w / n)
-        model["bias"] = model["bias"] - model["lr"] * (total_error_b / n)
+        let new_w = model["weights"] - model["lr"] * (total_error_w / n)
+        let new_b = model["bias"] - model["lr"] * (total_error_b / n)
+        # NaN is the only number not equal to itself; also stop before overflow
+        if new_w != new_w or new_b != new_b or abs(new_w) > pow(10, 15) or abs(new_b) > pow(10, 15):
+            model["diverged"] = true
+            print "kbrain: training diverged at epoch " + str(i) + " (learning rate too high for this data); weights kept from the last epoch before it blew up; predict() will refuse until you retrain"
+            return model
+        model["weights"] = new_w
+        model["bias"] = new_b
         i = i + 1
     return model
 
 fn predict(model, x):
     # x is [value]
+    if type(x) != "array" or len(x) < 1 or type(x[0]) != "number":
+        print "kbrain: predict() x must be like [value]"
+        return nil
+    if has(model, "diverged") and model["diverged"]:
+        print "kbrain: predict() refused - the model diverged during training; lower lr or scale the inputs and train again"
+        return nil
     return model["weights"] * x[0] + model["bias"]
 
 fn set_params(model, lr, epochs):

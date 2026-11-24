@@ -200,6 +200,10 @@ jobs:
         ./kosh tests/test_csv_io.kh
         ./kosh tests/test_dotenv.kh
         ./kosh tests/test_logger.kh
+        ./kosh tests/test_sqlite.kh
+        ./kosh tests/test_quant.kh
+        ./kosh tests/test_kbrain.kh
+        ./kosh tests/test_swagger.kh
         ./kosh tests/test_openai.kh
         ./kosh tests/test_dns_doh.kh
 

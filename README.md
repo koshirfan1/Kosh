@@ -100,7 +100,7 @@ There is no published pre-built binary release yet. Details, the Inno Setup inst
 |---|---|---|
 | [`webi`](docs/webi.md) | 1.4.0 | Lightweight web framework: routing, requests, responses, middleware, HTTP server |
 | `requests` | 1.2.0 | HTTP client v1.2 |
-| `sqlite` | 1.0.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
+| `sqlite` | 1.1.0 | SQL Database bridge for high-speed local data persistence *(needs libsqlite3 (dev headers) to build)* |
 | `vision` | 3.0.0 | Full classical computer-vision toolkit |
 | [`ocr`](docs/ocr.md) | 1.1.0 | Real OCR via Tesseract *(opt-in: build with `make OCR=1` (needs libtesseract))* |
 | [`tensor`](docs/tensor.md) | 2.0.0 | Native n-dimensional tensors with automatic differentiation |

@@ -1,12 +1,40 @@
-# Kosh SQLite Package
+# Kosh SQLite Package v1.1.0
 # Usage: import "sqlite"
 #
-# Real bridge to libsqlite3 (was a mock that ignored the SQL and always
-# returned true - fixed this session, see chat/README for the discovery).
+# Real bridge to libsqlite3.
 #
-# Always pass user-derived values via `params` (bound with real
-# sqlite3_bind_*), never by concatenating them into the sql string -
-# that's a genuine SQL injection hole, not just a style issue.
+#   let db = db_open("app.db")
+#   db_exec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", [])
+#   db_exec(db, "INSERT INTO users (name) VALUES (?)", ["Ann"])
+#   let rows = db_query(db, "SELECT * FROM users WHERE id = ?", [1])
+#   db_close(db)
+#
+# ALWAYS pass user-derived values through `params` (real sqlite3_bind_*),
+# never by concatenating them into the SQL string: that is a SQL injection
+# hole. Bound values are never interpreted as SQL.
+#
+# Rules (v1.1.0 - each one used to fail silently):
+#   - ONE statement per call. "INSERT ...; INSERT ..." is an error (before,
+#     only the first ran and the call said true). Use db_exec_many() to run
+#     several statements together in one transaction.
+#   - The number of params must equal the number of ? placeholders, and
+#     params must be an array. (A missing value used to become NULL:
+#     "DELETE ... WHERE id = ?" with [] deleted nothing and said true.)
+#   - db_exec returns true/false. db_query returns an array of row maps, or
+#     nil on ANY error (never a half-read result).
+#   - Numbers: whole numbers within +/-2^53 are stored as INTEGER, others as
+#     REAL. Kosh numbers are doubles, so an INTEGER column value beyond
+#     +/-2^53 is returned as a decimal STRING ("9007199254740993") so no
+#     digits are lost. To STORE such a number exactly, pass it as a string
+#     into an INTEGER-affinity column.
+#   - BLOBs are binary-safe: store with db_blob("41004243") (hex), and a BLOB
+#     column comes back as {"type": "blob", "size": 4, "hex": "41004243"}
+#     (see db_is_blob / db_blob_hex). TEXT is still cut at an embedded NUL.
+#   - Waits up to 5 seconds for another connection's lock before failing
+#     with "database is locked"; change with db_busy_timeout(db, ms).
+#
+# Name clash: this package and json_db both define db_open/db_get-style
+# names starting with db_; import only one of them in a program.
 
 fn db_open(path):
     return sqlite_open(path)
@@ -20,7 +48,45 @@ fn db_query(db, sql, params):
 fn db_close(db):
     return sqlite_close(db)
 
-# Helper for migrations
+fn db_busy_timeout(db, ms):
+    return sqlite_busy_timeout(db, ms)
+
+# Run several statements as ONE transaction: all succeed or none apply.
+#   statements: array of SQL strings (no params) or of [sql, params] pairs.
+# Returns true, or false if any statement failed (everything rolled back).
+fn db_exec_many(db, statements):
+    if type(statements) != "array":
+        return false
+    if not sqlite_exec(db, "BEGIN", []):
+        return false
+    for st in statements:
+        let ok = false
+        if type(st) == "string":
+            ok = sqlite_exec(db, st, [])
+        else:
+            if type(st) == "array" and len(st) == 2:
+                ok = sqlite_exec(db, st[0], st[1])
+        if not ok:
+            sqlite_exec(db, "ROLLBACK", [])
+            return false
+    if not sqlite_exec(db, "COMMIT", []):
+        sqlite_exec(db, "ROLLBACK", [])
+        return false
+    return true
+
+# BLOB helpers: values are carried as hex text.
+fn db_blob(hex):
+    return {"type": "blob", "hex": hex}
+
+fn db_is_blob(v):
+    return type(v) == "map" and has(v, "type") and v["type"] == "blob"
+
+fn db_blob_hex(v):
+    if db_is_blob(v):
+        return v["hex"]
+    return nil
+
+# Kept for backward compatibility. It never did anything (it only printed
+# a line) - run your CREATE TABLE statements with db_exec instead.
 fn db_init(db):
-    print "[SQLITE] Initializing database at " + db["path"]
     return true

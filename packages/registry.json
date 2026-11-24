@@ -282,13 +282,13 @@
     },
     {
       "name": "kbrain",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Simple machine learning and AI utilities",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/kbrain/kbrain.kh",
       "sha256": {
-        "kbrain.kh": "b574eeb99635a274f77dee13a9733944b1054ddedb1430af611f04606c0095e7"
+        "kbrain.kh": "64dd906b8a7d2880ee1df5325fb02cbc091d1c65fba71a6b511ef342b9703b25"
       }
     },
     {
@@ -348,7 +348,7 @@
     },
     {
       "name": "swagger",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Swagger UI and API documentation generator",
       "author": "koshirfan1",
@@ -357,7 +357,7 @@
         "webi"
       ],
       "sha256": {
-        "swagger.kh": "eab5445c4f957da69084d939c6c3f12df8d7e5035421027e387e25af50f49472"
+        "swagger.kh": "a8bdd9ec567d7a175e2fe10c3a8ac05c959cd498df4e4dbae4847d965e0cbf76"
       }
     },
     {
@@ -487,13 +487,13 @@
     },
     {
       "name": "sqlite",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "SQL Database bridge for high-speed local data persistence",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/sqlite/sqlite.kh",
       "sha256": {
-        "sqlite.kh": "8613a6740f789d8918433ac788767265fff9256a74dddf94fbfee9b5e3adf6e2"
+        "sqlite.kh": "3d7a01388e1cc9a0e4e1e4c4903ba0d7c94363ce1c9cfc7aaa0d35582df920ef"
       }
     },
     {
@@ -523,13 +523,13 @@
     },
     {
       "name": "quant",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "developer": "Irfan Khan",
       "description": "Accuracy-preserving quantization in pure Kosh: per-channel calibration, bias correction, outlier-aware sparse decomposition and mixed-precision strategies.",
       "author": "koshirfan1",
       "url": "https://raw.githubusercontent.com/koshirfan1/Kosh/main/packages/quant/quant.kh",
       "sha256": {
-        "quant.kh": "82e53054a1d044902dd4de1e2241790070c444d10ec89c3f2e73574a5bd10ada"
+        "quant.kh": "3e77e313130384b7d4c46f3f2d48676d28846a2059dcee0de83c58bffabb2f5a"
       }
     }
   ]
