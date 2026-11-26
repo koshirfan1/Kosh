@@ -33,6 +33,8 @@ static void enable_ansi(void) {}
 #include <ctype.h>
 #include <time.h>
 #include <stdint.h>
+#include "kh_ed25519.h"
+#include "kh_pubkey.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -49,6 +51,8 @@ static void enable_ansi(void) {}
 // (never plain http://), and main() validates them before anything runs.
 static const char *g_registry_url = REGISTRY_URL;
 static const char *g_raw_base     = RAW_BASE;
+// Ed25519 public key (hex) the registry must be signed with; "" = unsigned mode.
+static const char *g_pubkey_hex   = KH_REGISTRY_PUBKEY_HEX;
 
 static int url_scheme_ok(const char *u) {
     return strncmp(u, "https://", 8) == 0 || strncmp(u, "file://", 7) == 0;
@@ -577,6 +581,87 @@ static void warn_experimental(const char *name, const char *json) {
     free(note);
 }
 
+// ---------------------------------------------------------------------------
+// Signed registry.
+//
+// registry.json carries a SHA-256 for every package file, but it lives in the
+// same repository as the files, so anyone who can change one can change both.
+// The registry is therefore signed with an Ed25519 key that is NOT in the
+// repository; the matching public key is compiled in (kh_pubkey.h). The
+// signature is published next to the registry as registry.json.sig: 128 hex
+// characters (64 bytes) over the EXACT bytes of registry.json.
+//
+//   * key compiled in  -> a missing, malformed or wrong signature is a hard
+//                         error; nothing from the registry is used.
+//   * no key compiled  -> unsigned mode (warned about, once per run).
+//
+// Known limit: a signature does not say HOW NEW the registry is, so someone who
+// controls the network could replay an older, genuinely signed registry
+// (downgrade). The checksums in it still match its own files, so this cannot
+// inject new code, only hide updates.
+// ---------------------------------------------------------------------------
+static int hex_decode_exact(const char *s, size_t nbytes, uint8_t *out) {
+    for (size_t i = 0; i < nbytes * 2; i++) if (!isxdigit((unsigned char)s[i])) return 0;
+    for (size_t i = 0; i < nbytes; i++) {
+        unsigned v;
+        char two[3] = { s[2*i], s[2*i+1], 0 };
+        sscanf(two, "%2x", &v);
+        out[i] = (uint8_t)v;
+    }
+    return 1;
+}
+
+static int g_unsigned_warned = 0;
+
+// Fetches registry.json and, when a public key is configured, its signature.
+// Returns the registry text (caller frees) or NULL after printing why.
+static char *fetch_registry_verified(void) {
+    char *registry = fetch_url(g_registry_url);
+    if (!registry) { print_err("Could not reach registry."); return NULL; }
+    if (strlen(registry) < 10) return registry;        // callers report "could not reach"
+
+    if (!g_pubkey_hex || !*g_pubkey_hex) {
+        if (!g_unsigned_warned) {
+            g_unsigned_warned = 1;
+            printf("\033[1;33m!\033[0m registry signature NOT checked: this kh build has no public key (see docs/SIGNING.md).\n"
+                   "  Only the SHA-256 checksums listed in the registry itself are verified.\n");
+        }
+        return registry;
+    }
+
+    uint8_t pk[32];
+    if (strlen(g_pubkey_hex) != 64 || !hex_decode_exact(g_pubkey_hex, 32, pk)) {
+        print_err("The configured registry public key is not 64 hex characters - refusing.");
+        free(registry);
+        return NULL;
+    }
+    size_t ulen = strlen(g_registry_url) + 5;
+    char *sig_url = malloc(ulen);
+    if (!sig_url) { free(registry); return NULL; }
+    snprintf(sig_url, ulen, "%s.sig", g_registry_url);
+    char *sig_txt = fetch_url(sig_url);
+    free(sig_url);
+
+    uint8_t sig[64];
+    int ok = 0;
+    if (sig_txt) {
+        size_t n = 0;
+        while (sig_txt[n] && !isspace((unsigned char)sig_txt[n])) n++;
+        if (n == 128 && hex_decode_exact(sig_txt, 64, sig))
+            ok = ed25519_verify(sig, (const uint8_t *)registry, strlen(registry), pk);
+    }
+    free(sig_txt);
+    if (!ok) {
+        print_err("Registry signature is missing or INVALID - refusing to use this registry.");
+        printf("  The registry was not signed by the key built into this kh. It may have been\n"
+               "  tampered with, or you are using a mirror signed with a different key\n"
+               "  (set KH_REGISTRY_PUBKEY for a mirror you trust).\n");
+        free(registry);
+        return NULL;
+    }
+    return registry;
+}
+
 static int cmd_install(const char *name, int verify) {
     if (g_depth >= KH_MAX_DEPTH) {
         print_err("Dependency chain is too deep — refusing.");
@@ -586,8 +671,9 @@ static int cmd_install(const char *name, int verify) {
     g_depth++;
     print_info_line("Fetching registry...");
 
-    char *registry = fetch_url(g_registry_url);
+    char *registry = fetch_registry_verified();
     if (!registry || strlen(registry) < 10) {
+        if (!registry) { g_depth--; return 1; }            // signature failure already explained
         print_err("Could not reach registry. Check your internet connection.");
         free(registry);
         g_depth--;
@@ -1000,8 +1086,9 @@ static int ci_contains(const char *hay, const char *needle) {
 }
 
 static char *fetch_registry_or_err(void) {
-    char *registry = fetch_url(g_registry_url);
-    if (!registry || strlen(registry) < 10) {
+    char *registry = fetch_registry_verified();
+    if (!registry) return NULL;                            // signature failure already explained
+    if (strlen(registry) < 10) {
         print_err("Could not reach registry.");
         free(registry);
         return NULL;
@@ -1379,12 +1466,8 @@ static int cmd_update(const char *only, int verify) {
 // ---------------------------------------------------------------------------
 static int cmd_info(const char *name) {
     print_info_line("Fetching registry...");
-    char *registry = fetch_url(g_registry_url);
-    if (!registry || strlen(registry) < 10) {
-        print_err("Could not reach registry.");
-        free(registry);
-        return 1;
-    }
+    char *registry = fetch_registry_or_err();
+    if (!registry) return 1;
 
     char *pkg = find_package_in_registry(registry, name);
     free(registry);
@@ -1464,6 +1547,9 @@ int main(int argc, char *argv[]) {
     if (env_reg && *env_reg) {
         if (!url_scheme_ok(env_reg)) { print_err("KH_REGISTRY_URL must start with https:// or file://"); return 1; }
         g_registry_url = env_reg;
+        // A mirror is signed with ITS OWN key: only here may the key be replaced.
+        const char *env_key = getenv("KH_REGISTRY_PUBKEY");
+        if (env_key && *env_key) g_pubkey_hex = env_key;
     }
     if (env_raw && *env_raw) {
         if (!url_scheme_ok(env_raw)) { print_err("KH_RAW_BASE must start with https:// or file://"); return 1; }

@@ -1,0 +1,381 @@
+# tests/fuzz/fuzz_packages.kh - property fuzzer for the hardened file/data packages.
+#
+#   ./kosh tests/fuzz/fuzz_packages.kh [seed] [iterations]        (run from the project root)
+#
+# Deterministic: the same seed reproduces the same run. A failure prints the property that broke,
+# the seed and a description of the input, and the run exits 1. CI also runs it under
+# AddressSanitizer/UBSan so a memory error in the natives (sqlite bridge, tensor, files) fails too.
+# Expected error messages from rejected inputs go to stderr; only "FUZZ FAIL" lines matter.
+#
+# Properties
+#   F1 csv_io    stringify -> parse round-trips ANY text cells (commas, quotes, CR/LF, unicode);
+#                with formula protection a cell only ever gains a leading "'" and only if it
+#                started with = + - @ TAB CR
+#   F2 dotenv    a double-quoted value with any content round-trips exactly; garbage lines
+#                never crash and never produce a key containing "="
+#   F3 logger    no entry ever contains a raw newline, CR or ESC; a secret after password= /
+#                token: / api_key= / "Authorization: Bearer" never appears in the output
+#   F4 fs        a sandboxed path resolves inside the root or not at all, for any input
+#   F5 orm       a table name is accepted exactly when it is 1-64 letters, digits or _
+#   F6 sqlite    any text round-trips through a bound parameter; wrong param counts, multiple
+#                statements and random SQL junk never crash and never half-run
+#   F7 tensor    reshape accepts exactly the shapes whose product is the element count and whose
+#                dims are whole non-negative numbers; nothing else
+#   F8 quant     random bits / matrices: nil, or a well-formed finite result
+#   F9 kbrain    random learning rates and data: weights are never NaN or beyond 1e15
+import "../../packages/test/test.kh"
+import "../../packages/csv_io/csv_io.kh"
+import "../../packages/dotenv/dotenv.kh"
+import "../../packages/logger/logger.kh"
+import "../../packages/fs/fs.kh"
+import "../../packages/quant/quant.kh"
+import "../../packages/kbrain/kbrain.kh"
+import "orm"
+
+let SEED = 1
+let ITERS = 300
+if len(argv) > 0:
+    SEED = num(argv[0])
+if len(argv) > 1:
+    ITERS = num(argv[1])
+
+# ---- deterministic PRNG (Park-Miller; products stay below 2^53) ------------------------
+let RNG = SEED % 2147483646 + 1
+fn rnd(n):
+    RNG = (RNG * 16807) % 2147483647
+    return RNG % n
+
+let FAILS = 0
+let CTX = "setup"
+fn bad(msg):
+    FAILS = FAILS + 1
+    print "  FUZZ FAIL [" + CTX + "] " + msg + "   (seed=" + str(SEED) + ")"
+    if FAILS >= 10:
+        print "  too many failures, stopping"
+        exit(1)
+
+let TEXT = ["a", "b", "Z", "0", "9", " ", ",", "\"", "\n", "\r", "\r\n", "'", "=", "+", "-", "@", "\t", "#", "\\", "é", "✓", "你", ";", "x", "yy"]
+fn rtext(maxlen):
+    let n = rnd(maxlen + 1)
+    let s = ""
+    let i = 0
+    while i < n:
+        s = s + TEXT[rnd(len(TEXT))]
+        i = i + 1
+    return s
+
+# Kosh maps have no insertion order, so csv column order is arbitrary: find a column by its header.
+fn col(header, name):
+    let i = 0
+    while i < len(header):
+        if header[i] == name:
+            return i
+        i = i + 1
+    return -1
+
+fn starts_formula(s):
+    if len(s) == 0:
+        return false
+    let f = substring(s, 0, 1)
+    return f == "=" or f == "+" or f == "-" or f == "@" or f == "\t" or f == "\r"
+
+# ---------------------------------------------------------------- F1 csv_io
+CTX = "F1 csv_io"
+let it = 0
+while it < ITERS:
+    let nrows = 1 + rnd(4)
+    let rows = []
+    let r = 0
+    while r < nrows:
+        rows = push(rows, {"c1": rtext(8), "c2": rtext(8), "c3": "k" + rtext(6)})
+        r = r + 1
+    # protection off: exact round trip (c3 is never empty, so no row is a blank line)
+    let g = csv_parse(csv_stringify_opts(rows, {"formula_protection": false}))
+    if g == nil or len(g) != nrows + 1:
+        bad("round trip lost rows: " + str(rows))
+    else:
+        let i1 = col(g[0], "c1")
+        let i2 = col(g[0], "c2")
+        let i3 = col(g[0], "c3")
+        let k = 0
+        while k < nrows:
+            if i1 < 0 or i2 < 0 or i3 < 0:
+                bad("header lost a column: " + str(g[0]))
+            else:
+                if g[k + 1][i1] != rows[k]["c1"] or g[k + 1][i2] != rows[k]["c2"] or g[k + 1][i3] != rows[k]["c3"]:
+                    bad("cell changed in round trip: " + str(rows[k]["c1"]) + " | " + str(rows[k]["c2"]) + " | " + str(rows[k]["c3"]))
+            k = k + 1
+    # protection on: only an added leading quote, only for formula starters
+    let g2 = csv_parse(csv_stringify(rows))
+    if g2 == nil or len(g2) != nrows + 1:
+        bad("protected round trip lost rows: " + str(rows))
+    else:
+        let j1 = col(g2[0], "c1")
+        let k2 = 0
+        while k2 < nrows and j1 >= 0:
+            let orig = rows[k2]["c1"]
+            let got = g2[k2 + 1][j1]
+            let want = orig
+            if starts_formula(orig):
+                want = "'" + orig
+            if got != want:
+                bad("formula protection wrong for " + str(orig) + " -> " + str(got))
+            k2 = k2 + 1
+    it = it + 1
+
+# ---------------------------------------------------------------- F2 dotenv
+CTX = "F2 dotenv"
+fn env_escape(v):
+    v = str_replace(v, "\\", "\\\\")
+    v = str_replace(v, "\"", "\\\"")
+    v = str_replace(v, "\r", "\\r")
+    v = str_replace(v, "\n", "\\n")
+    v = str_replace(v, "\t", "\\t")
+    return v
+it = 0
+while it < ITERS:
+    let v = rtext(12)
+    write_file("tests/_fz.env", "K=\"" + env_escape(v) + "\"\nAFTER=1\n")
+    let e = load_env("tests/_fz.env")
+    if env_get(e, "K") != v or env_get(e, "AFTER") != "1":
+        bad("quoted value did not round-trip: " + str(v) + " got " + str(env_get(e, "K")))
+    # garbage lines
+    let junk = ""
+    let jl = 1 + rnd(5)
+    let q = 0
+    while q < jl:
+        junk = junk + rtext(14) + "\n"
+        q = q + 1
+    write_file("tests/_fz.env", junk)
+    let e2 = load_env("tests/_fz.env")
+    for key in keys(e2):
+        if contains(key, "=") or len(key) == 0:
+            bad("bad key produced from junk: " + str(key))
+    it = it + 1
+remove_file("tests/_fz.env")
+
+# ---------------------------------------------------------------- F3 logger
+CTX = "F3 logger"
+let LABELS = ["password=", "password: ", "token=", "api_key: ", "secret = ", "Authorization: Bearer ", "cookie="]
+it = 0
+while it < ITERS:
+    let secret = "S3CR3T" + str(rnd(1000000)) + "Z"
+    let msg = rtext(10) + LABELS[rnd(len(LABELS))] + secret + " " + rtext(10)
+    let lg = logger_silent(logger_new("n" + rtext(4)))
+    lg = log_error(lg, msg)
+    lg = log_kv(lg, "my_password", secret)
+    for entry in lg["entries"]:
+        let m = entry["message"]
+        if contains(m, "\n") or contains(m, "\r") or contains(m, "\x1b"):
+            bad("control character survived in a log entry: " + str(m))
+        if contains(m, secret):
+            bad("secret leaked into a log entry: " + str(m))
+        if contains(entry["source"], "\n") or contains(entry["source"], "\r"):
+            bad("logger name not escaped")
+    let out = logger_to_string(lg)
+    if contains(out, secret):
+        bad("secret leaked into logger_to_string")
+    if len(split(out, "\n")) - 1 != len(lg["entries"]):
+        bad("line count differs from entry count (forged line?): " + str(msg))
+    it = it + 1
+
+# ---------------------------------------------------------------- F4 fs sandbox
+CTX = "F4 fs sandbox"
+let sb = fs_sandbox("tests/fixtures")
+let ROOT_REAL = sb["root"]
+let PIECES = ["..", ".", "a", "b", "/", "//", "\\", ":", "C:", "%2e%2e", "x.txt", "template", "import_dir_shadow", "...", " ", "~", "sample.png", "\n"]
+it = 0
+while it < ITERS * 3:
+    let n = 1 + rnd(6)
+    let path = ""
+    let j = 0
+    while j < n:
+        path = path + PIECES[rnd(len(PIECES))]
+        if rnd(3) > 0:
+            path = path + "/"
+        j = j + 1
+    let res = fs_sandbox_path(sb, path)
+    if res != nil:
+        let prefix = ROOT_REAL + "/"
+        if res != ROOT_REAL and substring(res, 0, len(prefix)) != prefix:
+            bad("sandbox path escaped the root: " + str(path) + " -> " + str(res))
+    it = it + 1
+
+# ---------------------------------------------------------------- F5 orm names
+CTX = "F5 orm names"
+let NAMECH = "abcxyzABCXYZ0189_-./ \\:\n\"'é"
+fn ok_name(n):
+    if len(n) == 0 or len(n) > 64:
+        return false
+    let allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+    let i = 0
+    while i < len(n):
+        if not contains(allowed, substring(n, i, 1)):
+            return false
+        i = i + 1
+    return true
+it = 0
+while it < ITERS * 2:
+    let nm = ""
+    let nl = rnd(70)
+    if rnd(4) == 0:
+        nl = rnd(6)
+    let z = 0
+    while z < nl:
+        let pool = NAMECH
+        if rnd(4) > 0:
+            pool = "abcxyz019_"
+        nm = nm + substring(pool, rnd(len(pool)), 1)
+        z = z + 1
+    let m = orm_model(nm)
+    if (m != nil) != ok_name(nm):
+        bad("orm_model accepted/refused wrongly: [" + nm + "] accepted=" + str(m != nil))
+    it = it + 1
+if file_exists("../escaped.json") or file_exists("a.json"):
+    bad("a table file was created outside the allowed names")
+
+# ---------------------------------------------------------------- F6 sqlite
+# (uses the natives directly: orm imports json_db, whose db_open would shadow sqlite.kh's db_open)
+CTX = "F6 sqlite"
+fn db_exec(h, sql, p):
+    return sqlite_exec(h, sql, p)
+fn db_query(h, sql, p):
+    return sqlite_query(h, sql, p)
+remove_file("tests/_fz.db")
+let db = sqlite_open("tests/_fz.db")
+db_exec(db, "CREATE TABLE f (id INTEGER PRIMARY KEY, t TEXT)", [])
+let SQLJUNK = ["SELECT", "FROM", "f", "(", ")", ",", ";", "--", "/*", "*/", "'", "\"", "?", "1", "DROP TABLE f", "INSERT INTO f (t) VALUES", "DELETE FROM f", "x", "*", "||", "\n", " ", "BEGIN", "COMMIT", "PRAGMA", "ATTACH"]
+it = 0
+while it < ITERS:
+    # text round trip through a bound parameter
+    let tv = rtext(20)
+    if tv != "":
+        if not db_exec(db, "INSERT INTO f (t) VALUES (?)", [tv]):
+            bad("insert of bound text failed: " + str(tv))
+        let back = db_query(db, "SELECT t FROM f WHERE t = ?", [tv])
+        if back == nil or len(back) < 1 or back[0]["t"] != tv:
+            bad("text did not round-trip: " + str(tv))
+    # wrong parameter counts are always refused
+    let cnt = 0 + rnd(4)
+    if cnt != 1:
+        let params = []
+        let w = 0
+        while w < cnt:
+            params = push(params, "p")
+            w = w + 1
+        if db_exec(db, "INSERT INTO f (t) VALUES (?)", params):
+            bad("param count " + str(cnt) + " for one placeholder was accepted")
+    # two statements are always refused and neither runs
+    let before = db_query(db, "SELECT count(*) AS c FROM f", [])[0]["c"]
+    if db_exec(db, "INSERT INTO f (t) VALUES ('m1'); INSERT INTO f (t) VALUES ('m2')", []):
+        bad("multi-statement SQL was accepted")
+    let after = db_query(db, "SELECT count(*) AS c FROM f", [])[0]["c"]
+    if after != before:
+        bad("a refused multi-statement call changed the table")
+    # random SQL junk must never crash; allow it to succeed or fail, but never to destroy the table
+    let sql = ""
+    let sl = 1 + rnd(8)
+    let u = 0
+    while u < sl:
+        sql = sql + SQLJUNK[rnd(len(SQLJUNK))] + " "
+        u = u + 1
+    if not contains(lower(sql), "drop") and not contains(lower(sql), "delete") and not contains(lower(sql), "attach") and not contains(lower(sql), "pragma") and not contains(lower(sql), "begin"):
+        db_exec(db, sql, [])
+        db_query(db, sql, [])
+    it = it + 1
+sqlite_close(db)
+remove_file("tests/_fz.db")
+
+# ---------------------------------------------------------------- F7 tensor reshape
+CTX = "F7 tensor reshape"
+let six = _tensor_from_nested([1, 2, 3, 4, 5, 6])
+let DIMS = [0, 1, 2, 3, 6, 7, -1, -2, -6, 1.5, 0.5, 65536, 4294967296, 2147483647, 2147483648, 1000000000]
+it = 0
+while it < ITERS * 2:
+    let nd = rnd(5)
+    let shape = []
+    let prod = 1
+    let valid = true
+    let d = 0
+    while d < nd:
+        let dim = DIMS[rnd(len(DIMS))]
+        shape = push(shape, dim)
+        if dim < 0 or dim != floor(dim) or dim > 2147483647:
+            valid = false
+        else:
+            prod = prod * dim
+        d = d + 1
+    let rs = _tensor_reshape(six, shape)
+    let should = valid and prod == 6
+    if (rs != nil) != should:
+        bad("reshape " + str(shape) + " accepted=" + str(rs != nil) + " should=" + str(should))
+    it = it + 1
+
+# ---------------------------------------------------------------- F8 quant
+CTX = "F8 quant"
+let BITS = [0, 1, 2, 3, 4, 8, 16, 31, 32, 33, 64, -1, 7.5]
+it = 0
+while it < ITERS:
+    let nrow = 1 + rnd(3)
+    let ncol = 1 + rnd(5)
+    let W = []
+    let rr = 0
+    while rr < nrow:
+        let row = []
+        let cc = 0
+        while cc < ncol:
+            row = push(row, (rnd(2001) - 1000) / 37)
+            cc = cc + 1
+        W = push(W, row)
+        rr = rr + 1
+    let bits = BITS[rnd(len(BITS))]
+    let q = quantize_per_channel(W, bits)
+    let bits_ok = bits == floor(bits) and bits >= 2 and bits <= 32
+    if bits_ok and q == nil:
+        bad("valid bits refused: " + str(bits))
+    if (not bits_ok) and q != nil:
+        bad("invalid bits accepted: " + str(bits))
+    if q != nil:
+        if len(q["scales"]) != nrow or len(q["data"]) != nrow:
+            bad("quantized shape wrong")
+        for row2 in q["data"]:
+            for val in row2:
+                if val != val or abs(val) > 100000:
+                    bad("non-finite or absurd quantized value " + str(val) + " for bits " + str(bits))
+        let err = quant_error(W, q["data"])
+        if err != nil and (err != err or err > 1.5):
+            bad("quantization error is absurd: " + str(err) + " for bits " + str(bits))
+    it = it + 1
+
+# ---------------------------------------------------------------- F9 kbrain
+CTX = "F9 kbrain"
+let LRS = [0.0000001, 0.0001, 0.01, 0.1, 0.5, 1, 5, 100, 0, -1]
+it = 0
+while it < ITERS / 3:
+    let xs = []
+    let ys = []
+    let np = 1 + rnd(4)
+    let pp = 0
+    while pp < np:
+        let xv = rnd(5000) - 100
+        xs = push(xs, [xv])
+        ys = push(ys, 3 * xv + 2)
+        pp = pp + 1
+    let mdl = set_params(linear_regression(), LRS[rnd(len(LRS))], 30 + rnd(120))
+    let lr_ok = mdl["lr"] > 0
+    let trained = train(mdl, xs, ys)
+    if (trained == nil) == lr_ok:
+        bad("lr " + str(mdl["lr"]) + " accepted/refused wrongly")
+    if trained != nil:
+        let w = trained["weights"]
+        let b = trained["bias"]
+        if w != w or b != b or abs(w) > pow(10, 15) or abs(b) > pow(10, 15):
+            bad("NaN or huge weights after training: " + str(w) + ", " + str(b))
+        if trained["diverged"] and predict(trained, [1]) != nil:
+            bad("predict answered for a diverged model")
+    it = it + 1
+
+if FAILS > 0:
+    print "  " + str(FAILS) + " fuzz failure(s) (seed=" + str(SEED) + ")"
+    exit(1)
+print "  fuzz_packages: all properties held (seed=" + str(SEED) + ", " + str(ITERS) + " iterations)"

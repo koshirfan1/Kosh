@@ -54,7 +54,7 @@ A package whose `package.json` says `"status": "experimental"` (with a `"status_
 3. Only after every file verified are they moved into place.
 4. Packages listed under `"dependencies"` (for example `openai` needs `requests`) are installed first, the same way. A dependency that is already installed is not fetched again; a cycle or a chain deeper than 8 is refused.
 
-What this protects against: corrupted or truncated downloads, a stale CDN cache serving a mix of old and new files, and a file that changed without the registry being updated. What it does **not** protect against: someone who can change both a package file *and* the registry that lists its checksum, because they live in the same repository. Defending against that needs a signed registry, which does not exist yet.
+What this protects against: corrupted or truncated downloads, a stale CDN cache serving a mix of old and new files, and a file that changed without the registry being updated. What it does **not** protect against: someone who can change both a package file *and* the registry that lists its checksum, because they live in the same repository. Defending against that needs a signed registry. Signing is implemented (Ed25519, see [SIGNING.md](SIGNING.md)) but stays **off until the maintainer configures a key**: until then `kh` prints `registry signature NOT checked` and only the SHA-256 checks apply.
 
 `--no-verify` skips step 2 and prints a warning. Use it only for a registry you trust.
 

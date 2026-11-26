@@ -273,6 +273,17 @@ jobs:
         ./kosh tests/fuzz/fuzz_webi.kh 1 1000
         ./kosh tests/fuzz/fuzz_webi.kh 2 1000
 
+    - name: Package property fuzzer - csv/dotenv/logger/fs/orm/sqlite/tensor/quant/kbrain (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        ./kosh tests/fuzz/fuzz_packages.kh 1 300 2>/dev/null
+        ./kosh tests/fuzz/fuzz_packages.kh 2 300 2>/dev/null
+
+    - name: Package property fuzzer (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: msys2 {0}
+      run: ./kosh.exe tests/fuzz/fuzz_packages.kh 1 150 2>/dev/null
+
     - name: Webi channel property fuzzer (Windows)
       if: matrix.os == 'windows-latest'
       shell: msys2 {0}
@@ -298,12 +309,18 @@ jobs:
       run: |
         python3 tools/gen_readme_packages.py --check
         python3 tools/gen_registry.py --check
+        pip install cryptography
+        python3 tools/sign_registry.py check
         python3 tools/gen_client_js.py
         git diff --exit-code -- packages/webi/client_js.kh
 
     - name: kh install tests - checksums, dependencies, atomic installs (Linux only)
       if: matrix.os == 'ubuntu-latest'
-      run: python3 tests/kh/test_kh_install.py
+      run: |
+        pip install cryptography
+        python3 tests/kh/test_kh_install.py
+        python3 tests/kh/test_ed25519.py
+        python3 tests/kh/test_sign_registry.py
 
     - name: Run vision test suite (Linux/macOS)
       if: matrix.os != 'windows-latest'
@@ -487,6 +504,10 @@ jobs:
         ./kosh_asan tests/test_webi_client_serve.kh
         ./kosh_asan tests/fuzz/fuzz_webi.kh 11 800
         ./kosh_asan tests/fuzz/fuzz_webi.kh 12 800
+        ./kosh_asan tests/fuzz/fuzz_packages.kh 11 200 2>/dev/null
+        ./kosh_asan tests/fuzz/fuzz_packages.kh 12 200 2>/dev/null
+        ./kosh_asan tests/test_sqlite.kh
+        ./kosh_asan tests/test_quant.kh
 
     - name: Upload Artifacts (Linux)
       if: matrix.os == 'ubuntu-latest'

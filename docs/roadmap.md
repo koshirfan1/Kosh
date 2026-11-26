@@ -18,7 +18,7 @@
 | Security fixes: curl command buffer overflow, `kh` input validation, rate limiter fail-open, `crypto_lib` linked | ✅ Complete in v0.016.0, see [CHANGELOG.md](../CHANGELOG.md) |
 | `webi` encrypted channel (X25519 + HKDF + ChaCha20-Poly1305, replay window), `require_secure`, crawler verification, browser client, `/_webi/proof` | ✅ Implemented and fuzzed in v0.016.0 — **no external review yet**, see [webi-threat-model.md](webi-threat-model.md) |
 | `kh` per-file SHA-256 verification, staged atomic installs, dependency installation | ✅ Complete in v0.016.0, see [packages.md](packages.md#integrity-and-dependencies) |
-| Signed package registry | 🔲 Planned |
+| Signed package registry | 🟡 Implemented in v0.021.0 (Ed25519, `kh` refuses unsigned/tampered registries once a key is set) — **not active yet**: the maintainer must generate the key, put the public half in `src/kh_pubkey.h` and ship a new `kh`; see [SIGNING.md](SIGNING.md) |
 | macOS in the CI matrix | 🔲 Planned |
 | `{}` map as a real hash table | ✅ Complete — open-addressing (FNV-1a), see [docs/hash-table-audit.md](hash-table-audit.md) |
 | String concatenation performance | 🟡 Partial — redundant rescan fixed (~2.4x), full O(n²) root cause still open, see [benchmarks/RESULTS.md](../benchmarks/RESULTS.md) |

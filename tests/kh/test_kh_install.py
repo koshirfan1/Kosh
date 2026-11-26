@@ -499,6 +499,108 @@ def test_experimental():
     e.cleanup()
 
 
+# --------------------------------------------------------------------------- signed registry
+def test_signed_registry():
+    """kh with a public key refuses a registry that is unsigned, tampered, or signed by another key."""
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+    except ImportError:
+        print("  (skipping signed-registry tests: python 'cryptography' not installed)")
+        return
+
+    def keypair():
+        k = Ed25519PrivateKey.generate()
+        return k, k.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+
+    def sign(e, k):
+        open(e.reg_path + ".sig", "w").write(k.sign(open(e.reg_path, "rb").read()).hex() + "\n")
+
+    key, pub = keypair()
+    other_key, other_pub = keypair()
+    ENV = lambda p: {"KH_REGISTRY_PUBKEY": p}
+
+    # unsigned mode (no key anywhere): works, but says so
+    e = Env()
+    rc, out = e.kh("install", "colors")
+    check("no key configured: install works in unsigned mode", rc == 0 and e.is_installed("colors"), out)
+    check("...and says the registry signature was NOT checked", "NOT checked" in out, out)
+    e.cleanup()
+
+    # valid signature
+    e = Env(); sign(e, key)
+    rc, out = e.kh("install", "colors", env=ENV(pub))
+    check("valid signature: install works", rc == 0 and e.is_installed("colors"), out)
+    check("valid signature: no 'NOT checked' warning", "NOT checked" not in out, out)
+    rc, out = e.kh("info", "colors", env=ENV(pub))
+    check("valid signature: info works", rc == 0 and "colors" in out, out)
+    rc, out = e.kh("search", "color", env=ENV(pub))
+    check("valid signature: search works", rc == 0 and "colors" in out, out)
+    e.cleanup()
+
+    # missing signature
+    e = Env()
+    rc, out = e.kh("install", "colors", env=ENV(pub))
+    check("key configured + no .sig: refused", rc != 0 and not e.is_installed("colors") and "INVALID" in out, out)
+    rc, out = e.kh("search", "color", env=ENV(pub))
+    check("key configured + no .sig: search refused too", rc != 0 and "colors" not in out, out)
+    rc, out = e.kh("info", "colors", env=ENV(pub))
+    check("key configured + no .sig: info refused too", rc != 0, out)
+    e.cleanup()
+
+    # package file AND registry checksum replaced consistently, signature now stale
+    def swap_in_evil(e):
+        ent = e.entry("colors"); f = next(iter(ent["sha256"]))
+        evil = b"# malicious\n"
+        open(e.pkg_file("colors", f), "wb").write(evil)
+        ent["sha256"][f] = hashlib.sha256(evil).hexdigest()
+        e.save()
+    e = Env(); sign(e, key); swap_in_evil(e)
+    rc, out = e.kh("install", "colors", env=ENV(pub))
+    check("file + checksum replaced consistently, signature stale: refused", rc != 0 and not e.is_installed("colors"), out)
+    e.cleanup()
+    e = Env(); swap_in_evil(e)
+    rc, out = e.kh("install", "colors")
+    check("control: the same attack succeeds in unsigned mode (SHA-256 alone cannot stop it; signing does)", rc == 0 and e.is_installed("colors"), out)
+    e.cleanup()
+
+    # one byte of the registry changed
+    e = Env(); sign(e, key)
+    data = bytearray(open(e.reg_path, "rb").read()); data[len(data) // 2] ^= 0x01
+    open(e.reg_path, "wb").write(bytes(data))
+    rc, out = e.kh("install", "colors", env=ENV(pub))
+    check("a single flipped byte in registry.json: refused", rc != 0 and not e.is_installed("colors"), out)
+    e.cleanup()
+
+    # bad signatures / keys
+    e = Env(); sign(e, key)
+    good = open(e.reg_path + ".sig").read().strip()
+    cases = {
+        "signature from another key": other_key.sign(open(e.reg_path, "rb").read()).hex(),
+        "flipped signature byte": good[:10] + ("0" if good[10] != "0" else "1") + good[11:],
+        "truncated signature": good[:100],
+        "signature too long": good + "00",
+        "non-hex signature": "z" * 128,
+        "HTTP error text instead of a signature": "404: Not Found",
+        "empty signature": "",
+        "all-zero signature": "0" * 128,
+    }
+    for label, sigtxt in cases.items():
+        open(e.reg_path + ".sig", "w").write(sigtxt + "\n")
+        rc, out = e.kh("install", "colors", env=ENV(pub))
+        check("bad signature (%s): refused" % label, rc != 0 and not e.is_installed("colors"), out)
+    sign(e, key)
+    rc, out = e.kh("install", "colors", env=ENV(other_pub))
+    check("right signature, wrong public key: refused", rc != 0 and not e.is_installed("colors"), out)
+    for label, badpub in (("short", pub[:60]), ("non-hex", "zz" * 32), ("long", pub + "00")):
+        rc, out = e.kh("install", "colors", env=ENV(badpub))
+        check("malformed public key (%s): refused" % label, rc != 0 and not e.is_installed("colors"), out)
+    check("refused registries leave no staging directories", not e.leftovers())
+    rc, out = e.kh("install", "orm", env=ENV(pub))
+    check("signed: a package with a dependency installs both", rc == 0 and e.is_installed("orm") and e.is_installed("json_db"), out)
+    e.cleanup()
+
+
 # --------------------------------------------------------------------------- the real registry
 def test_real_registry():
     reg = json.load(open(os.path.join(SRC_PACKAGES, "registry.json"), encoding="utf-8"))
@@ -537,7 +639,7 @@ if __name__ == "__main__":
     for exe in (KH, KOSH):
         if not os.path.exists(exe):
             sys.exit("missing %s: run `make` first" % exe)
-    for t in (test_sha256_command, test_good_installs, test_dependencies, test_tampering, test_fail_closed, test_validation, test_installed_commands, test_experimental, test_real_registry):
+    for t in (test_sha256_command, test_good_installs, test_dependencies, test_tampering, test_fail_closed, test_validation, test_installed_commands, test_experimental, test_signed_registry, test_real_registry):
         t()
     print("  %d/%d passed   |   %d failed" % (passed, passed + failed, failed))
     sys.exit(1 if failed else 0)

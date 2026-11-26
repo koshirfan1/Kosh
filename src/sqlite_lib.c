@@ -38,6 +38,16 @@ static int sqlite_resolve_slot(Value *m) {
     return slot;
 }
 
+/* Resolves a connection or prints WHY it failed. A wrong value (for example
+ * json_db's db_open() map, which shares the name db_open) or a closed
+ * connection used to give a silent false/nil, which hid the real mistake. */
+static int sqlite_resolve_or_complain(Value *m, const char *fname) {
+    int slot = sqlite_resolve_slot(m);
+    if (slot < 0)
+        fprintf(stderr, "Runtime error: %s() - not an open SQLite connection (closed, or not made by sqlite_open; note json_db also defines db_open)\n", fname);
+    return slot;
+}
+
 static void fn_sqlite_open(Value *result, Interpreter *interp, int argc, Value *args) {
     (void)interp;
     *result = value_nil();
@@ -186,7 +196,7 @@ static void fn_sqlite_exec(Value *result, Interpreter *interp, int argc, Value *
     (void)interp;
     *result = value_bool(0);
     if (argc < 2 || args[1].type != VAL_STRING) return;
-    int slot = sqlite_resolve_slot(&args[0]);
+    int slot = sqlite_resolve_or_complain(&args[0], "sqlite_exec");
     if (slot < 0) return;
 
     sqlite3_stmt *stmt = sqlite_prepare_one(g_db_handles[slot], "sqlite_exec", args[1].as.string);
@@ -230,7 +240,7 @@ static void fn_sqlite_query(Value *result, Interpreter *interp, int argc, Value 
     (void)interp;
     *result = value_nil();
     if (argc < 2 || args[1].type != VAL_STRING) return;
-    int slot = sqlite_resolve_slot(&args[0]);
+    int slot = sqlite_resolve_or_complain(&args[0], "sqlite_query");
     if (slot < 0) return;
 
     sqlite3_stmt *stmt = sqlite_prepare_one(g_db_handles[slot], "sqlite_query", args[1].as.string);
@@ -298,7 +308,7 @@ static void fn_sqlite_busy_timeout(Value *result, Interpreter *interp, int argc,
     (void)interp;
     *result = value_bool(0);
     if (argc != 2 || args[1].type != VAL_NUMBER) return;
-    int slot = sqlite_resolve_slot(&args[0]);
+    int slot = sqlite_resolve_or_complain(&args[0], "sqlite_busy_timeout");
     if (slot < 0) return;
     double ms = args[1].as.number;
     if (!(ms >= 0 && ms <= 600000)) {
